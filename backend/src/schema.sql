@@ -1,0 +1,143 @@
+PRAGMA foreign_keys = ON;
+
+CREATE TABLE IF NOT EXISTS users (
+  id TEXT PRIMARY KEY,
+  username TEXT UNIQUE,
+  email TEXT UNIQUE,
+  full_name TEXT NOT NULL,
+  password_hash TEXT,
+  avatar_url TEXT,
+  is_active INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS spaces (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE,
+  task_key_prefix TEXT,
+  name TEXT NOT NULL,
+  owner_id TEXT,
+  visibility TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS space_members (
+  space_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  member_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (space_id, user_id),
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS teams (
+  id TEXT PRIMARY KEY,
+  space_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS releases (
+  id TEXT PRIMARY KEY,
+  space_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS work_items (
+  id TEXT PRIMARY KEY,
+  space_id TEXT NOT NULL,
+  issue_key TEXT NOT NULL,
+  issue_type TEXT NOT NULL,
+  title TEXT NOT NULL,
+  status TEXT NOT NULL,
+  priority TEXT NOT NULL,
+  parent_id TEXT,
+  assignee_id TEXT,
+  creator_id TEXT,
+  team_id TEXT,
+  release_id TEXT,
+  labels_json TEXT NOT NULL DEFAULT '[]',
+  start_date TEXT,
+  due_date TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  UNIQUE (space_id, issue_key),
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_id) REFERENCES work_items(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_items_space ON work_items(space_id);
+CREATE INDEX IF NOT EXISTS idx_work_items_key ON work_items(issue_key);
+CREATE INDEX IF NOT EXISTS idx_work_items_parent ON work_items(parent_id);
+CREATE INDEX IF NOT EXISTS idx_work_items_updated ON work_items(updated_at);
+
+CREATE TABLE IF NOT EXISTS work_item_links (
+  id TEXT PRIMARY KEY,
+  source_work_item_id TEXT NOT NULL,
+  target_work_item_id TEXT NOT NULL,
+  link_type TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (source_work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (target_work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS comments (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT NOT NULL,
+  parent_comment_id TEXT,
+  author_id TEXT,
+  author_name TEXT NOT NULL,
+  body TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  deleted_at TEXT,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (parent_comment_id) REFERENCES comments(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS attachments (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  stored_name TEXT,
+  mime_type TEXT,
+  size_bytes INTEGER,
+  storage_path TEXT,
+  uploaded_by TEXT,
+  created_at TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS activity_logs (
+  id TEXT PRIMARY KEY,
+  space_id TEXT NOT NULL,
+  work_item_id TEXT,
+  actor_id TEXT,
+  actor_name TEXT NOT NULL,
+  description TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS work_item_status_history (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT NOT NULL,
+  from_status TEXT,
+  to_status TEXT NOT NULL,
+  actor_name TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
+);

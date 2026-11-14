@@ -1,0 +1,1527 @@
+import { useEffect, useMemo, useRef, useState } from 'react';
+import Header from '../../components/layout/Header';
+import Sidebar from '../../components/layout/Sidebar';
+import Icon from '../../components/common/Icon';
+import PriorityIcon from '../../components/common/PriorityIcon';
+import { getInitialStatus, getIssueStatus, getTransitionOptions, validateIssueTransition } from './workflows';
+import TaskDetailDrawer from './TaskDetailDrawer';
+import './SpacesList.css';
+import './GlobalCreateSearch.css';
+
+const ISSUE_TYPES = ['Epic', 'Task', 'Bug', 'Improvement', 'Story', 'Sub-task', 'Feature'];
+const CHILD_TYPES_BY_PARENT = {
+  Epic: ['Story', 'Task', 'Bug', 'Improvement'],
+  Feature: ['Story', 'Task', 'Bug', 'Improvement'],
+  Story: ['Sub-task'],
+  Task: ['Bug', 'Sub-task'],
+  Bug: ['Sub-task'],
+  Improvement: ['Sub-task'],
+  'Sub-task': []
+};
+const PARENT_TYPES_BY_CHILD = {
+  Story: ['Epic', 'Feature'],
+  Task: ['Epic', 'Feature'],
+  Bug: ['Epic', 'Feature', 'Task'],
+  Improvement: ['Epic', 'Feature'],
+  'Sub-task': ['Story', 'Task', 'Bug', 'Improvement']
+};
+const STATUSES = ['Backlog', 'To Do', 'In Progress', 'In Review', 'Blocked', 'Done', 'Cancel'];
+const PRIORITIES = ['High', 'Highest', 'Low', 'Lowest', 'Medium'];
+const ORDER_OPTIONS = ['All', 'Newest created', 'Oldest created', 'Most recently updated', 'Least recently updated', 'Highest priority first', 'Lowest priority first', 'Latest start date', 'Earliest start date', 'Latest due date', 'Earliest due date'];
+const EXTRA_FIELDS = ['Priority', 'Start Date', 'End Date', 'Create Date', 'Updated Date'];
+const PRIORITY_RANK = { Highest: 1, High: 2, Medium: 3, Low: 4, Lowest: 5 };
+
+function issueKey(issue) { return issue.key || issue.code || issue.taskCode || '—'; }
+function issueSummary(issue) { return issue.summary || issue.title || issue.name || 'Untitled work item'; }
+function issueType(issue) {
+  const raw = issue.issueType || issue.type || 'Task';
+  return ISSUE_TYPES.find((type) => type.toLowerCase() === String(raw).toLowerCase()) || String(raw);
+}
+function issueTypeOf(issue) { return issueType(issue); }
+function assigneeName(issue) {
+  if (!issue?.assignee) return '';
+  return typeof issue.assignee === 'string' ? issue.assignee : issue.assignee.name || issue.assignee.fullName || '';
+}
+function dateValue(issue, field) {
+  const names = {
+    createdAt: ['createdAt', 'createdDate', 'createDate', 'created'],
+    updatedAt: ['updatedAt', 'updatedDate', 'lastUpdated'],
+    startDate: ['startDate', 'start'],
+    dueDate: ['dueDate', 'endDate', 'due', 'end']
+  }[field] || [field];
+  for (const name of names) if (issue?.[name] !== undefined && issue?.[name] !== null && issue?.[name] !== '') return issue[name];
+  return null;
+}
+function toDate(value) {
+  if (!value) return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') return new Date(value);
+  const text = String(value).trim();
+  const match = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
+  if (match) return new Date(+match[3], +match[2] - 1, +match[1], +(match[4] || 0), +(match[5] || 0), +(match[6] || 0));
+  const parsed = new Date(text);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+function formatDateTime(value) {
+  const date = toDate(value);
+  if (!date) return 'None';
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
+}
+function toDateInputValue(value) {
+  const date = toDate(value);
+  if (!date) return '';
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+function formatDateOnly(value) {
+  const date = toDate(value);
+  if (!date) return 'None';
+  const pad = (number) => String(number).padStart(2, '0');
+  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
+}
+function getInitials(value) {
+  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
+  return parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase() : (parts[0] || '—').slice(0, 2).toUpperCase();
+}
+function iconForType(type) {
+  const icons = {
+    Epic: 'epic',
+    Feature: 'feature',
+    Task: 'tasks',
+    Improvement: 'improvement',
+    Bug: 'bug',
+    Story: 'story',
+    'Sub-task': 'subTask'
+  };
+  return icons[type] || 'tasks';
+}
+
+function MultiFilter({ label, options, selected, onChange, width = 190, showPriorityIcons = false }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const shown = options.filter((option) => option.toLowerCase().includes(query.toLowerCase()));
+  return (
+    <div className="slv-filter-wrap">
+      <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((value) => !value); setQuery(''); }}>
+        <span>{label}</span><b>{selected.length ? selected.length : 'All'}</b><Icon name="chevron" size={13} />
+      </button>
+      {open && <div className="slv-popover" style={{ width }}>
+        <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+        <div className="slv-popover-options">
+          {shown.length ? shown.map((option) => <label className="slv-option" key={option}><input type="checkbox" checked={selected.includes(option)} onChange={() => onChange(selected.includes(option) ? selected.filter((item) => item !== option) : [...selected, option])} />{showPriorityIcons && <PriorityIcon priority={option} size={16} />}<span>{option}</span></label>) : <div className="slv-no-options">No options found</div>}
+        </div>
+        <div className="slv-popover-footer"><button type="button" onClick={() => onChange([])}>Clear</button><button type="button" className="primary-link" onClick={() => setOpen(false)}>Done</button></div>
+      </div>}
+    </div>
+  );
+}
+
+function OrderFilter({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const shown = ORDER_OPTIONS.filter((item) => item.toLowerCase().includes(query.toLowerCase()));
+  return <div className="slv-filter-wrap">
+    <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((v) => !v); setQuery(''); }}><span>Order by</span><b>{value}</b><Icon name="chevron" size={13} /></button>
+    {open && <div className="slv-popover slv-order-popover">
+      <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+      <div className="slv-popover-options">{shown.map((item) => <button type="button" key={item} className={`slv-single-option ${value === item ? 'selected' : ''}`} onClick={() => { onChange(item); setOpen(false); }}>{item}{value === item && <Icon name="check" size={14} />}</button>)}</div>
+    </div>}
+  </div>;
+}
+
+function MoreFilters({ selected, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const shown = EXTRA_FIELDS.filter((field) => field.toLowerCase().includes(query.toLowerCase()));
+  return <div className="slv-filter-wrap">
+    <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((v) => !v); setQuery(''); }}>More filters{selected.length > 0 && <b className="slv-count">{selected.length}</b>}<Icon name="chevron" size={13} /></button>
+    {open && <div className="slv-popover slv-more-popover">
+      <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search fields" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
+      <div className="slv-popover-options">{shown.map((field) => <label className="slv-option" key={field}><input type="checkbox" checked={selected.includes(field)} onChange={() => onChange(selected.includes(field) ? selected.filter((item) => item !== field) : [...selected, field])} /><span>{field}</span></label>)}</div>
+      <div className="slv-popover-footer"><button type="button" onClick={() => onChange([])}>Clear</button><button type="button" className="primary-link" onClick={() => setOpen(false)}>Done</button></div>
+    </div>}
+  </div>;
+}
+
+function SortHeading({ label, field, sort, onSort }) {
+  const active = sort.field === field;
+  return <button type="button" className={`slv-sort-heading ${active ? 'active' : ''}`} onClick={() => onSort(field)}><span>{label}</span><svg viewBox="0 0 12 14" width="12" height="14" aria-hidden="true"><path d="M6 1 3 4h6L6 1Z" fill={active && sort.direction === 'asc' ? '#0052CC' : '#A5ADBA'} /><path d="m6 13 3-3H3l3 3Z" fill={active && sort.direction === 'desc' ? '#0052CC' : '#A5ADBA'} /></svg></button>;
+}
+
+function PriorityCell({ value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 176 });
+  const rootRef = useRef(null);
+  const priority = PRIORITIES.includes(value) ? value : 'Medium';
+
+  function toggleMenu(event) {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 176;
+    const estimatedHeight = PRIORITIES.length * 35 + 14;
+    const top = window.innerHeight - rect.bottom < estimatedHeight + 8
+      ? Math.max(8, rect.top - estimatedHeight - 4)
+      : rect.bottom + 4;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    setMenuPosition({ top, left, width });
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className="slv-priority-picker" ref={rootRef}>
+      <button
+        type="button"
+        className={`slv-priority-trigger ${open ? 'is-open' : ''}`}
+        onClick={toggleMenu}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Change priority, current priority ${priority}`}
+      >
+        <span className="slv-priority">
+          <PriorityIcon priority={priority} size={16} />
+          <span>{priority}</span>
+        </span>
+        <Icon name="chevron" size={12} />
+      </button>
+      {open && (
+        <div
+          className="slv-priority-menu"
+          style={{ position: 'fixed', top: menuPosition.top, left: menuPosition.left, width: menuPosition.width }}
+          role="listbox"
+          aria-label="Choose priority"
+        >
+          {PRIORITIES.map((option) => (
+            <button
+              type="button"
+              role="option"
+              aria-selected={priority === option}
+              key={option}
+              className={`slv-priority-option ${priority === option ? 'selected' : ''}`}
+              onClick={() => { onChange(option); setOpen(false); }}
+            >
+              <PriorityIcon priority={option} size={16} />
+              <span>{option}</span>
+              {priority === option && <Icon name="check" size={14} />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusCell({ issue, allIssues = [], onChange }) {
+  const [open, setOpen] = useState(false);
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 220 });
+  const rootRef = useRef(null);
+  const status = getIssueStatus(issue);
+  const options = getTransitionOptions(issue, allIssues);
+
+  function toggleMenu(event) {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 224;
+    const estimatedHeight = Math.min(Math.max(options.length * 38 + 16, 72), 258);
+    const top = window.innerHeight - rect.bottom < estimatedHeight + 8
+      ? Math.max(8, rect.top - estimatedHeight - 4)
+      : rect.bottom + 4;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    setMenuPosition({ top, left, width });
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const statusClass = `slv-status-${String(status).toLowerCase().replace(/\s+/g, '-')}`;
+  return (
+    <div className="slv-status-picker" ref={rootRef}>
+      <button
+        type="button"
+        className={`slv-status ${statusClass}`}
+        onClick={toggleMenu}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={`Change status, current status ${status}`}
+      >
+        <span>{String(status).toUpperCase()}</span>
+        <Icon name="chevron" size={11} />
+      </button>
+      {open && (
+        <div
+          className="slv-status-menu"
+          style={{ position: 'fixed', top: menuPosition.top, left: menuPosition.left, width: menuPosition.width }}
+          role="listbox"
+          aria-label={`Available workflow transitions for ${issueType(issue)}`}
+        >
+          {options.length ? options.map((option) => {
+            const optionClass = `slv-status-${option.status.toLowerCase().replace(/\s+/g, '-')}`;
+            return (
+              <button
+                type="button"
+                role="option"
+                aria-selected={false}
+                aria-disabled={option.disabled || undefined}
+                title={option.reason || option.hint || ''}
+                key={option.status}
+                disabled={option.disabled}
+                className={`slv-status-option ${option.disabled ? 'is-disabled' : ''}`}
+                onClick={() => {
+                  if (option.disabled) return;
+                  onChange(option.status);
+                  setOpen(false);
+                }}
+              >
+                <span className={`slv-status-dot ${optionClass}`} />
+                <span>{option.status}</span>
+                {option.hint && <small className="slv-transition-hint">{option.hint}</small>}
+                {option.disabled && option.reason && <span className="slv-transition-help" title={option.reason}>i</span>}
+              </button>
+            );
+          }) : (
+            <div className="slv-no-transitions">No further transitions available.</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+const MEMBER_NONE = '';
+
+function optionLabel(item) {
+  if (typeof item === 'string') return item;
+  return item?.name || item?.fullName || item?.title || item?.label || item?.email || '';
+}
+
+const CURRENT_USER = {
+  id: 'current-user',
+  name: 'You',
+  fullName: 'You',
+  initials: 'YO',
+  isCurrentUser: true
+};
+
+function getUserId(user) {
+  return String(user?.id ?? user?.email ?? user?.username ?? optionLabel(user));
+}
+
+// Inline assignee selector. It remains available after assignment so the
+// user can reopen it and change or clear the assignee at any time.
+function AssigneeCell({ value, members, onAssign }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 232 });
+  const rootRef = useRef(null);
+
+  function toggleMenu(event) {
+    if (open) {
+      setOpen(false);
+      return;
+    }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const width = 232;
+    const estimatedHeight = Math.min(330, 105 + (Array.isArray(members) ? members.length : 0) * 43);
+    const top = window.innerHeight - rect.bottom < estimatedHeight + 8
+      ? Math.max(8, rect.top - estimatedHeight - 4)
+      : rect.bottom + 4;
+    const left = Math.max(8, Math.min(rect.left, window.innerWidth - width - 8));
+    setMenuPosition({ top, left, width });
+    setOpen(true);
+  }
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const memberList = Array.isArray(members) ? members : [];
+  const currentFromMembers = memberList.find((member) => getUserId(member) === CURRENT_USER.id);
+  const currentUser = currentFromMembers
+    ? { ...currentFromMembers, ...CURRENT_USER, id: CURRENT_USER.id }
+    : CURRENT_USER;
+  const seen = new Set([CURRENT_USER.id]);
+  const otherUsers = memberList.filter((member) => {
+    if (!member || !optionLabel(member)) return false;
+    const id = getUserId(member);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+  const matches = (user) => `${optionLabel(user)} ${user?.email || ''} ${user?.username || ''}`
+    .toLowerCase().includes(query.trim().toLowerCase());
+  const visibleUsers = otherUsers.filter(matches);
+  const showCurrentUser = matches(currentUser);
+  const selectedId = value ? getUserId(value) : '';
+  const selectedUser = selectedId === CURRENT_USER.id
+    ? currentUser
+    : otherUsers.find((member) => getUserId(member) === selectedId) || value || null;
+  const selectedName = selectedUser
+    ? (selectedId === CURRENT_USER.id ? 'You' : optionLabel(selectedUser) || String(selectedUser))
+    : 'Unassigned';
+
+  function choose(user) {
+    onAssign(user ? {
+      id: getUserId(user),
+      name: getUserId(user) === CURRENT_USER.id ? 'You' : optionLabel(user),
+      fullName: getUserId(user) === CURRENT_USER.id ? 'You' : (user.fullName || optionLabel(user)),
+      email: user?.email || '',
+      initials: user?.initials || getInitials(optionLabel(user)),
+      isCurrentUser: getUserId(user) === CURRENT_USER.id
+    } : null);
+    setOpen(false);
+    setQuery('');
+  }
+
+  return (
+    <div className="slv-assignee-picker" ref={rootRef}>
+      <button
+        type="button"
+        className={`slv-assignee-trigger ${open ? 'is-open' : ''} ${selectedUser ? 'has-assignee' : 'is-unassigned'}`}
+        onClick={(event) => { setQuery(''); toggleMenu(event); }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-label={selectedUser ? `Change assignee, currently ${selectedName}` : 'Assign work item'}
+      >
+        {selectedUser && <span className="slv-assignee-avatar">{selectedId === CURRENT_USER.id ? 'YO' : getInitials(selectedName)}</span>}
+        <span className="slv-assignee-name">{selectedName}</span>
+        <span className="slv-assignee-action"><Icon name={selectedUser ? 'chevron' : 'plus'} size={13} /></span>
+      </button>
+
+      {open && (
+        <div className="slv-assignee-menu" style={{ position: 'fixed', top: menuPosition.top, left: menuPosition.left, width: menuPosition.width }} role="listbox" aria-label="Choose assignee">
+          <div className="slv-assignee-search">
+            <Icon name="search" size={14} />
+            <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search" aria-label="Search users" />
+          </div>
+
+          <button
+            type="button"
+            role="option"
+            aria-selected={!selectedUser}
+            className={`slv-assignee-option slv-assignee-unassigned-option ${!selectedUser ? 'selected' : ''}`}
+            onClick={() => choose(null)}
+          >
+            <span className="slv-assignee-check">{!selectedUser && <Icon name="check" size={11} />}</span>
+            <span>Unassigned</span>
+          </button>
+
+          {showCurrentUser && (
+            <button
+              type="button"
+              role="option"
+              aria-selected={selectedId === CURRENT_USER.id}
+              className={`slv-assignee-option current-user ${selectedId === CURRENT_USER.id ? 'selected' : ''}`}
+              onClick={() => choose(currentUser)}
+            >
+              <span className="slv-assignee-check">{selectedId === CURRENT_USER.id && <Icon name="check" size={11} />}</span>
+              <span className="slv-assignee-current-icon"><Icon name="user" size={13} /></span>
+              <span className="slv-assignee-option-label">Current User</span>
+              {selectedId === CURRENT_USER.id && <Icon name="check" size={14} />}
+            </button>
+          )}
+
+          {visibleUsers.map((member) => {
+            const id = getUserId(member);
+            const selected = selectedId === id;
+            const name = optionLabel(member);
+            return (
+              <button
+                type="button"
+                role="option"
+                aria-selected={selected}
+                className={`slv-assignee-option ${selected ? 'selected' : ''}`}
+                key={id}
+                onClick={() => choose(member)}
+              >
+                <span className="slv-assignee-check">{selected && <Icon name="check" size={11} />}</span>
+                <span className="slv-assignee-avatar">{getInitials(name)}</span>
+                <span className="slv-assignee-option-label" title={`${name}${member.email ? ` – ${member.email}` : ''}`}>{name}</span>
+                {selected && <Icon name="check" size={14} />}
+              </button>
+            );
+          })}
+
+          {!showCurrentUser && visibleUsers.length === 0 && (
+            <div className="slv-assignee-empty">No users match your search.</div>
+          )}
+          {showCurrentUser && visibleUsers.length === 0 && (
+            <div className="slv-assignee-hint" title="Only Current User is available until the system user directory is connected.">Only Current User is available...</div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+
+function EditableDateCell({ value, onChange, label }) {
+  const inputValue = toDateInputValue(value);
+  return (
+    <label className="slv-inline-date" title={`Choose ${label}`}>
+      <span>{formatDateOnly(value)}</span>
+      <Icon name="calendar" size={13} />
+      <input
+        type="date"
+        value={inputValue}
+        onChange={(event) => onChange(event.target.value || null)}
+        aria-label={`Choose ${label}`}
+      />
+    </label>
+  );
+}
+
+function SearchableUserField({ label, value, onChange, members, placeholder, required = false }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const rootRef = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const availableMembers = Array.isArray(members) ? members : [];
+  const currentUserFromMembers = availableMembers.find((member) => getUserId(member) === CURRENT_USER.id);
+  const currentUser = currentUserFromMembers
+    ? { ...CURRENT_USER, ...currentUserFromMembers, id: CURRENT_USER.id, isCurrentUser: true }
+    : CURRENT_USER;
+  const seen = new Set([CURRENT_USER.id]);
+  const otherUsers = availableMembers.filter((member) => {
+    const id = getUserId(member);
+    if (!id || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
+
+  const matches = (user) => {
+    const text = `${optionLabel(user)} ${user?.email || ''} ${user?.username || ''}`.toLowerCase();
+    return text.includes(query.trim().toLowerCase());
+  };
+  const showCurrentUser = matches(currentUser);
+  const filteredUsers = otherUsers.filter(matches);
+  const selectedUser = value === CURRENT_USER.id
+    ? currentUser
+    : otherUsers.find((member) => getUserId(member) === String(value));
+
+  function choose(user) {
+    onChange(getUserId(user));
+    setOpen(false);
+    setQuery('');
+  }
+
+  return (
+    <div className="slv-field">
+      <span>{label}{required && <b> *</b>}</span>
+      <div className="slv-user-picker" ref={rootRef}>
+        <button
+          type="button"
+          className={`slv-user-picker-trigger ${open ? 'is-open' : ''}`}
+          onClick={() => { setOpen((current) => !current); setQuery(''); }}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+        >
+          <span className={selectedUser ? '' : 'placeholder'}>
+            {selectedUser
+              ? (value === CURRENT_USER.id ? 'Current User' : optionLabel(selectedUser))
+              : placeholder}
+          </span>
+          <Icon name="chevron" size={14} />
+        </button>
+
+        {open && (
+          <div className="slv-user-picker-menu" role="listbox">
+            <div className="slv-user-picker-search">
+              <Icon name="search" size={14} />
+              <input
+                autoFocus
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder="Search users"
+                aria-label={`Search ${label}`}
+              />
+            </div>
+
+            {showCurrentUser && (
+              <button
+                type="button"
+                role="option"
+                aria-selected={value === CURRENT_USER.id}
+                className={`slv-user-option current-user ${value === CURRENT_USER.id ? 'selected' : ''}`}
+                onClick={() => choose(currentUser)}
+              >
+                <span className="slv-user-avatar">YO</span>
+                <span className="slv-user-option-text">
+                  <strong>Current User</strong>
+                  <small>{optionLabel(currentUser)}</small>
+                </span>
+                {value === CURRENT_USER.id && <Icon name="check" size={15} />}
+              </button>
+            )}
+
+            {filteredUsers.map((user) => {
+              const id = getUserId(user);
+              const selected = String(value) === id;
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={`slv-user-option ${selected ? 'selected' : ''}`}
+                  key={id}
+                  onClick={() => choose(user)}
+                >
+                  <span className="slv-user-avatar">{getInitials(optionLabel(user))}</span>
+                  <span className="slv-user-option-text">
+                    <strong>{optionLabel(user)}</strong>
+                    {user.email && <small>{user.email}</small>}
+                  </span>
+                  {selected && <Icon name="check" size={15} />}
+                </button>
+              );
+            })}
+
+            {!showCurrentUser && filteredUsers.length === 0 && (
+              <div className="slv-user-picker-empty">
+                {otherUsers.length
+                  ? 'No users match your search.'
+                  : 'No other users are available in this Space yet.'}
+              </div>
+            )}
+            {showCurrentUser && filteredUsers.length === 0 && otherUsers.length === 0 && (
+              <div className="slv-user-picker-hint">
+                The system user directory will be connected through Backend later.
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+
+function resolveAssigneeRecord(userId, members = []) {
+  if (!userId) return null;
+  if (String(userId) === CURRENT_USER.id) return { ...CURRENT_USER };
+  const member = (Array.isArray(members) ? members : []).find((item) => getUserId(item) === String(userId));
+  if (!member) return null;
+  const name = optionLabel(member);
+  return {
+    ...member,
+    id: getUserId(member),
+    name,
+    fullName: member.fullName || name,
+    email: member.email || '',
+    initials: member.initials || getInitials(name),
+    isCurrentUser: false
+  };
+}
+
+function StartTransitionModal({ issues, members, assigneeId, onAssigneeChange, onClose, onConfirm }) {
+  const isBulk = issues.length > 1;
+  return (
+    <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <div className="slv-modal slv-confirm-modal slv-start-modal" role="dialog" aria-modal="true" aria-labelledby="slv-start-title">
+        <div className="slv-modal-head">
+          <div>
+            <h2 id="slv-start-title">{isBulk ? 'Start work items' : 'Start'}</h2>
+            {isBulk && <p>Select one assignee for the unassigned work items.</p>}
+          </div>
+          <button type="button" onClick={onClose} aria-label="Close">×</button>
+        </div>
+        <div className="slv-modal-content">
+          <SearchableUserField
+            label="Assignee"
+            value={assigneeId}
+            onChange={onAssigneeChange}
+            members={members}
+            placeholder="Select Assignee"
+            required
+          />
+        </div>
+        <div className="slv-modal-foot">
+          <button type="button" className="slv-btn secondary" onClick={onClose}>Cancel</button>
+          <button type="button" className="slv-btn primary" disabled={!assigneeId} onClick={onConfirm}>Update</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ParentIssueField({ issues = [], value, onChange, required, issueType: childIssueType }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const rootRef = useRef(null);
+  // Normalize the source collection so an empty or malformed issue list cannot crash the modal.
+  const safeIssues = Array.isArray(issues)
+    ? issues.filter((issue) => issue && typeof issue === 'object')
+    : [];
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('mousedown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  const selectedIssue = safeIssues.find((issue) => String(issue.id) === String(value));
+  const allowedParentTypes = PARENT_TYPES_BY_CHILD[childIssueType] || [];
+  const compatibleIssues = safeIssues.filter((issue) => allowedParentTypes.length === 0 || allowedParentTypes.includes(issueTypeOf(issue)));
+  const visibleIssues = compatibleIssues.filter((issue) => {
+    const label = `${issueKey(issue)} ${issueSummary(issue)} ${issueTypeOf(issue)}`.toLowerCase();
+    return label.includes(query.trim().toLowerCase());
+  });
+
+  return (
+    <div className="slv-field">
+      <span>Parent {required && <b>*</b>}</span>
+      <div className="slv-parent-picker" ref={rootRef}>
+        <button
+          type="button"
+          className={`slv-parent-picker-trigger ${open ? 'is-open' : ''} ${!selectedIssue ? 'placeholder' : ''}`}
+          onClick={() => { setOpen((current) => !current); setQuery(''); }}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+        >
+          <span>{selectedIssue ? `${issueKey(selectedIssue)} - ${issueSummary(selectedIssue)}` : 'Select Parent'}</span>
+          <Icon name="chevron" size={14} />
+        </button>
+        {open && (
+          <div className="slv-parent-picker-menu" role="listbox">
+            <div className="slv-user-picker-search">
+              <Icon name="search" size={14} />
+              <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search parent work items" />
+            </div>
+            {visibleIssues.length ? visibleIssues.map((issue) => {
+              const selected = String(value) === String(issue.id);
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={selected}
+                  className={`slv-parent-option ${selected ? 'selected' : ''}`}
+                  key={issue.id}
+                  onClick={() => { onChange(String(issue.id)); setOpen(false); }}
+                >
+                  <strong>{issueKey(issue)}</strong>
+                  <span> - {issueSummary(issue)}</span>
+                  <small>{issueTypeOf(issue)}</small>
+                </button>
+              );
+            }) : <div className="slv-user-picker-empty">{compatibleIssues.length ? 'No parent work items match your search.' : safeIssues.length ? `No compatible Parent work items are available for ${childIssueType}.` : 'No work items are available to select as Parent.'}</div>}
+            {value && <button type="button" className="slv-parent-clear" onClick={() => { onChange(''); setOpen(false); }}>Clear parent</button>}
+          </div>
+        )}
+      </div>
+      {required && <small className="slv-field-hint">A Parent must be selected before creating a Sub-task.</small>}
+    </div>
+  );
+}
+
+
+function ProjectSearchSelect({ spaces = [], value = '', onChange = () => {} }) {
+  const [open, setOpen] = useState(false);
+  const [query, setQuery] = useState('');
+  const rootRef = useRef(null);
+  const selectedSpace = spaces.find((item) => String(item.id) === String(value));
+  const normalizedQuery = query.trim().toLowerCase();
+  const filteredSpaces = spaces.filter((item) => {
+    const name = String(item.name || '').toLowerCase();
+    const code = String(item.code || '').toLowerCase();
+    const prefix = String(item.taskKeyPrefix || '').toLowerCase();
+    return !normalizedQuery || name.includes(normalizedQuery) || code.includes(normalizedQuery) || prefix.includes(normalizedQuery);
+  });
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const handlePointerDown = (event) => {
+      if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false);
+    };
+    const handleKeyDown = (event) => {
+      if (event.key === 'Escape') setOpen(false);
+    };
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [open]);
+
+  return (
+    <div className={`slv-project-picker ${open ? 'is-open' : ''}`} ref={rootRef}>
+      <button
+        type="button"
+        className={`slv-project-picker-trigger ${selectedSpace ? 'has-value' : ''}`}
+        onClick={() => { setOpen((current) => !current); setQuery(''); }}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+      >
+        <span>{selectedSpace ? (selectedSpace.name || selectedSpace.code || 'Untitled Space') : 'Select Project'}</span>
+        <Icon name="chevron" size={14} />
+      </button>
+      {open && (
+        <div className="slv-project-picker-popover" role="listbox" aria-label="Select Project">
+          <div className="slv-project-picker-search">
+            <Icon name="search" size={14} />
+            <input
+              autoFocus
+              value={query}
+              onChange={(event) => setQuery(event.target.value)}
+              placeholder="Search Projects"
+              aria-label="Search Projects"
+            />
+          </div>
+          <div className="slv-project-picker-options">
+            {filteredSpaces.length ? filteredSpaces.map((item) => {
+              const active = String(item.id) === String(value);
+              return (
+                <button
+                  type="button"
+                  role="option"
+                  aria-selected={active}
+                  key={item.id}
+                  className={`slv-project-picker-option ${active ? 'selected' : ''}`}
+                  onClick={() => { onChange(String(item.id)); setOpen(false); setQuery(''); }}
+                >
+                  <span className="slv-project-picker-option-main">
+                    <strong>{item.name || item.code || 'Untitled Space'}</strong>
+                    <small>{item.code || item.taskKeyPrefix || 'Project'}</small>
+                  </span>
+                  {active && <Icon name="check" size={15} />}
+                </button>
+              );
+            }) : <div className="slv-project-picker-empty">No Projects found.</div>}
+          </div>
+          <div className="slv-project-picker-count">{filteredSpaces.length} of {spaces.length} Projects</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function IssueModal({ space = {}, spaces = [], allowProjectSelection = false, initialSpaceId = '', existingIssues = [], onClose, onCreate, initialIssueType = '', initialParentId = '', allowedIssueTypes = null }) {
+  const availableIssueTypes = Array.isArray(allowedIssueTypes) ? allowedIssueTypes : ISSUE_TYPES;
+  const [selectedSpaceId, setSelectedSpaceId] = useState(String(initialSpaceId || space?.id || ''));
+  const activeSpace = allowProjectSelection
+    ? (spaces || []).find((item) => String(item.id) === String(selectedSpaceId)) || null
+    : space;
+  const scopedIssues = allowProjectSelection
+    ? (Array.isArray(existingIssues) ? existingIssues.filter((issue) => {
+        if (!activeSpace) return false;
+        const issueSpaceId = issue.spaceId ?? issue.projectId ?? issue.space?.id;
+        if (issueSpaceId !== undefined && issueSpaceId !== null && String(issueSpaceId) !== '') {
+          return String(issueSpaceId) === String(activeSpace.id);
+        }
+        const issueSpaceCode = String(issue.spaceCode ?? issue.projectCode ?? '').toLowerCase();
+        return Boolean(activeSpace.code && issueSpaceCode === String(activeSpace.code).toLowerCase());
+      }) : [])
+    : (Array.isArray(existingIssues) ? existingIssues : []);
+  const [issueType, setIssueType] = useState(initialIssueType);
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    priority: 'Medium',
+    assigneeId: '',
+    creatorId: '',
+    teamId: '',
+    releaseId: '',
+    labels: [],
+    labelDraft: '',
+    startDate: '',
+    dueDate: '',
+    linkType: 'Blocks',
+    linkedIssueId: '',
+    parentId: initialParentId || '',
+    attachments: []
+  });
+  const [error, setError] = useState('');
+
+  const members = Array.isArray(activeSpace?.members) ? activeSpace.members : [];
+  const teams = Array.isArray(activeSpace?.teams) ? activeSpace.teams : [];
+  const releases = Array.isArray(activeSpace?.releases) ? activeSpace.releases : [];
+  const memberById = new Map(members.map((member) => [getUserId(member), member]));
+  const selectedAssignee = form.assigneeId === CURRENT_USER.id
+    ? CURRENT_USER
+    : memberById.get(String(form.assigneeId)) || null;
+  const selectedCreator = form.creatorId === CURRENT_USER.id
+    ? CURRENT_USER
+    : memberById.get(String(form.creatorId)) || null;
+  const selectedTeam = teams.find((item) => String(item.id ?? item) === String(form.teamId));
+  const selectedRelease = releases.find((item) => String(item.id ?? item) === String(form.releaseId));
+  const parentIssue = scopedIssues.find((issue) => String(issue.id) === String(form.parentId));
+
+  const isEpicOrFeature = issueType === 'Epic' || issueType === 'Feature';
+  const showParent = Boolean(issueType) && !isEpicOrFeature;
+  const isSubTask = issueType === 'Sub-task';
+  const hasConfiguredType = Boolean(issueType && activeSpace);
+
+  function setField(name, value) {
+    setForm((current) => ({ ...current, [name]: value }));
+    setError('');
+  }
+
+  function addLabel(event) {
+    if (event.key !== 'Enter') return;
+    event.preventDefault();
+    const nextLabel = form.labelDraft.trim();
+    if (!nextLabel || form.labels.includes(nextLabel)) return;
+    setField('labels', [...form.labels, nextLabel]);
+    setField('labelDraft', '');
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+
+    if (allowProjectSelection && !activeSpace) {
+      setError('Please select a Project.');
+      return;
+    }
+    if (!issueType) {
+      setError('Please select a Work Type.');
+      return;
+    }
+    if (!availableIssueTypes.includes(issueType)) {
+      setError('This work type is not allowed under the selected Parent.');
+      return;
+    }
+    if (!form.title.trim()) {
+      setError('Title is required.');
+      return;
+    }
+    if (isSubTask && !form.parentId) {
+      setError('Parent is required for a Sub-task.');
+      return;
+    }
+    if (form.startDate && form.dueDate && form.dueDate < form.startDate) {
+      setError('Due Date must be on or after Start Date.');
+      return;
+    }
+
+    const payload = {
+      issueType,
+      title: form.title.trim(),
+      summary: form.title.trim(),
+      description: form.description,
+      priority: form.priority,
+      status: getInitialStatus(issueType),
+      assignee: selectedAssignee || null,
+      creator: selectedCreator || CURRENT_USER,
+      team: selectedTeam || null,
+      labels: form.labels,
+      release: selectedRelease || null,
+      startDate: form.startDate || null,
+      dueDate: form.dueDate || null,
+      parent: showParent ? (parentIssue || null) : null,
+      parentId: showParent ? (form.parentId || null) : null,
+      links: form.linkedIssueId
+        ? [{ type: form.linkType, issueId: form.linkedIssueId }]
+        : [],
+      attachments: form.attachments,
+      spaceId: activeSpace.id,
+      spaceCode: activeSpace.code
+    };
+
+    try {
+      const created = await onCreate(payload);
+      if (created === false || created === null) return;
+      onClose();
+    } catch (createError) {
+      setError(createError?.message || 'Unable to create Work Item. Please try again.');
+    }
+  }
+
+  const relationOptions = ['Blocks', 'Is blocked by', 'Relates to', 'Duplicates', 'Is duplicated by'];
+  const linkedIssueOptions = scopedIssues.filter((issue) => issue?.id);
+  const compatibleParentIssues = linkedIssueOptions.filter((issue) => {
+    const allowedParentTypes = PARENT_TYPES_BY_CHILD[issueType] || [];
+    return !allowedParentTypes.length || allowedParentTypes.includes(issueTypeOf(issue));
+  });
+  const allowedFileTypes = '.pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png';
+
+  return (
+    <div className="slv-create-backdrop" onMouseDown={(event) => {
+      if (event.target === event.currentTarget) onClose();
+    }}>
+      <form className="slv-create-window" onSubmit={submit}>
+        <header className="slv-create-header">
+          <button type="button" className="slv-create-close" onClick={onClose} aria-label="Close create work item">
+            <Icon name="close" size={16} />
+          </button>
+          <h2>Create work item</h2>
+        </header>
+
+        <div className="slv-create-scroll">
+          <div className="slv-create-form-column">
+            <section className="slv-create-section">
+              <h3>General information</h3>
+              <div className="slv-create-two-cols">
+                <label className="slv-field">
+                  <span><b>*</b> Project</span>
+                  {allowProjectSelection ? (
+                    <ProjectSearchSelect
+                      spaces={Array.isArray(spaces) ? spaces : []}
+                      value={selectedSpaceId}
+                      onChange={(nextId) => {
+                        setSelectedSpaceId(nextId);
+                        setIssueType('');
+                        setForm({ title: '', description: '', priority: 'Medium', assigneeId: '', creatorId: '', teamId: '', releaseId: '', labels: [], labelDraft: '', startDate: '', dueDate: '', linkType: 'Blocks', linkedIssueId: '', parentId: '', attachments: [] });
+                        setError('');
+                      }}
+                    />
+                  ) : (
+                    <input value={activeSpace?.name || activeSpace?.code || ''} readOnly aria-label="Project" />
+                  )}
+                </label>
+                <label className="slv-field">
+                  <span><b>*</b> Work type</span>
+                  <select value={issueType} disabled={!activeSpace} onChange={(event) => {
+                    const nextType = event.target.value;
+                    setIssueType(nextType);
+                    if (nextType === 'Epic' || nextType === 'Feature') setField('parentId', '');
+                    else setError('');
+                  }}>
+                    <option value="">Select Work Type</option>
+                    {availableIssueTypes.map((type) => <option key={type} value={type}>{type}</option>)}
+                  </select>
+                </label>
+              </div>
+              {allowProjectSelection && !spaces?.length && (
+                <p className="slv-field-hint">No Projects are available. Create a Space before creating a work item.</p>
+              )}
+            </section>
+
+            {hasConfiguredType && (
+              <>
+                <section className="slv-create-section">
+                  <h3>Priority &amp; description</h3>
+                  <div className="slv-field">
+                    <span>Priority</span>
+                    <div className="slv-priority-choice" role="group" aria-label="Priority">
+                      {PRIORITIES.map((priority) => (
+                        <button
+                          type="button"
+                          key={priority}
+                          className={form.priority === priority ? 'selected' : ''}
+                          onClick={() => setField('priority', priority)}
+                        >
+                          <PriorityIcon priority={priority} size={15} />
+                          <span>{priority}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <label className="slv-field">
+                    <span>Title <b>*</b></span>
+                    <input
+                      autoFocus
+                      value={form.title}
+                      onChange={(event) => setField('title', event.target.value)}
+                      placeholder="Enter title"
+                      required
+                    />
+                  </label>
+
+                  <label className="slv-field slv-description-field">
+                    <span>Description</span>
+                    <textarea
+                      rows="5"
+                      value={form.description}
+                      onChange={(event) => setField('description', event.target.value)}
+                      placeholder="Write a description"
+                    />
+                  </label>
+                </section>
+
+                {showParent && (
+                  <section className="slv-create-section">
+                    <h3>Parent relationship</h3>
+                    <ParentIssueField
+                      issues={compatibleParentIssues}
+                      value={form.parentId}
+                      onChange={(value) => setField('parentId', value)}
+                      required={isSubTask}
+                      issueType={issueType}
+                    />
+                  </section>
+                )}
+
+                <>
+                    <section className="slv-create-section">
+                      <h3>Assignment &amp; details</h3>
+                      <SearchableUserField
+                        label="Assignee"
+                        value={form.assigneeId}
+                        onChange={(value) => setField('assigneeId', value)}
+                        members={members}
+                        placeholder="Unassigned"
+                      />
+                      <SearchableUserField
+                        label="Creator"
+                        value={form.creatorId}
+                        onChange={(value) => setField('creatorId', value)}
+                        members={members}
+                        placeholder="Select Creator"
+                      />
+                      <label className="slv-field">
+                        <span>Team</span>
+                        <select value={form.teamId} onChange={(event) => setField('teamId', event.target.value)}>
+                          <option value="">{teams.length ? 'Select Team' : 'No teams available'}</option>
+                          {teams.map((team) => (
+                            <option key={team.id || optionLabel(team)} value={team.id ?? team}>
+                              {optionLabel(team)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <div className="slv-field slv-label-field">
+                        <span>Labels</span>
+                        <div className="slv-label-input">
+                          {form.labels.map((label) => (
+                            <span className="slv-label-chip" key={label}>
+                              {label}
+                              <button type="button" onClick={() => setField('labels', form.labels.filter((item) => item !== label))} aria-label={`Remove ${label}`}>×</button>
+                            </span>
+                          ))}
+                          <input
+                            value={form.labelDraft}
+                            onChange={(event) => setField('labelDraft', event.target.value)}
+                            onKeyDown={addLabel}
+                            placeholder="Enter label and press Enter"
+                          />
+                        </div>
+                      </div>
+                      <label className="slv-field">
+                        <span>Release</span>
+                        <select value={form.releaseId} onChange={(event) => setField('releaseId', event.target.value)}>
+                          <option value="">{releases.length ? 'Select Release' : 'No releases available'}</option>
+                          {releases.map((release) => (
+                            <option key={release.id || optionLabel(release)} value={release.id ?? release}>
+                              {optionLabel(release)}
+                            </option>
+                          ))}
+                        </select>
+                      </label>
+                      <label className="slv-field">
+                        <span>Start Date</span>
+                        <input type="date" value={form.startDate} onChange={(event) => setField('startDate', event.target.value)} />
+                      </label>
+                      <label className="slv-field">
+                        <span>Due Date</span>
+                        <input type="date" value={form.dueDate} onChange={(event) => setField('dueDate', event.target.value)} />
+                      </label>
+                    </section>
+
+                    <section className="slv-create-section">
+                      <h3>Link work items</h3>
+                      <div className="slv-link-row">
+                        <select value={form.linkType} onChange={(event) => setField('linkType', event.target.value)} aria-label="Link type">
+                          {relationOptions.map((type) => <option key={type}>{type}</option>)}
+                        </select>
+                        <select value={form.linkedIssueId} onChange={(event) => setField('linkedIssueId', event.target.value)} aria-label="Work item to link">
+                          <option value="">Search work items</option>
+                          {linkedIssueOptions.map((issue) => (
+                            <option key={issue.id} value={issue.id}>
+                              {issue.key || issue.code || issue.id} — {issueSummary(issue)}
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      {!linkedIssueOptions.length && <p className="slv-field-hint">No other work items are available in this Space yet.</p>}
+                    </section>
+
+                    <section className="slv-create-section">
+                      <h3>Attachments</h3>
+                      <label className="slv-upload-zone">
+                        <input
+                          type="file"
+                          multiple
+                          accept={allowedFileTypes}
+                          onChange={(event) => {
+                            const files = Array.from(event.target.files || []);
+                            if (files.length) setField('attachments', [...form.attachments, ...files]);
+                            event.target.value = '';
+                          }}
+                        />
+                        <Icon name="upload" size={25} />
+                        <span>Click or drag files to this area to upload</span>
+                        <small>Support PDF, XLSX, DOC, JPG/JPEG, PNG</small>
+                      </label>
+                      {form.attachments.length > 0 && (
+                        <div className="slv-attachment-list">
+                          {form.attachments.map((file, index) => (
+                            <div key={`${file.name}-${file.size}-${index}`}>
+                              <span>{file.name}</span>
+                              <button type="button" onClick={() => setField('attachments', form.attachments.filter((_, fileIndex) => fileIndex !== index))} aria-label={`Remove ${file.name}`}>×</button>
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                    </section>
+                </>
+              </>
+            )}
+
+            {error && <p className="slv-error" role="alert">{error}</p>}
+          </div>
+        </div>
+
+        <footer className="slv-create-footer">
+          <span className="slv-create-footer-hint">{isSubTask ? 'Parent is required for Sub-task.' : 'Fields marked with * are required.'}</span>
+          <button type="submit" className="slv-btn primary" disabled={!activeSpace || !issueType}>
+            Create work item
+          </button>
+        </footer>
+      </form>
+    </div>
+  );
+}
+function MoveModal({ spaces, currentSpace, onClose, onMove }) {
+  const [target, setTarget] = useState('');
+  const options = spaces.filter((space) => space.id !== currentSpace.id);
+  return <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="slv-modal slv-confirm-modal">
+      <div className="slv-modal-head"><h2>Move work items</h2><button type="button" onClick={onClose} aria-label="Close">×</button></div>
+      <div className="slv-modal-content">{options.length ? <label className="slv-field"><span>Destination Space</span><select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Select a Space</option>{options.map((item) => <option key={item.id} value={item.id}>{item.name || item.code}</option>)}</select></label> : <p className="slv-confirm-text">There are no other Spaces available.</p>}</div>
+      <div className="slv-modal-foot"><button type="button" className="slv-btn secondary" onClick={onClose}>Cancel</button><button type="button" className="slv-btn primary" disabled={!target} onClick={() => onMove(target)}>Move</button></div>
+    </div>
+  </div>;
+}
+
+export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavigate = () => {}, onCreateSpace = () => {}, onOpenSpaceSettings = () => {}, onDeleteSpace = () => {}, onCreateTask = () => {}, onUpdateTask = () => {}, onDeleteTasks = () => {}, onMoveTasks = () => {}, onRefresh = () => {}, onGlobalCreate = () => {}, onOpenTask = () => {}, initialTaskId = null, initialTaskOpenRequestId = null, fullPageTaskDetail = false }) {
+  const [searchText, setSearchText] = useState('');
+  const [searchApplied, setSearchApplied] = useState('');
+  const [selectedTypes, setSelectedTypes] = useState([]);
+  const [selectedAssignees, setSelectedAssignees] = useState([]);
+  const [selectedStatuses, setSelectedStatuses] = useState([]);
+  const [orderBy, setOrderBy] = useState('All');
+  const [moreFields, setMoreFields] = useState([]);
+  const [priorityFilter, setPriorityFilter] = useState([]);
+  const [dateRanges, setDateRanges] = useState({});
+  const [sort, setSort] = useState({ field: '', direction: 'asc' });
+  const [selected, setSelected] = useState([]);
+  const [page, setPage] = useState(1);
+  const [bulkStatus, setBulkStatus] = useState('');
+  const [createOpen, setCreateOpen] = useState(false);
+  const [createDefaults, setCreateDefaults] = useState({ issueType: '', parentId: '', allowedIssueTypes: null });
+  const [detailIssueId, setDetailIssueId] = useState(null);
+  const [moveOpen, setMoveOpen] = useState(false);
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [startRequest, setStartRequest] = useState(null);
+  const [startAssigneeId, setStartAssigneeId] = useState('');
+  const pageSize = 20;
+
+  const autoOpenedTaskRequestRef = useRef(null);
+  const spaceName = space.name || space.code || 'Untitled Space';
+
+  const inSpace = useMemo(() => {
+    const id = String(space.id ?? '');
+    const code = String(space.code ?? '').toLowerCase();
+    return (Array.isArray(tasks) ? tasks : []).filter((task) => {
+      const taskId = task.spaceId ?? task.projectId ?? task.space?.id;
+      const taskCode = String(task.spaceCode ?? task.projectCode ?? '').toLowerCase();
+      return (id && String(taskId ?? '') === id) || (code && taskCode === code);
+    });
+  }, [tasks, space.id, space.code]);
+
+  useEffect(() => {
+    if (initialTaskId === null || initialTaskId === undefined || initialTaskId === '') {
+      autoOpenedTaskRequestRef.current = null;
+      return;
+    }
+
+    const requestKey = `${initialTaskOpenRequestId || 'route'}:${initialTaskId}`;
+    if (autoOpenedTaskRequestRef.current === requestKey) return;
+
+    const targetIssue = inSpace.find((issue) =>
+      String(issue.id ?? issue._id ?? '') === String(initialTaskId)
+    );
+
+    if (targetIssue) {
+      setDetailIssueId(targetIssue.id ?? targetIssue._id);
+      autoOpenedTaskRequestRef.current = requestKey;
+    }
+  }, [initialTaskId, initialTaskOpenRequestId, inSpace]);
+
+  const assigneeOptions = useMemo(() => [...new Set(inSpace.map(assigneeName).filter(Boolean))].sort(), [inSpace]);
+
+  const filtered = useMemo(() => {
+    const keyword = searchApplied.trim().toLowerCase();
+    const rows = inSpace.filter((issue) => {
+      const values = [issueKey(issue), issueSummary(issue), issueType(issue), assigneeName(issue)];
+      const textMatch = !keyword || values.some((value) => String(value || '').toLowerCase().includes(keyword));
+      const typeMatch = !selectedTypes.length || selectedTypes.includes(issueType(issue));
+      const name = assigneeName(issue) || 'Unassigned';
+      const assigneeMatch = !selectedAssignees.length || selectedAssignees.includes(name);
+      const statusMatch = !selectedStatuses.length || selectedStatuses.includes(getIssueStatus(issue));
+      const priorityMatch = !priorityFilter.length || priorityFilter.includes(issue.priority || 'Medium');
+      if (!textMatch || !typeMatch || !assigneeMatch || !statusMatch || !priorityMatch) return false;
+      for (const field of moreFields) {
+        if (field === 'Priority') continue;
+        const dateKey = { 'Start Date': 'startDate', 'End Date': 'dueDate', 'Create Date': 'createdAt', 'Updated Date': 'updatedAt' }[field];
+        const date = toDate(dateValue(issue, dateKey));
+        const range = dateRanges[field] || {};
+        if (range.from && (!date || date < new Date(`${range.from}T00:00:00`))) return false;
+        if (range.to && (!date || date > new Date(`${range.to}T23:59:59`))) return false;
+      }
+      return true;
+    });
+
+    const preset = {
+      'Newest created': ['createdAt', 'desc'], 'Oldest created': ['createdAt', 'asc'],
+      'Most recently updated': ['updatedAt', 'desc'], 'Least recently updated': ['updatedAt', 'asc'],
+      'Highest priority first': ['priority', 'asc'], 'Lowest priority first': ['priority', 'desc'],
+      'Latest start date': ['startDate', 'desc'], 'Earliest start date': ['startDate', 'asc'],
+      'Latest due date': ['dueDate', 'desc'], 'Earliest due date': ['dueDate', 'asc']
+    };
+    const activeSort = sort.field ? [sort.field, sort.direction] : (preset[orderBy] || []);
+    if (activeSort.length) {
+      const [field, direction] = activeSort;
+      rows.sort((a, b) => {
+        if (field === 'priority') {
+          const delta = (PRIORITY_RANK[a.priority] || 99) - (PRIORITY_RANK[b.priority] || 99);
+          return direction === 'asc' ? delta : -delta;
+        }
+        const dateFields = ['createdAt', 'updatedAt', 'startDate', 'dueDate'];
+        if (dateFields.includes(field)) {
+          const av = toDate(dateValue(a, field))?.getTime() ?? (direction === 'asc' ? Number.MAX_SAFE_INTEGER : 0);
+          const bv = toDate(dateValue(b, field))?.getTime() ?? (direction === 'asc' ? Number.MAX_SAFE_INTEGER : 0);
+          return direction === 'asc' ? av - bv : bv - av;
+        }
+        const value = (item) => field === 'assignee' ? assigneeName(item) : field === 'status' ? getIssueStatus(item) : field === 'type' ? issueType(item) : field === 'key' ? issueKey(item) : issueSummary(item);
+        return String(value(a) || '').localeCompare(String(value(b) || '')) * (direction === 'asc' ? 1 : -1);
+      });
+    }
+    return rows;
+  }, [inSpace, searchApplied, selectedTypes, selectedAssignees, selectedStatuses, priorityFilter, moreFields, dateRanges, orderBy, sort]);
+
+  const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const visibleIds = pageRows.map((issue) => issue.id);
+  const allPageSelected = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id));
+  const selectedInSpace = selected.filter((id) => inSpace.some((issue) => issue.id === id));
+  const bulkStatusOptions = STATUSES.filter((targetStatus) => selectedInSpace.length > 0 && selectedInSpace.every((issue) => validateIssueTransition(issue, targetStatus, inSpace).allowed));
+
+  function changeSort(field) {
+    setSort((current) => current.field === field ? { field, direction: current.direction === 'asc' ? 'desc' : 'asc' } : { field, direction: 'asc' });
+    setOrderBy('All');
+  }
+  function togglePage() {
+    setSelected((current) => allPageSelected ? current.filter((id) => !visibleIds.includes(id)) : [...new Set([...current, ...visibleIds])]);
+  }
+  function applySearch(event) { event.preventDefault(); setSearchApplied(searchText); setPage(1); setSelected([]); }
+  function updateExtraFields(next) {
+    const removed = moreFields.filter((field) => !next.includes(field));
+    if (removed.includes('Priority')) setPriorityFilter([]);
+    setDateRanges((current) => { const updated = { ...current }; removed.forEach((field) => delete updated[field]); return updated; });
+    setMoreFields(next);
+  }
+  function applyBulkStatus(value) {
+    setBulkStatus(value);
+    if (!value) return;
+    const eligible = selectedInSpace.filter((issue) => validateIssueTransition(issue, value, inSpace).allowed);
+    if (value === 'In Progress' && eligible.some((issue) => !assigneeName(issue))) {
+      setStartRequest({ issues: eligible, targetStatus: value });
+      setStartAssigneeId('');
+      setBulkStatus('');
+      return;
+    }
+    eligible.forEach((issue) => onUpdateTask(issue.id, { status: value }));
+    setSelected([]);
+    setBulkStatus('');
+  }
+  function moveSelected(targetId) {
+    const target = spaces.find((item) => String(item.id) === String(targetId));
+    if (target) onMoveTasks(selectedInSpace, target);
+    setSelected([]); setMoveOpen(false);
+  }
+  async function createIssue(payload) {
+    const created = await onCreateTask(payload);
+    if (!created) return false;
+    setSearchText(''); setSearchApplied(''); setSelectedTypes([]); setSelectedAssignees([]); setSelectedStatuses([]); setOrderBy('Newest created'); setSort({ field: '', direction: 'asc' }); setPage(1);
+    return created;
+  }
+  function changeStatus(issue, status) {
+    const result = validateIssueTransition(issue, status, inSpace);
+    if (!result.allowed) return;
+    if (status === 'In Progress' && !assigneeName(issue)) {
+      setStartRequest({ issues: [issue], targetStatus: status });
+      setStartAssigneeId('');
+      return;
+    }
+    onUpdateTask(issue.id, { status });
+  }
+  function closeStartRequest() {
+    setStartRequest(null);
+    setStartAssigneeId('');
+  }
+  function confirmStartRequest() {
+    if (!startRequest || !startAssigneeId) return;
+    const assignee = resolveAssigneeRecord(startAssigneeId, space.members);
+    if (!assignee) return;
+    const needsAssignment = new Set(startRequest.issues.filter((issue) => !assigneeName(issue)).map((issue) => issue.id));
+    startRequest.issues.forEach((issue) => {
+      const changes = { status: startRequest.targetStatus };
+      if (needsAssignment.has(issue.id)) changes.assignee = assignee;
+      onUpdateTask(issue.id, changes);
+    });
+    if (startRequest.issues.length > 1) setSelected([]);
+    closeStartRequest();
+  }
+  function navigateTab(tab) {
+    if (tab === 'Summary') onNavigate('space', { id: space.id, name: spaceName });
+    else if (tab === 'List') onNavigate('spaceList', { id: space.id, name: spaceName });
+    else onNavigate('spaceTab', { id: space.id, name: spaceName, tab });
+  }
+
+  return <div className="app-shell spaces-list-shell">
+    <Header spaces={spaces} tasks={tasks} onGlobalCreate={onGlobalCreate} onOpenTask={onOpenTask} />
+    <Sidebar activeSection="Spaces" activeSpaceId={space.id} spaces={spaces} onCreateSpace={onCreateSpace} onNavigate={onNavigate} onOpenSpaceSettings={onOpenSpaceSettings} onDeleteSpace={onDeleteSpace} />
+    <main className="spaces-list-main">
+      <div className="slv-project-heading"><div className="slv-breadcrumb"><span>Projects</span><span>/</span><strong>{spaceName}</strong></div><h1>{spaceName}</h1></div>
+      <nav className="slv-tabs" aria-label="Project navigation">
+        { [['Summary','dashboard'],['Timeline','calendar'],['Board','tasks'],['List','file'],['Backlog','spaces'],['Active Sprints','check'],['Teams','users']].map(([label, icon]) => <button key={label} type="button" className={`slv-tab ${label === 'List' ? 'active' : ''}`} onClick={() => navigateTab(label)}><Icon name={icon} size={15} /><span>{label}</span></button>) }
+      </nav>
+      <section className="slv-toolbar">
+        <form className="slv-search" onSubmit={applySearch}><Icon name="search" size={15} /><input placeholder="Search" value={searchText} onChange={(event) => setSearchText(event.target.value)} aria-label="Search work items" />{searchText && <button type="button" onClick={() => { setSearchText(''); setSearchApplied(''); }} aria-label="Clear search">×</button>}</form>
+        <MultiFilter label="Issue Type" options={ISSUE_TYPES} selected={selectedTypes} onChange={setSelectedTypes} />
+        <MultiFilter label="Assignee" options={['Unassigned', ...assigneeOptions]} selected={selectedAssignees} onChange={setSelectedAssignees} width={210} />
+        <MultiFilter label="Status" options={STATUSES} selected={selectedStatuses} onChange={setSelectedStatuses} />
+        <OrderFilter value={orderBy} onChange={(value) => { setOrderBy(value); setSort({ field: '', direction: 'asc' }); }} />
+        {moreFields.filter((field) => field !== 'Priority').map((field) => <div className="slv-date-filter" key={field}><span>{field}</span><input type="date" value={dateRanges[field]?.from || ''} aria-label={`${field} from`} onChange={(event) => setDateRanges((current) => ({ ...current, [field]: { ...current[field], from: event.target.value } }))} /><span>to</span><input type="date" value={dateRanges[field]?.to || ''} aria-label={`${field} to`} onChange={(event) => setDateRanges((current) => ({ ...current, [field]: { ...current[field], to: event.target.value } }))} /><button type="button" onClick={() => updateExtraFields(moreFields.filter((item) => item !== field))} aria-label={`Remove ${field}`}>×</button></div>)}
+        {moreFields.includes('Priority') && <div className="slv-priority-filter"><MultiFilter label="Priority" options={PRIORITIES} selected={priorityFilter} onChange={setPriorityFilter} showPriorityIcons /><button type="button" onClick={() => updateExtraFields(moreFields.filter((item) => item !== 'Priority'))} aria-label="Remove priority filter">×</button></div>}
+        <MoreFilters selected={moreFields} onChange={updateExtraFields} />
+      </section>
+
+      {selectedInSpace.length > 0 && <section className="slv-bulk-bar"><strong>{selectedInSpace.length} selected</strong><label><input type="checkbox" checked={selectedInSpace.length === filtered.length && filtered.length > 0} onChange={(event) => setSelected(event.target.checked ? filtered.map((issue) => issue.id) : [])} /> Select all</label><button type="button" onClick={() => setMoveOpen(true)}><Icon name="spaces" size={14} /> Move issue</button><label className="slv-bulk-status">Change status <select value={bulkStatus} onChange={(event) => applyBulkStatus(event.target.value)} disabled={!bulkStatusOptions.length}><option value="">{bulkStatusOptions.length ? 'Select status' : 'No common transition'}</option>{bulkStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label><button type="button" className="delete-action" onClick={() => setDeleteOpen(true)}><Icon name="trash" size={14} /> Delete</button></section>}
+
+      <section className="slv-table-card">
+        <div className="slv-table-scroll"><table className="slv-table"><colgroup>
+          <col className="slv-col-checkbox" />
+          <col className="slv-col-work" />
+          <col className="slv-col-assignee" />
+          <col className="slv-col-priority" />
+          <col className="slv-col-status" />
+          <col className="slv-col-created" />
+          <col className="slv-col-start" />
+          <col className="slv-col-end" />
+        </colgroup><thead><tr>
+          <th className="slv-check-col"><input type="checkbox" checked={allPageSelected} onChange={togglePage} disabled={!pageRows.length} aria-label="Select all visible rows" /></th>
+          <th className="slv-work-col"><SortHeading label="Work" field="summary" sort={sort} onSort={changeSort} /></th>
+          <th><SortHeading label="Assignee" field="assignee" sort={sort} onSort={changeSort} /></th>
+          <th><SortHeading label="Priority" field="priority" sort={sort} onSort={changeSort} /></th>
+          <th><SortHeading label="Status" field="status" sort={sort} onSort={changeSort} /></th>
+          <th><SortHeading label="Create Date" field="createdAt" sort={sort} onSort={changeSort} /></th>
+          <th><SortHeading label="Start Date" field="startDate" sort={sort} onSort={changeSort} /></th>
+          <th><SortHeading label="End Date" field="dueDate" sort={sort} onSort={changeSort} /></th>
+        </tr></thead><tbody>
+          {pageRows.length ? pageRows.map((issue) => {
+            const type = issueType(issue); const assignee = assigneeName(issue);
+            return <tr key={issue.id} className={selected.includes(issue.id) ? 'row-selected' : ''}>
+              <td className="slv-check-col"><input type="checkbox" checked={selected.includes(issue.id)} onChange={() => setSelected((current) => current.includes(issue.id) ? current.filter((id) => id !== issue.id) : [...current, issue.id])} aria-label={`Select ${issueKey(issue)}`} /></td>
+              <td><div className="slv-work-cell"><span className={`slv-type-icon type-${type.toLowerCase().replace(/[^a-z]+/g, '-')}`}><Icon name={iconForType(type)} size={15} /></span><button type="button" onClick={() => setDetailIssueId(issue.id)} className="slv-key" title={`Open ${issueKey(issue)} details`}>{issueKey(issue)}</button><span className="slv-summary" title={issueSummary(issue)}>{issueSummary(issue)}</span></div></td>
+              <td><AssigneeCell value={issue.assignee} members={space.members} onAssign={(member) => onUpdateTask(issue.id, { assignee: member })} /></td>
+              <td><PriorityCell value={issue.priority} onChange={(value) => onUpdateTask(issue.id, { priority: value })} /></td>
+              <td><StatusCell issue={issue} allIssues={inSpace} onChange={(value) => changeStatus(issue, value)} /></td>
+              <td className="slv-date-cell">{formatDateTime(dateValue(issue, 'createdAt'))}</td>
+              <td className="slv-date-cell"><EditableDateCell value={dateValue(issue, 'startDate')} label="Start Date" onChange={(value) => onUpdateTask(issue.id, { startDate: value })} /></td>
+              <td className="slv-date-cell"><EditableDateCell value={dateValue(issue, 'dueDate')} label="Due Date" onChange={(value) => onUpdateTask(issue.id, { dueDate: value })} /></td>
+            </tr>;
+          }) : <tr><td colSpan="8" className="slv-empty"><div><Icon name="file" size={28} /><strong>{inSpace.length ? 'No work items match your filters' : 'No work items yet'}</strong><span>{inSpace.length ? 'Try changing your search or filters.' : 'Work items created in this Space will appear here.'}</span>{!inSpace.length && <button type="button" onClick={() => { setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); setCreateOpen(true); }}><Icon name="plus" size={14} /> Create</button>}</div></td></tr>}
+        </tbody></table></div>
+        <footer className="slv-footer"><button type="button" className="slv-create-button" onClick={() => { setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); setCreateOpen(true); }}><Icon name="plus" size={15} /> Create</button><div className="slv-pagination"><button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label="Previous page">‹</button><strong>{pageRows.length} of {filtered.length}</strong><button type="button" className="slv-refresh" onClick={() => { setSelected([]); onRefresh(); }} title="Refresh" aria-label="Refresh"><Icon name="refresh" size={14} /></button><button type="button" disabled={currentPage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} aria-label="Next page">›</button></div><span className="slv-total-count">{filtered.length} work items</span></footer>
+      </section>
+    </main>
+    {detailIssueId !== null && inSpace.some((issue) => String(issue.id) === String(detailIssueId)) && (
+      <TaskDetailDrawer
+        fullPage={fullPageTaskDetail}
+        issue={inSpace.find((issue) => String(issue.id) === String(detailIssueId))}
+        allIssues={inSpace}
+        space={space}
+        onClose={() => setDetailIssueId(null)}
+        onUpdateTask={onUpdateTask}
+        onDeleteTask={(issue) => { onDeleteTasks([issue.id]); setDetailIssueId(null); }}
+        onCloneTask={(payload) => createIssue(payload)}
+        onCreateChild={(parentIssue, allowedIssueTypes) => {
+          setCreateDefaults({ issueType: '', parentId: String(parentIssue.id), allowedIssueTypes });
+          setCreateOpen(true);
+        }}
+        onOpenIssue={(issueId) => setDetailIssueId(issueId)}
+      />
+    )}
+    {createOpen && <IssueModal space={space} existingIssues={inSpace} initialIssueType={createDefaults.issueType} initialParentId={createDefaults.parentId} allowedIssueTypes={createDefaults.allowedIssueTypes} onClose={() => { setCreateOpen(false); setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); }} onCreate={createIssue} />}
+    {startRequest && <StartTransitionModal issues={startRequest.issues} members={space.members} assigneeId={startAssigneeId} onAssigneeChange={setStartAssigneeId} onClose={closeStartRequest} onConfirm={confirmStartRequest} />}
+    {moveOpen && <MoveModal spaces={spaces} currentSpace={space} onClose={() => setMoveOpen(false)} onMove={moveSelected} />}
+    {deleteOpen && <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteOpen(false); }}><div className="slv-modal slv-confirm-modal"><div className="slv-modal-head"><h2>Delete work items?</h2><button type="button" onClick={() => setDeleteOpen(false)} aria-label="Close">×</button></div><div className="slv-modal-content"><p className="slv-confirm-text">Are you sure you want to delete {selectedInSpace.length} selected work item(s)?</p></div><div className="slv-modal-foot"><button type="button" className="slv-btn secondary" onClick={() => setDeleteOpen(false)}>Cancel</button><button type="button" className="slv-btn danger" onClick={() => { onDeleteTasks(selectedInSpace); setSelected([]); setDeleteOpen(false); }}>Delete</button></div></div></div>}
+  </div>;
+}

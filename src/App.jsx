@@ -1,0 +1,405 @@
+import { useEffect, useState } from 'react';
+import { api } from './services/api';
+import { userProfileService } from './services/userProfileService';
+import Login from './pages/Login/Login';
+import MyTasks from './pages/MyTasks/MyTasks';
+import CreateSpace from './pages/CreateSpace/CreateSpace';
+import SpacesSummary from './pages/SpacesSummary/SpacesSummary';
+import SpacesList, { IssueModal } from './pages/SpacesList/SpacesList';
+import SpaceSettings from './pages/SpaceSettings/SpaceSettings';
+import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
+import UserProfile from './pages/UserProfile/UserProfile';
+import './App.css';
+
+const initialRoute = { page: 'myTasks', data: null };
+
+export default function App() {
+  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('taskflow.authenticated') === 'true');
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('taskflow.user') || 'null'); }
+    catch { return null; }
+  });
+  const [navigationStack, setNavigationStack] = useState([initialRoute]);
+  const [spaces, setSpaces] = useState([]);
+  // Spaces and Work Items are loaded from the persistent SQLite Backend.
+  const [tasks, setTasks] = useState([]);
+  const [globalCreateOpen, setGlobalCreateOpen] = useState(false);
+  const [backendError, setBackendError] = useState('');
+
+  async function loadPersistentData() {
+    try {
+      const [spaceRows, taskRows] = await Promise.all([api.getSpaces(), api.getWorkItems()]);
+      setSpaces(Array.isArray(spaceRows) ? spaceRows : []);
+      setTasks(Array.isArray(taskRows) ? taskRows : []);
+      setBackendError('');
+    } catch (error) {
+      setBackendError(error.message || 'Cannot connect to TASKFLOW Backend.');
+    }
+  }
+
+  useEffect(() => {
+    loadPersistentData();
+  }, []);
+
+  const currentRoute = navigationStack[navigationStack.length - 1] || initialRoute;
+
+  function navigate(page, data = null) {
+    setNavigationStack((current) => {
+      const lastRoute = current[current.length - 1];
+      if (
+        lastRoute?.page === page &&
+        JSON.stringify(lastRoute?.data ?? null) === JSON.stringify(data ?? null)
+      ) return current;
+      return [...current, { page, data }];
+    });
+  }
+
+  function goBack() {
+    setNavigationStack((current) => current.length <= 1 ? [initialRoute] : current.slice(0, -1));
+  }
+
+  function handleLogin(loginResult = {}) {
+    const user = loginResult?.user || loginResult || null;
+    const token = loginResult?.token || loginResult?.accessToken || null;
+
+    setCurrentUser(user);
+    if (user) localStorage.setItem('taskflow.user', JSON.stringify(user));
+    if (token) {
+      localStorage.setItem('taskflow.token', token);
+      localStorage.setItem('token', token);
+    }
+    localStorage.setItem('taskflow.authenticated', 'true');
+    setIsLoggedIn(true);
+    setNavigationStack([initialRoute]);
+  }
+
+  function handleUserUpdated(updatedUser) {
+    setCurrentUser(updatedUser);
+    localStorage.setItem('taskflow.user', JSON.stringify(updatedUser));
+  }
+
+  async function handleLogout() {
+    try {
+      await userProfileService.logout();
+    } catch (error) {
+      console.warn('Server logout could not be completed; clearing local session.', error);
+    } finally {
+      ['token', 'accessToken', 'refreshToken', 'authToken', 'session',
+        'taskflow.token', 'taskflow.session', 'taskflow.authenticated', 'taskflow.user']
+        .forEach((key) => localStorage.removeItem(key));
+      sessionStorage.clear();
+      setCurrentUser(null);
+      setIsLoggedIn(false);
+      setNavigationStack([initialRoute]);
+    }
+  }
+
+  async function handleSaveSpace(spaceData) {
+    const createdAt = new Date().toISOString();
+    const spacePayload = {
+      ...spaceData,
+      createdAt,
+      createdBy: 'You',
+      owner: { name: 'You', initials: 'YO' },
+      members: [{ id: 'current-user', name: 'You', initials: 'YO', role: 'Owner' }],
+      activities: [{ id: 'space-created', actor: 'You', description: 'created this space', createdAt }]
+    };
+    try {
+      const newSpace = await api.createSpace(spacePayload);
+      setSpaces((currentSpaces) => [...currentSpaces, newSpace]);
+      setBackendError('');
+      setNavigationStack((current) => {
+        const previousRoutes = current[current.length - 1]?.page === 'createSpace'
+          ? current.slice(0, -1)
+          : current;
+        return [...previousRoutes, { page: 'space', data: { id: newSpace.id } }];
+      });
+      return newSpace;
+    } catch (error) {
+      setBackendError(error.message || 'Unable to save Space.');
+      return null;
+    }
+  }
+
+  async function handleUpdateSpace(spaceId, updates) {
+    try {
+      const savedSpace = await api.updateSpace(spaceId, updates);
+      setSpaces((currentSpaces) => currentSpaces.map((space) => space.id === spaceId ? savedSpace : space));
+      setBackendError('');
+      return savedSpace;
+    } catch (error) {
+      setBackendError(error.message || 'Unable to update Space.');
+      return null;
+    }
+  }
+
+  async function handleAddSpaceMembers(spaceId, { user, roles }) {
+    if (!user || !Array.isArray(roles) || roles.length === 0) return null;
+    try {
+      const members = await api.addSpaceMember(spaceId, { user, roles });
+      setSpaces((currentSpaces) => currentSpaces.map((space) =>
+        space.id === spaceId ? { ...space, members } : space
+      ));
+      setBackendError('');
+      return members;
+    } catch (error) {
+      setBackendError(error.message || 'Unable to add Space member.');
+      return null;
+    }
+  }
+
+  function handleOpenTaskFromGlobalSearch(task) {
+    if (!task) return;
+
+    const taskId = task.id ?? task._id;
+    const taskSpaceId = task.spaceId ?? task.projectId ?? task.space?.id ?? task.project?.id;
+    const taskSpaceCode = String(
+      task.spaceCode ?? task.projectCode ?? task.space?.code ?? task.project?.code ?? ''
+    ).trim().toLowerCase();
+    const taskKey = String(task.key ?? task.code ?? task.taskCode ?? '').trim().toLowerCase();
+
+    let targetSpace = spaces.find((space) =>
+      taskSpaceId !== undefined && taskSpaceId !== null &&
+      String(space.id) === String(taskSpaceId)
+    );
+
+    if (!targetSpace && taskSpaceCode) {
+      targetSpace = spaces.find((space) =>
+        String(space.code || '').trim().toLowerCase() === taskSpaceCode ||
+        String(space.taskKeyPrefix || '').trim().toLowerCase() === taskSpaceCode
+      );
+    }
+
+    // Older issue records may only carry their key. Resolve the Space by its
+    // key prefix when that prefix identifies exactly one Space.
+    if (!targetSpace && taskKey) {
+      const prefixMatches = spaces.filter((space) => {
+        const prefix = String(space.taskKeyPrefix || space.code || '').trim().toLowerCase();
+        return prefix && taskKey.startsWith(`${prefix}-`);
+      });
+      if (prefixMatches.length === 1) targetSpace = prefixMatches[0];
+    }
+
+    if (!targetSpace || taskId === undefined || taskId === null) {
+      console.warn('Global Search could not resolve the Space or issue ID for this work item.', task);
+      return;
+    }
+
+    const openRequestId = globalThis.crypto?.randomUUID?.() ||
+      `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+
+    navigate('spaceList', {
+      id: targetSpace.id,
+      taskId,
+      fullPageTaskDetail: true,
+      openRequestId
+    });
+  }
+
+  async function handleCreateTask(taskData) {
+    try {
+      const newTask = await api.createWorkItem(taskData);
+      setTasks((currentTasks) => [...currentTasks, newTask]);
+      setBackendError('');
+      return newTask;
+    } catch (error) {
+      setBackendError(error.message || 'Unable to create Work Item.');
+      return null;
+    }
+  }
+
+  async function handleUpdateTask(taskId, updates) {
+    try {
+      const updatedTask = await api.updateWorkItem(taskId, updates);
+      setTasks((currentTasks) => currentTasks.map((task) => task.id === taskId ? updatedTask : task));
+      setBackendError('');
+      return updatedTask;
+    } catch (error) {
+      setBackendError(error.message || 'Unable to update Work Item.');
+      return null;
+    }
+  }
+
+  async function handleDeleteTasks(itemsOrIds) {
+    const taskIds = (Array.isArray(itemsOrIds) ? itemsOrIds : []).map((item) =>
+      typeof item === 'object' && item !== null ? item.id : item
+    ).filter(Boolean);
+    try {
+      await api.deleteWorkItems(taskIds);
+      const ids = new Set(taskIds.map(String));
+      setTasks((currentTasks) => currentTasks.filter((task) => !ids.has(String(task.id))));
+      setBackendError('');
+    } catch (error) {
+      setBackendError(error.message || 'Unable to delete Work Items.');
+    }
+  }
+
+  async function handleMoveTasks(itemsOrIds, targetSpace) {
+    const taskIds = (Array.isArray(itemsOrIds) ? itemsOrIds : []).map((item) =>
+      typeof item === 'object' && item !== null ? item.id : item
+    ).filter(Boolean);
+    try {
+      await api.moveWorkItems(taskIds, targetSpace.id);
+      const updatedAt = new Date().toISOString();
+      setTasks((currentTasks) => currentTasks.map((task) => taskIds.some((id) => String(id) === String(task.id))
+        ? { ...task, spaceId: targetSpace.id, projectId: targetSpace.id, spaceCode: targetSpace.code || '', projectCode: targetSpace.code || '', updatedAt }
+        : task));
+      setBackendError('');
+    } catch (error) {
+      setBackendError(error.message || 'Unable to move Work Items.');
+    }
+  }
+
+  async function handleDeleteSpace(spaceId) {
+    try {
+      await api.deleteSpace(spaceId);
+      setSpaces((currentSpaces) => currentSpaces.filter((space) => String(space.id) !== String(spaceId)));
+      setTasks((currentTasks) => currentTasks.filter((task) => String(task.spaceId) !== String(spaceId)));
+      setNavigationStack([initialRoute]);
+      setBackendError('');
+    } catch (error) {
+      setBackendError(error.message || 'Unable to delete Space.');
+    }
+  }
+
+  function handleOpenSpaceSettings(space) {
+    navigate('spaceSettings', { id: space.id, name: space.name, tab: 'Summary' });
+  }
+
+  if (!isLoggedIn) return <Login onLogin={handleLogin} />;
+
+  const sharedNavigationProps = {
+    user: currentUser,
+    onUserUpdated: handleUserUpdated,
+    onLogout: handleLogout,
+    spaces,
+    tasks,
+    allTasks: tasks,
+    onNavigate: navigate,
+    onCreateSpace: () => navigate('createSpace'),
+    onOpenSpaceSettings: handleOpenSpaceSettings,
+    onDeleteSpace: handleDeleteSpace,
+    onGlobalCreate: () => setGlobalCreateOpen(true),
+    onOpenTask: handleOpenTaskFromGlobalSearch
+  };
+
+  let pageContent;
+
+  if (currentRoute.page === 'profile') {
+    pageContent = (
+      <UserProfile
+        user={currentUser}
+        onUserUpdated={handleUserUpdated}
+        onBack={goBack}
+      />
+    );
+  } else if (currentRoute.page === 'createSpace') {
+    pageContent = (
+      <CreateSpace
+        {...sharedNavigationProps}
+        onBack={goBack}
+        onCancel={goBack}
+        onSave={handleSaveSpace}
+      />
+    );
+  } else if (currentRoute.page === 'myTasks') {
+    pageContent = <MyTasks {...sharedNavigationProps} />;
+  } else if (currentRoute.page === 'space') {
+    const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
+    pageContent = <SpacesSummary {...sharedNavigationProps} space={selectedSpace} />;
+  } else if (currentRoute.page === 'spaceList') {
+    const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
+    pageContent = (
+      <SpacesList
+        {...sharedNavigationProps}
+        space={selectedSpace}
+        initialTaskId={currentRoute.data?.taskId || null}
+        initialTaskOpenRequestId={currentRoute.data?.openRequestId || null}
+        fullPageTaskDetail={currentRoute.data?.fullPageTaskDetail === true}
+        onCreateTask={handleCreateTask}
+        onUpdateTask={handleUpdateTask}
+        onDeleteTasks={handleDeleteTasks}
+        onMoveTasks={handleMoveTasks}
+      />
+    );
+  } else if (currentRoute.page === 'spaceSettings') {
+    const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id);
+    if (!selectedSpace) {
+      pageContent = (
+        <PlaceholderPage
+          {...sharedNavigationProps}
+          title="Space not found"
+          activeSection="Spaces"
+          onBack={goBack}
+        />
+      );
+    } else {
+      pageContent = (
+        <SpaceSettings
+          {...sharedNavigationProps}
+          space={selectedSpace}
+          onBack={() => navigate('space', { id: selectedSpace.id, name: selectedSpace.name })}
+          onSave={(updates) => handleUpdateSpace(selectedSpace.id, updates)}
+          onAddMembers={(payload) => handleAddSpaceMembers(selectedSpace.id, payload)}
+        />
+      );
+    }
+  } else if (currentRoute.page === 'spaceTab') {
+    const space = spaces.find((item) => item.id === currentRoute.data?.id) || currentRoute.data || {};
+    const tab = currentRoute.data?.tab || 'Space';
+    pageContent = (
+      <PlaceholderPage
+        {...sharedNavigationProps}
+        title={`${space.name || space.code || 'Space'} / ${tab}`}
+        activeSection="Spaces"
+        activeSpaceId={space.id || null}
+        onBack={goBack}
+      />
+    );
+  } else {
+    const placeholderTitles = { documents: 'Documents', dashboard: 'Dashboard', filter: 'Filter' };
+    pageContent = (
+      <PlaceholderPage
+        {...sharedNavigationProps}
+        title={placeholderTitles[currentRoute.page] || 'TASKFLOW'}
+        activeSection={placeholderTitles[currentRoute.page] || 'My Tasks'}
+        onBack={goBack}
+      />
+    );
+  }
+
+  const routeSpaceId = currentRoute.data?.id;
+  const globalInitialSpaceId = spaces.some((space) => String(space.id) === String(routeSpaceId))
+    ? routeSpaceId
+    : '';
+
+  async function handleGlobalCreateTask(payload) {
+    const createdTask = await handleCreateTask(payload);
+    if (!createdTask) return false;
+    // Global Create only saves the Work Item. Keep the user on the current screen.
+    setGlobalCreateOpen(false);
+    return createdTask;
+  }
+
+  return (
+    <>
+      {backendError && (
+        <div role="alert" style={{ position: 'fixed', left: 16, bottom: 16, zIndex: 2000, maxWidth: 520, padding: '12px 14px', border: '1px solid #F1C6C8', borderRadius: 8, background: '#FFF1F0', color: '#9F2D2D', boxShadow: '0 4px 16px rgba(9,30,66,.12)', fontSize: 12 }}>
+          <strong>Backend:</strong> {backendError}
+          <button type="button" onClick={loadPersistentData} style={{ marginLeft: 12, border: 0, background: 'transparent', color: '#0052CC', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
+        </div>
+      )}
+      {pageContent}
+      {globalCreateOpen && (
+        <IssueModal
+          allowProjectSelection
+          spaces={spaces}
+          existingIssues={tasks}
+          initialSpaceId={globalInitialSpaceId}
+          onClose={() => setGlobalCreateOpen(false)}
+          onCreate={handleGlobalCreateTask}
+        />
+      )}
+    </>
+  );
+}
