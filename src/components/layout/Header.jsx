@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../common/Icon';
-import UserProfileMenu from '../profile/UserProfileMenu';
+import UserProfileMenu from './UserProfileMenu';
 import './Header.css';
 
 function getTaskKey(task) {
@@ -23,28 +23,11 @@ function getSpaceName(task, spaces) {
 }
 
 export default function Header({
-  spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {},
-  user = null, onNavigate = () => {}, onLogout = () => {}
+  spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}
 }) {
   const [globalSearch, setGlobalSearch] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const searchWrapRef = useRef(null);
-  const [theme, setTheme] = useState(() => {
-    const savedTheme = localStorage.getItem('taskflow.theme');
-    return savedTheme === 'dark' ? 'dark' : 'light';
-  });
-  const [language, setLanguage] = useState(() => localStorage.getItem('taskflow.language') || 'EN');
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('taskflow.theme', theme);
-  }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem('taskflow.language', language);
-    document.documentElement.lang = language.toLowerCase();
-  }, [language]);
-
   useEffect(() => {
     if (searchResults === null) return undefined;
     const handleOutside = (event) => {
@@ -84,10 +67,6 @@ export default function Header({
     setSearchResults(null);
     setGlobalSearch('');
     onOpenTask(task);
-  }
-
-  function handleLogout() {
-    onLogout();
   }
 
   return (
@@ -160,15 +139,7 @@ export default function Header({
           <Icon name="settings" size={19} />
         </button>
 
-        <UserProfileMenu
-          user={user}
-          theme={theme}
-          language={language}
-          onThemeChange={setTheme}
-          onLanguageChange={setLanguage}
-          onNavigate={onNavigate}
-          onLogout={handleLogout}
-        />
+        <UserProfileMenu />
       </div>
     </header>
   );

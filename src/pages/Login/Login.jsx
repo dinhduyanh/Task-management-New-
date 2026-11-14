@@ -1,9 +1,9 @@
 import { useState } from 'react';
 import Icon from '../../components/common/Icon';
-import { userProfileService } from '../../services/userProfileService';
+import { authService } from '../../services/authService';
 import './Login.css';
 
-export default function Login({ onLogin }) {
+export default function Login({ onLogin, notice = '' }) {
   const [username,setUsername]=useState('');
   const [password,setPassword]=useState('');
   const [showPassword,setShowPassword]=useState(false);
@@ -15,8 +15,8 @@ export default function Login({ onLogin }) {
     if(!username.trim() || !password) return setError('Vui lòng nhập Username/Email và Password.');
     setBusy(true);
     try {
-      const result=await userProfileService.login(username.trim(),password);
-      onLogin?.({ user: result.user, token: result.token || result.accessToken });
+      const user=await authService.login(username.trim(),password);
+      onLogin?.(user);
     } catch(err) { setError(err.message); }
     finally { setBusy(false); }
   };
@@ -34,6 +34,7 @@ export default function Login({ onLogin }) {
           <input type={showPassword?'text':'password'} name="password" aria-label="Password" autoComplete="current-password" placeholder="Password" value={password} onChange={e=>setPassword(e.target.value)}/>
           <button type="button" className="password-toggle" onClick={()=>setShowPassword(v=>!v)} aria-label={showPassword?'Ẩn mật khẩu':'Hiển thị mật khẩu'}><Icon name={showPassword?'eyeOff':'eye'} size={17}/></button>
         </div>
+        {notice && !error && <p className="login-feedback login-info" role="status">{notice}</p>}
         {error && <p className="login-feedback login-error" role="alert">{error}</p>}
         <button className="login-submit" type="submit" disabled={busy}>{busy?'SIGNING IN...':'SIGN IN WITH EMAIL'}</button>
       </form>

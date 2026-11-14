@@ -45,7 +45,11 @@ const iconPaths = {
   paperclip: <path d="m8 12.5 6.6-6.6a3.5 3.5 0 0 1 5 5L10 20.5a5 5 0 0 1-7.1-7.1L13 3.3" />,
   inbox: <><path d="M4 4h16l2 11h-6l-2 3h-4l-2-3H2z" /><path d="M2 15h6l2 3h4l2-3h6" /></>,
   info: <><circle cx="12" cy="12" r="9" /><path d="M12 11v5M12 8h.01" /></>,
-  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>
+  clock: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+  sun: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
+  moon: <path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11Z" />,
+  power: <><path d="M12 3v9" /><path d="M6.6 6.6a7.5 7.5 0 1 0 10.8 0" /></>,
+  camera: <><path d="M4 8h3l2-3h6l2 3h3v11H4z" /><circle cx="12" cy="13" r="3.5" /></>
 };
 
 export default function Icon({ name, size = 18, className = '' }) {

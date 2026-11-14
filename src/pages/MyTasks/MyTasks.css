@@ -1,7 +1,7 @@
 .app-shell {
   min-height: 100vh;
-  background: #f7f9fc;
-  color: #253044;
+  background: var(--tf-bg-f7f9fc);
+  color: var(--tf-fg-253044);
 }
 
 .main-content {
@@ -20,18 +20,18 @@
 
 .breadcrumb {
   margin-bottom: 9px;
-  color: #98a2b3;
+  color: var(--tf-fg-98a2b3);
   font-size: 11px;
 }
 
 .breadcrumb span {
   margin: 0 7px;
-  color: #c3cbd6;
+  color: var(--tf-fg-c3cbd6);
 }
 
 .page-heading h1 {
   margin: 0;
-  color: #202b3c;
+  color: var(--tf-fg-202b3c);
   font-size: 25px;
   font-weight: 700;
   letter-spacing: -0.6px;

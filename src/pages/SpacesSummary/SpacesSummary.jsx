@@ -119,7 +119,7 @@ function DonutChart({ counts, total }) {
   return (
     <div className="summary-donut-wrap" role="img" aria-label={`${total} tasks across project statuses`}>
       <svg className="summary-donut" viewBox="0 0 180 180" aria-hidden="true">
-        <circle cx="90" cy="90" r={radius} fill="none" stroke="#EEF1F5" strokeWidth="22" />
+        <circle cx="90" cy="90" r={radius} fill="none" style={{ stroke: 'var(--tf-bd-eef1f5)' }} strokeWidth="22" />
         {total > 0 && STATUS_DEFINITIONS.map((status) => {
           const count = counts[status.label] || 0;
           if (!count) return null;

@@ -1,89 +1,66 @@
-const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000/api').replace(/\/$/, '');
+import { json, request } from './api';
+import { getStoredUser, storeUser } from './authService';
 
-function readStoredUser() {
-  try {
-    return JSON.parse(localStorage.getItem('taskflow.user') || 'null') || {};
-  } catch {
-    return {};
-  }
+export const AVATAR_MAX_BYTES = 2 * 1024 * 1024;
+export const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp', 'image/gif'];
+
+// At least 6 characters with an uppercase letter, a lowercase letter, a digit
+// and a special character. Mirrors the rule enforced by the backend.
+export const PASSWORD_RULES = [
+  { id: 'length', label: 'At least 6 characters', test: (value) => value.length >= 6 },
+  { id: 'upper', label: 'An uppercase letter', test: (value) => /[A-Z]/.test(value) },
+  { id: 'lower', label: 'A lowercase letter', test: (value) => /[a-z]/.test(value) },
+  { id: 'digit', label: 'A number', test: (value) => /\d/.test(value) },
+  { id: 'special', label: 'A special character', test: (value) => /[^A-Za-z0-9]/.test(value) }
+];
+
+export function isStrongPassword(value) {
+  return PASSWORD_RULES.every((rule) => rule.test(String(value || '')));
 }
 
-function writeStoredUser(user) {
-  localStorage.setItem('taskflow.user', JSON.stringify(user));
+/** Returns an error message, or '' when the file is an acceptable avatar. */
+export function validateAvatarFile(file) {
+  if (!file) return 'Please choose an image.';
+  if (!AVATAR_MIME_TYPES.includes(file.type)) return 'Only PNG, JPG, WEBP or GIF images are allowed.';
+  if (file.size > AVATAR_MAX_BYTES) return 'The image must not exceed 2 MB.';
+  return '';
+}
+
+function readAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error('Unable to read the selected image.'));
+    reader.readAsDataURL(file);
+  });
+}
+
+function remember(user) {
+  storeUser(user);
   return user;
 }
 
-async function request(path, options = {}) {
-  const response = await fetch(`${API_BASE_URL}${path}`, {
-    ...options,
-    credentials: 'include',
-    headers: {
-      ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-      ...(options.headers || {})
-    }
-  });
-  const payload = response.status === 204 ? null : await response.json().catch(() => ({}));
-  if (!response.ok) throw new Error(payload?.error || `Request failed (${response.status}).`);
-  return payload;
-}
-
 export const userProfileService = {
-  async login(usernameOrEmail, password) {
-    const identity = String(usernameOrEmail || '').trim();
-    const payload = await request('/auth/login', {
-      method: 'POST',
-      body: JSON.stringify({ username: identity, password })
-    });
-    const user = payload?.user || payload?.data?.user;
-    if (!user || typeof user !== 'object') {
-      throw new Error('API /auth/login chưa trả về thông tin User hợp lệ.');
-    }
-    writeStoredUser(user);
-    localStorage.setItem('taskflow.authenticated', 'true');
-    return { ...payload, user };
+  async getMe() {
+    const payload = await request('/users/me');
+    return remember(payload.user);
   },
 
-  async me() {
-    try {
-      return await request('/users/me');
-    } catch (error) {
-      // Current TASKFLOW backend has no user/auth routes; retain demo profile locally.
-      if (error.message.includes('(404)')) return { user: readStoredUser() };
-      throw error;
-    }
+  async updateFullName(fullName) {
+    const payload = await request('/users/me', json('PATCH', { fullName: String(fullName || '').trim() }));
+    return remember(payload.user);
   },
 
-  async updateProfile(fullName) {
-    try {
-      return await request('/users/me', {
-        method: 'PATCH',
-        body: JSON.stringify({ fullName })
-      });
-    } catch (error) {
-      if (!error.message.includes('(404)')) throw error;
-      const user = writeStoredUser({ ...readStoredUser(), fullName });
-      return { user };
-    }
+  async uploadAvatar(file) {
+    const error = validateAvatarFile(file);
+    if (error) throw new Error(error);
+    const dataUrl = await readAsDataUrl(file);
+    const payload = await request('/users/me/avatar', json('POST', { dataUrl }));
+    return remember({ ...(getStoredUser() || {}), avatarUrl: payload?.avatarUrl ?? dataUrl });
   },
 
-  async updateAvatar(avatarUrl) {
-    try {
-      return await request('/users/me/avatar', {
-        method: 'PUT',
-        body: JSON.stringify({ avatarUrl })
-      });
-    } catch (error) {
-      if (!error.message.includes('(404)')) throw error;
-      const user = writeStoredUser({ ...readStoredUser(), avatarUrl });
-      return { user, avatarUrl };
-    }
-  },
-
+  /** The backend revokes every session after a password change. */
   async changePassword(currentPassword, newPassword) {
-    // Password changes require a real authenticated backend; never fake a success.
-    return request('/users/me/password', {
-      method: 'PATCH',
-      body: JSON.stringify({ currentPassword, newPassword })
-    });
+    return request('/users/change-password', json('POST', { currentPassword, newPassword }));
   }
 };

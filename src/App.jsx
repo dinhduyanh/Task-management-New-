@@ -1,6 +1,9 @@
 import { useEffect, useState } from 'react';
 import { api } from './services/api';
+import { authService, clearSession, getStoredUser, isAuthenticated, storeUser } from './services/authService';
 import { userProfileService } from './services/userProfileService';
+import { AppShellContext } from './context/appShellContext';
+import { applyTheme, getInitialTheme } from './theme/theme';
 import Login from './pages/Login/Login';
 import MyTasks from './pages/MyTasks/MyTasks';
 import CreateSpace from './pages/CreateSpace/CreateSpace';
@@ -14,11 +17,10 @@ import './App.css';
 const initialRoute = { page: 'myTasks', data: null };
 
 export default function App() {
-  const [isLoggedIn, setIsLoggedIn] = useState(() => localStorage.getItem('taskflow.authenticated') === 'true');
-  const [currentUser, setCurrentUser] = useState(() => {
-    try { return JSON.parse(localStorage.getItem('taskflow.user') || 'null'); }
-    catch { return null; }
-  });
+  const [isLoggedIn, setIsLoggedIn] = useState(isAuthenticated);
+  const [currentUser, setCurrentUser] = useState(getStoredUser);
+  const [loginNotice, setLoginNotice] = useState('');
+  const [theme, setTheme] = useState(getInitialTheme);
   const [navigationStack, setNavigationStack] = useState([initialRoute]);
   const [spaces, setSpaces] = useState([]);
   // Spaces and Work Items are loaded from the persistent SQLite Backend.
@@ -41,6 +43,24 @@ export default function App() {
     loadPersistentData();
   }, []);
 
+  useEffect(() => {
+    applyTheme(theme);
+  }, [theme]);
+
+  // Refresh the signed-in user from the server. A 401 means the session cookie
+  // expired or was revoked, so fall back to the Sign In page.
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    let active = true;
+    userProfileService.getMe()
+      .then((user) => { if (active) setCurrentUser(user); })
+      .catch((error) => {
+        if (!active || error?.status !== 401) return;
+        endLocalSession('Your session has expired. Please sign in again.');
+      });
+    return () => { active = false; };
+  }, [isLoggedIn]);
+
   const currentRoute = navigationStack[navigationStack.length - 1] || initialRoute;
 
   function navigate(page, data = null) {
@@ -58,40 +78,30 @@ export default function App() {
     setNavigationStack((current) => current.length <= 1 ? [initialRoute] : current.slice(0, -1));
   }
 
-  function handleLogin(loginResult = {}) {
-    const user = loginResult?.user || loginResult || null;
-    const token = loginResult?.token || loginResult?.accessToken || null;
-
+  function handleLogin(user) {
     setCurrentUser(user);
-    if (user) localStorage.setItem('taskflow.user', JSON.stringify(user));
-    if (token) {
-      localStorage.setItem('taskflow.token', token);
-      localStorage.setItem('token', token);
-    }
-    localStorage.setItem('taskflow.authenticated', 'true');
+    setLoginNotice('');
     setIsLoggedIn(true);
     setNavigationStack([initialRoute]);
   }
 
   function handleUserUpdated(updatedUser) {
     setCurrentUser(updatedUser);
-    localStorage.setItem('taskflow.user', JSON.stringify(updatedUser));
+    storeUser(updatedUser);
   }
 
-  async function handleLogout() {
-    try {
-      await userProfileService.logout();
-    } catch (error) {
-      console.warn('Server logout could not be completed; clearing local session.', error);
-    } finally {
-      ['token', 'accessToken', 'refreshToken', 'authToken', 'session',
-        'taskflow.token', 'taskflow.session', 'taskflow.authenticated', 'taskflow.user']
-        .forEach((key) => localStorage.removeItem(key));
-      sessionStorage.clear();
-      setCurrentUser(null);
-      setIsLoggedIn(false);
-      setNavigationStack([initialRoute]);
-    }
+  function endLocalSession(notice = '') {
+    clearSession();
+    setCurrentUser(null);
+    setIsLoggedIn(false);
+    setLoginNotice(notice);
+    setGlobalCreateOpen(false);
+    setNavigationStack([initialRoute]);
+  }
+
+  async function handleSignOut() {
+    await authService.logout();
+    endLocalSession();
   }
 
   async function handleSaveSpace(spaceData) {
@@ -266,12 +276,17 @@ export default function App() {
     navigate('spaceSettings', { id: space.id, name: space.name, tab: 'Summary' });
   }
 
-  if (!isLoggedIn) return <Login onLogin={handleLogin} />;
+  const appShell = {
+    user: currentUser,
+    theme,
+    setTheme,
+    navigate,
+    signOut: handleSignOut
+  };
+
+  if (!isLoggedIn) return <Login onLogin={handleLogin} notice={loginNotice} />;
 
   const sharedNavigationProps = {
-    user: currentUser,
-    onUserUpdated: handleUserUpdated,
-    onLogout: handleLogout,
     spaces,
     tasks,
     allTasks: tasks,
@@ -288,8 +303,11 @@ export default function App() {
   if (currentRoute.page === 'profile') {
     pageContent = (
       <UserProfile
+        {...sharedNavigationProps}
         user={currentUser}
         onUserUpdated={handleUserUpdated}
+        onPasswordChanged={() => endLocalSession('Password changed. Please sign in again with your new password.')}
+        onSessionExpired={() => endLocalSession('Your session has expired. Please sign in again.')}
         onBack={goBack}
       />
     );
@@ -382,7 +400,7 @@ export default function App() {
   }
 
   return (
-    <>
+    <AppShellContext.Provider value={appShell}>
       {backendError && (
         <div role="alert" style={{ position: 'fixed', left: 16, bottom: 16, zIndex: 2000, maxWidth: 520, padding: '12px 14px', border: '1px solid #F1C6C8', borderRadius: 8, background: '#FFF1F0', color: '#9F2D2D', boxShadow: '0 4px 16px rgba(9,30,66,.12)', fontSize: 12 }}>
           <strong>Backend:</strong> {backendError}
@@ -400,6 +418,6 @@ export default function App() {
           onCreate={handleGlobalCreateTask}
         />
       )}
-    </>
+    </AppShellContext.Provider>
   );
 }

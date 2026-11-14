@@ -53,7 +53,7 @@ function areEqual(first, second) {
 
 export default function MyTasks({ onCreateSpace, onNavigate, onOpenSpaceSettings, onDeleteSpace, onGlobalCreate, onOpenTask, spaces = [], allTasks = [] }) {
   // My Tasks remains empty until its own backend query is connected.
-  const [tasks] = useState([]);
+  const tasks = allTasks;
 
   // Search has its own apply rule: press Enter to run the search.
   const [searchInput, setSearchInput] = useState('');

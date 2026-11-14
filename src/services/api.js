@@ -1,16 +1,26 @@
+// Accept VITE_API_BASE_URL either as the server origin (http://localhost:4000)
+// or including the /api prefix (http://localhost:4000/api).
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000')
+  .replace(/\/+$/, '')
+  .replace(/\/api$/, '');
 
-const API_ORIGIN = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
-).replace(/\/$/, '');
+export const API_BASE_URL = `${API_ORIGIN}/api`;
 
-const API_BASE_URL = `${API_ORIGIN}/api`;
+export class ApiError extends Error {
+  constructor(message, status, payload) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
 
-async function request(path, options = {}) {
+export async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
-      ...(options.body instanceof FormData
+      ...(options.body instanceof FormData || !options.body
         ? {}
         : { 'Content-Type': 'application/json' }),
       ...(options.headers || {})
@@ -32,47 +42,19 @@ async function request(path, options = {}) {
       ? payload.error
       : `API request failed (${response.status}).`;
 
-    throw new Error(message);
+    throw new ApiError(message, response.status, payload);
   }
 
   return payload;
 }
 
-const json = (method, body) => ({
+export const json = (method, body) => ({
   method,
   body: JSON.stringify(body)
 });
 
 export const api = {
   health: () => request('/health'),
-
-  // Authentication
-  login: (username, password) => request(
-    '/auth/login',
-    json('POST', { username, password })
-  ),
-
-  logout: () => request('/auth/logout', {
-    method: 'POST'
-  }),
-
-  // User Profile
-  getCurrentUser: () => request('/users/me'),
-
-  updateProfile: (data) => request(
-    '/users/me',
-    json('PATCH', data)
-  ),
-
-  changePassword: (data) => request(
-    '/users/change-password',
-    json('POST', data)
-  ),
-
-  updateAvatar: (data) => request(
-    '/users/me/avatar',
-    json('POST', data)
-  ),
 
   // Spaces
   getSpaces: () => request('/spaces'),

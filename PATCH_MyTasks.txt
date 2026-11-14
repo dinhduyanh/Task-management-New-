@@ -1,9 +1,0 @@
-Open: src/pages/MyTasks/MyTasks.jsx
-
-Find:
-  const [tasks] = useState([]);
-
-Replace with:
-  const tasks = Array.isArray(allTasks) ? allTasks : [];
-
-This connects the existing My Tasks filters/table to the Work Items loaded by App.jsx from the Backend. Keep all other code unchanged.

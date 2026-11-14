@@ -1,35 +1,31 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../common/Icon';
+import UserAvatar from '../common/UserAvatar';
+import { useAppShell } from '../../context/appShellContext';
 import './UserProfileMenu.css';
 
-export default function UserProfileMenu({
-  user,
-  onNavigate = () => {},
-  onLogout = () => {},
-  theme = 'light',
-  onThemeChange = () => {}
-}) {
+export default function UserProfileMenu() {
+  const { user, theme, setTheme, navigate, signOut } = useAppShell();
   const [open, setOpen] = useState(false);
   const rootRef = useRef(null);
 
   useEffect(() => {
-    const close = (event) => {
+    if (!open) return undefined;
+    const closeOnOutside = (event) => {
       if (!rootRef.current?.contains(event.target)) setOpen(false);
     };
-    const onKeyDown = (event) => {
+    const closeOnEscape = (event) => {
       if (event.key === 'Escape') setOpen(false);
     };
-    document.addEventListener('mousedown', close);
-    document.addEventListener('keydown', onKeyDown);
+    document.addEventListener('pointerdown', closeOnOutside);
+    document.addEventListener('keydown', closeOnEscape);
     return () => {
-      document.removeEventListener('mousedown', close);
-      document.removeEventListener('keydown', onKeyDown);
+      document.removeEventListener('pointerdown', closeOnOutside);
+      document.removeEventListener('keydown', closeOnEscape);
     };
-  }, []);
+  }, [open]);
 
-  const displayName = user?.fullName || user?.full_name || user?.username || 'User';
-  const avatar = user?.avatarUrl || user?.avatar_url || '';
-  const initials = displayName.trim().slice(0, 1).toUpperCase() || 'U';
+  const displayName = user?.fullName || user?.username || 'User';
 
   return (
     <div className="tf-profile-menu" ref={rootRef}>
@@ -37,17 +33,22 @@ export default function UserProfileMenu({
         type="button"
         className="tf-avatar-button"
         onClick={() => setOpen((value) => !value)}
+        aria-haspopup="menu"
         aria-expanded={open}
-        aria-label="Open profile menu"
+        aria-label="Open user menu"
+        title={displayName}
       >
-        {avatar ? <img src={avatar} alt="" /> : <span>{initials}</span>}
+        <UserAvatar user={user} size={36} />
       </button>
 
       {open && (
-        <div className="tf-profile-dropdown" role="menu">
+        <div className="tf-profile-dropdown" role="menu" aria-label="User menu">
           <div className="tf-profile-summary">
-            <strong>{displayName}</strong>
-            <small>{user?.email || user?.username || ''}</small>
+            <UserAvatar user={user} size={40} />
+            <div>
+              <strong>{displayName}</strong>
+              {user?.email && <small>{user.email}</small>}
+            </div>
           </div>
 
           <button
@@ -55,41 +56,51 @@ export default function UserProfileMenu({
             role="menuitem"
             onClick={() => {
               setOpen(false);
-              onNavigate('profile');
+              navigate('profile');
             }}
           >
-            Your profile
+            <Icon name="user" size={17} />
+            <span>Your profile</span>
           </button>
 
           <div className="tf-theme-row">
             <span>Theme</span>
-            <div className="tf-theme-switch" role="group" aria-label="Choose theme">
+            <div className="tf-theme-switch" role="radiogroup" aria-label="Theme">
               <button
                 type="button"
+                role="radio"
                 className={theme === 'light' ? 'active' : ''}
                 aria-label="Light theme"
-                aria-pressed={theme === 'light'}
-                onClick={() => onThemeChange('light')}
+                aria-checked={theme === 'light'}
+                title="Light"
+                onClick={() => setTheme('light')}
               >
                 <Icon name="sun" size={17} />
               </button>
               <button
                 type="button"
+                role="radio"
                 className={theme === 'dark' ? 'active' : ''}
                 aria-label="Dark theme"
-                aria-pressed={theme === 'dark'}
-                onClick={() => onThemeChange('dark')}
+                aria-checked={theme === 'dark'}
+                title="Dark"
+                onClick={() => setTheme('dark')}
               >
                 <Icon name="moon" size={17} />
               </button>
             </div>
           </div>
 
-          <button className="tf-logout" type="button" role="menuitem" onClick={() => {
-            setOpen(false);
-            onLogout();
-          }}>
-            <Icon name="power" size={16} />
+          <button
+            type="button"
+            role="menuitem"
+            className="tf-logout"
+            onClick={() => {
+              setOpen(false);
+              signOut();
+            }}
+          >
+            <Icon name="power" size={17} />
             <span>Sign out</span>
           </button>
         </div>
