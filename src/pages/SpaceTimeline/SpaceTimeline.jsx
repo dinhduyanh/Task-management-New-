@@ -31,6 +31,7 @@ import {
   startOfDay,
   weekSegments
 } from './timelineScale';
+import { useProjectPermissions } from '../../services/projectPermissions';
 import './SpaceTimeline.css';
 
 const COMPACT_QUERY = '(max-width: 760px)';
@@ -49,7 +50,7 @@ function useLeftWidth() {
 }
 const TYPE_CLASS = (type) => `type-${type.toLowerCase().replace(/[^a-z]+/g, '-')}`;
 
-function RowMenu({ issue, canAddChild, hasBar, onOpen, onAddChild, onScrollTo, onDelete }) {
+function RowMenu({ issue, canAddChild, canDelete = true, hasBar, onOpen, onAddChild, onScrollTo, onDelete }) {
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
   useEffect(() => {
@@ -82,7 +83,7 @@ function RowMenu({ issue, canAddChild, hasBar, onOpen, onAddChild, onScrollTo, o
           <button type="button" role="menuitem" onClick={run(onOpen)}>View details</button>
           {canAddChild && <button type="button" role="menuitem" onClick={run(onAddChild)}>Add child work item</button>}
           {hasBar && <button type="button" role="menuitem" onClick={run(onScrollTo)}>Scroll to bar</button>}
-          <button type="button" role="menuitem" className="danger" onClick={run(onDelete)}>Delete</button>
+          {canDelete && <button type="button" role="menuitem" className="danger" onClick={run(onDelete)}>Delete</button>}
         </div>
       )}
     </div>
@@ -119,6 +120,8 @@ export default function SpaceTimeline({
   const [createRequest, setCreateRequest] = useState(null); // { parentId, allowedIssueTypes }
   const [deleteTarget, setDeleteTarget] = useState(null);
   const [toast, setToast] = useState(null);
+  const { can } = useProjectPermissions(space);
+  const mayCreate = can('task.create');
   const scrollRef = useRef(null);
   const leftWidth = useLeftWidth();
 
@@ -322,7 +325,7 @@ export default function SpaceTimeline({
                         type="button"
                         className="tl-icon-button"
                         onClick={() => openCreate(issue)}
-                        disabled={!childTypes.length}
+                        disabled={!childTypes.length || !mayCreate}
                         aria-label={`Add child work item to ${issueKey(issue)}`}
                         title={childTypes.length ? `Add ${childTypes.join(', ')}` : `${type} cannot have child work items`}
                       >
@@ -330,7 +333,8 @@ export default function SpaceTimeline({
                       </button>
                       <RowMenu
                         issue={issue}
-                        canAddChild={childTypes.length > 0}
+                        canAddChild={childTypes.length > 0 && mayCreate}
+                        canDelete={can('task.delete', issue)}
                         hasBar={Boolean(span)}
                         onOpen={() => setDetailIssueId(issue.id)}
                         onAddChild={() => openCreate(issue)}
@@ -373,9 +377,11 @@ export default function SpaceTimeline({
 
               <div className="tl-row tl-create-row">
                 <div className="tl-cell">
-                  <button type="button" className="tl-create" onClick={() => openCreate()}>
-                    <Icon name="plus" size={15} /> Create work item
-                  </button>
+                  {mayCreate && (
+                    <button type="button" className="tl-create" onClick={() => openCreate()}>
+                      <Icon name="plus" size={15} /> Create work item
+                    </button>
+                  )}
                 </div>
                 <div className="tl-track" />
               </div>

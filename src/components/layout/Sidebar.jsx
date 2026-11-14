@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
+import { canInSpace } from '../../services/projectPermissions';
 import Icon from '../common/Icon';
 import './Sidebar.css';
 
@@ -128,7 +129,7 @@ export default function Sidebar({
                   <span className="space-item-name">{space.name}</span>
                 </button>
 
-                <button
+                {(canInSpace(space, 'project.setting') || space.permissions?.manage) && <button
                   type="button"
                   className={`space-more-button ${openMenuId === space.id ? 'is-open' : ''}`}
                   onClick={(event) => openSpaceMenu(event, space.id)}
@@ -138,21 +139,24 @@ export default function Sidebar({
                   title="More options"
                 >
                   <Icon name="moreVertical" size={16} />
-                </button>
+                </button>}
 
                 {openMenuId === space.id && (
                   <div className="space-context-menu" role="menu">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        onOpenSpaceSettings(space);
-                      }}
-                    >
-                      <Icon name="settings" size={15} />
-                      <span>Space setting</span>
-                    </button>
+                    {/* Project settings need the "Project Setting" permission. */}
+                    {canInSpace(space, 'project.setting') && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          onOpenSpaceSettings(space);
+                        }}
+                      >
+                        <Icon name="settings" size={15} />
+                        <span>Space setting</span>
+                      </button>
+                    )}
                     {/* Only the project owner or an administrator may delete a project. */}
                     {space.permissions?.manage && (
                       <button

@@ -61,6 +61,25 @@ if (!db.prepare('SELECT COUNT(*) AS count FROM project_roles').get().count) {
   ].forEach(([name, description], index) => insertRole.run(`prole_${index + 1}`, name, description, index, seededAt, seededAt));
 }
 
+// Built-in project roles used by project permissions (cannot be renamed or deleted).
+const roleColumns = db.prepare('PRAGMA table_info(project_roles)').all().map((column) => column.name);
+if (!roleColumns.includes('is_system')) {
+  db.exec('ALTER TABLE project_roles ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
+}
+[
+  ['prole_admin_project', 'Admin Project', 'Project owner and administrators: always hold every project permission.', -2],
+  ['prole_all_member', 'All Member', 'Every member of the project (given automatically).', -1]
+].forEach(([id, name, description, position]) => {
+  const existing = db.prepare('SELECT id FROM project_roles WHERE name = ? COLLATE NOCASE').get(name);
+  if (existing) {
+    db.prepare('UPDATE project_roles SET name = ?, is_system = 1, position = ? WHERE id = ?').run(name, position, existing.id);
+  } else {
+    const at = new Date().toISOString();
+    db.prepare('INSERT INTO project_roles (id, name, description, position, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)')
+      .run(id, name, description, position, at, at);
+  }
+});
+
 export function parseJson(value, fallback = {}) {
   if (value === null || value === undefined || value === '') return fallback;
   try { return JSON.parse(value); } catch { return fallback; }

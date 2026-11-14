@@ -3,9 +3,11 @@
 // name in the X-File-Name header (URI-encoded) and optional X-Attachment-Source: comment.
 import express, { Router } from 'express';
 import { Buffer } from 'node:buffer';
-import { db, createId, nowIso, parseJson, workItemRowToObject, logActivity } from '../db.js';
+import { db, createId, nowIso, parseJson, logActivity } from '../db.js';
 import { optionalAuth } from '../middleware/auth.js';
 import { requireSpaceAccess, spaceFilter, spaceIdOf } from '../access.js';
+import { allowed, presentItem } from '../workItemPermissions.js';
+import { denied } from '../projectPermissions.js';
 
 const router = Router();
 router.use(optionalAuth);
@@ -83,6 +85,12 @@ function contentDisposition(type, name) {
   return `${type}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
+/** Own files need "Task delete owner attachment", anyone else's "Task delete all attachment". */
+function mayDeleteFile(req, file, item) {
+  const own = String(file.uploaded_by_id || '') === String(req.user?.id || '');
+  return (own && allowed(req, item.space_id, 'attachment.delete_own', item)) || allowed(req, item.space_id, 'attachment.delete_all', item);
+}
+
 const fileAccess = requireSpaceAccess((req) => spaceIdOf.file(req.params.id), 'File not found.');
 
 router.post(
@@ -91,8 +99,9 @@ router.post(
   express.raw({ type: () => true, limit: MAX_ATTACHMENT_BYTES }),
   (req, res, next) => {
     try {
-      const item = db.prepare('SELECT id, space_id, issue_key FROM work_items WHERE id = ?').get(req.params.id);
+      const item = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
       if (!item) return res.status(404).json({ error: 'Work item not found.' });
+      if (!allowed(req, item.space_id, 'attachment.add', item)) return denied(res, 'attachment.add');
       let name = '';
       try { name = decodeURIComponent(String(req.get('X-File-Name') || '')); } catch { name = ''; }
       name = name.replace(/[\\/]/g, '_').trim().slice(0, 200);
@@ -115,7 +124,7 @@ router.post(
       const row = db.prepare('SELECT * FROM work_item_files WHERE id = ?').get(id);
       res.status(201).json({
         attachment: metadata(row),
-        workItem: workItemRowToObject(db.prepare('SELECT * FROM work_items WHERE id = ?').get(item.id))
+        workItem: presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(item.id))
       });
     } catch (error) { next(error); }
   }
@@ -128,7 +137,7 @@ router.get('/attachments', (req, res) => {
   let where = `WHERE ${filter.sql}`;
   if (req.query.spaceId) { where += ' AND a.space_id = ?'; params.push(String(req.query.spaceId)); }
   const rows = db.prepare(`SELECT a.id, a.file_name, a.extension, a.mime_type, a.size, a.source, a.uploaded_by_id, a.uploaded_by_name, a.created_at,
-      w.id AS wi_id, w.issue_key, w.title, w.issue_type, w.status, s.id AS s_id, s.name AS s_name, s.code AS s_code
+      w.id AS wi_id, w.issue_key, w.title, w.issue_type, w.status, w.assignee_id, w.creator_id, s.id AS s_id, s.name AS s_name, s.code AS s_code
     FROM work_item_files a
     JOIN work_items w ON w.id = a.work_item_id
     JOIN spaces s ON s.id = a.space_id
@@ -137,7 +146,8 @@ router.get('/attachments', (req, res) => {
   res.json(rows.map((row) => ({
     ...metadata(row),
     workItem: { id: row.wi_id, key: row.issue_key, title: row.title, issueType: row.issue_type, status: row.status },
-    space: { id: row.s_id, name: row.s_name, code: row.s_code }
+    space: { id: row.s_id, name: row.s_name, code: row.s_code },
+    permissions: { delete: mayDeleteFile(req, row, { space_id: row.s_id, assignee_id: row.assignee_id, creator_id: row.creator_id }) }
   })));
 });
 
@@ -158,14 +168,18 @@ router.get('/attachments/:id/download', fileAccess, (req, res) => sendFile(req, 
 
 router.delete('/attachments/:id', fileAccess, (req, res, next) => {
   try {
-    const row = db.prepare('SELECT id, work_item_id, space_id, file_name FROM work_item_files WHERE id = ?').get(req.params.id);
+    const row = db.prepare('SELECT id, work_item_id, space_id, file_name, uploaded_by_id FROM work_item_files WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'File not found.' });
+    const item = db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.work_item_id);
+    if (!mayDeleteFile(req, row, item)) {
+      return denied(res, String(row.uploaded_by_id || '') === String(req.user.id) ? 'attachment.delete_own' : 'attachment.delete_all');
+    }
     db.transaction(() => {
       db.prepare('DELETE FROM work_item_files WHERE id = ?').run(row.id);
       syncWorkItemAttachments(row.work_item_id);
       logActivity({ spaceId: row.space_id, workItemId: row.work_item_id, actorName: req.user?.fullName || 'You', description: `deleted file ${row.file_name}` });
     })();
-    res.json({ workItem: workItemRowToObject(db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.work_item_id)) });
+    res.json({ workItem: presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.work_item_id)) });
   } catch (error) { next(error); }
 });
 

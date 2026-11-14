@@ -1051,3 +1051,10 @@
   padding: 0;
   accent-color: var(--tf-primary, var(--tf-fg-0052cc));
 }
+
+.ss-builtin {
+  margin-left: 8px;
+  vertical-align: 1px;
+  background: var(--tf-bg-f4f5f7);
+  color: var(--tf-fg-42526e);
+}

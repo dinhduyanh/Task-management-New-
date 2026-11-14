@@ -1,16 +1,30 @@
 import { Router } from 'express';
 import { db, createId, nowIso, parseJson, spaceRowToObject, logActivity } from '../db.js';
 import { canAccessSpace, canManageSpace, spaceFilter } from '../access.js';
+import {
+  ADMIN_PROJECT_ROLE, ALL_MEMBER_ROLE, FIELD_RULES, PERMISSION_GROUPS, can, denied, grantsFor,
+  memberContext, projectRules, resetRules, saveRules, validateRules
+} from '../projectPermissions.js';
 
 const router = Router();
 
-/** Space as returned to a user, with what that user may do in it. */
+/**
+ * Space as returned to a user, with what that user may do in it:
+ *   manage  - delete the project (owner or system admin)
+ *   admin   - "Admin Project": every permission, edits the permission rules
+ *   grants  - per permission { all, fields } (fields: work item fields that grant it)
+ */
 function spaceForUser(row, user) {
   const space = spaceRowToObject(row);
+  const context = memberContext(user, row.id);
   return {
     ...space,
     permissions: {
-      manage: canManageSpace(user, row.id) // members, deletion
+      manage: canManageSpace(user, row.id),
+      admin: context.isProjectAdmin,
+      owner: context.isOwner,
+      roles: context.roles,
+      grants: grantsFor(context)
     }
   };
 }
@@ -28,8 +42,11 @@ function memberRecord(user, roles) {
   };
 }
 
-/** Validates project role names against the roles managed in System Settings. */
-function readRoles(value) {
+/**
+ * Validates project role names against the roles managed in System Settings.
+ * "All Member" is implicit and cannot be given; "Admin Project" only by a project admin.
+ */
+function readRoles(value, actorIsProjectAdmin) {
   const names = (Array.isArray(value) ? value : []).map((role) => String(role || '').trim()).filter(Boolean);
   if (!names.length) return { error: 'Choose at least one project role.' };
   const known = db.prepare('SELECT name FROM project_roles').all().map((row) => row.name);
@@ -37,9 +54,17 @@ function readRoles(value) {
   for (const name of names) {
     const match = known.find((role) => role.toLowerCase() === name.toLowerCase());
     if (!match) return { error: `Unknown project role: ${name}.` };
+    if (match === ALL_MEMBER_ROLE) return { error: 'Every member has the All Member role automatically.' };
+    if (match === ADMIN_PROJECT_ROLE && !actorIsProjectAdmin) return { error: 'Only a project admin can give the Admin Project role.', status: 403 };
     if (!roles.includes(match)) roles.push(match);
   }
   return { roles };
+}
+
+function hasAdminRole(spaceId, userId) {
+  const row = db.prepare('SELECT member_json FROM space_members WHERE space_id = ? AND user_id = ?').get(spaceId, userId);
+  const roles = row ? parseJson(row.member_json, {}).roles : [];
+  return Array.isArray(roles) && roles.some((role) => String(role).toLowerCase() === ADMIN_PROJECT_ROLE.toLowerCase());
 }
 
 router.get('/', (req, res) => {
@@ -71,8 +96,7 @@ router.post('/', (req, res, next) => {
       owner: { id: creator.id, name: creator.full_name },
       createdAt: now, updatedAt: now
     };
-    const creatorRole = db.prepare("SELECT name FROM project_roles WHERE name = 'Project Manager' COLLATE NOCASE").get()?.name
-      || db.prepare('SELECT name FROM project_roles ORDER BY position LIMIT 1').get()?.name || 'Owner';
+    const creatorRole = ADMIN_PROJECT_ROLE;
     db.transaction(() => {
       db.prepare(`INSERT INTO spaces (id, code, task_key_prefix, name, owner_id, visibility, created_at, updated_at, data_json)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
@@ -102,6 +126,7 @@ router.get('/:spaceId', (req, res) => {
 router.patch('/:spaceId', (req, res, next) => {
   try {
     if (!canAccessSpace(req.user, req.params.spaceId)) return res.status(404).json({ error: 'Space not found.' });
+    if (!can(req.user, req.params.spaceId, 'project.setting')) return denied(res, 'project.setting');
     const current = db.prepare('SELECT * FROM spaces WHERE id = ?').get(req.params.spaceId);
     const updates = req.body || {};
     const previousData = parseJson(current.data_json, {});
@@ -146,12 +171,14 @@ router.post('/:spaceId/members', (req, res, next) => {
   try {
     const spaceId = req.params.spaceId;
     if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
-    if (!canManageSpace(req.user, spaceId)) return res.status(403).json({ error: 'Only the project owner or an administrator can manage members.' });
+    if (!can(req.user, spaceId, 'project.setting')) return denied(res, 'project.setting');
+    const actorIsProjectAdmin = memberContext(req.user, spaceId).isProjectAdmin;
     const userId = String(req.body?.userId || req.body?.user?.id || '');
     const user = db.prepare('SELECT id, username, email, full_name FROM users WHERE id = ? AND is_active = 1').get(userId);
     if (!user) return res.status(400).json({ error: 'Choose an active user.' });
-    const { roles, error } = readRoles(req.body?.roles);
-    if (error) return res.status(400).json({ error });
+    if (!actorIsProjectAdmin && hasAdminRole(spaceId, user.id)) return res.status(403).json({ error: 'Only a project admin can change the roles of a project admin.' });
+    const { roles, error, status } = readRoles(req.body?.roles, actorIsProjectAdmin);
+    if (error) return res.status(status || 400).json({ error });
     const existing = db.prepare('SELECT created_at FROM space_members WHERE space_id = ? AND user_id = ?').get(spaceId, user.id);
     db.prepare('INSERT OR REPLACE INTO space_members (space_id, user_id, member_json, created_at) VALUES (?, ?, ?, ?)')
       .run(spaceId, user.id, JSON.stringify(memberRecord(user, roles)), existing?.created_at || nowIso());
@@ -163,13 +190,57 @@ router.post('/:spaceId/members', (req, res, next) => {
 router.delete('/:spaceId/members/:userId', (req, res) => {
   const { spaceId, userId } = req.params;
   if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
-  if (!canManageSpace(req.user, spaceId)) return res.status(403).json({ error: 'Only the project owner or an administrator can manage members.' });
+  if (!can(req.user, spaceId, 'project.setting')) return denied(res, 'project.setting');
+  if (!memberContext(req.user, spaceId).isProjectAdmin && hasAdminRole(spaceId, userId)) return res.status(403).json({ error: 'Only a project admin can remove a project admin.' });
   const owner = db.prepare('SELECT owner_id FROM spaces WHERE id = ?').get(spaceId)?.owner_id;
   if (owner && owner === userId) return res.status(400).json({ error: 'The project owner cannot be removed.' });
   const result = db.prepare('DELETE FROM space_members WHERE space_id = ? AND user_id = ?').run(spaceId, userId);
   if (!result.changes) return res.status(404).json({ error: 'Member not found.' });
   logActivity({ spaceId, actorName: req.user.fullName || 'You', description: 'removed a member' });
   res.json(spaceRowToObject(db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId)).members);
+});
+
+// ---- Project permissions ----------------------------------------------------------
+// Members may read the rules; only project admins (Admin Project) may change them.
+
+function permissionsPayload(spaceId, user) {
+  const context = memberContext(user, spaceId);
+  return {
+    groups: PERMISSION_GROUPS,
+    rules: projectRules(spaceId),
+    roles: db.prepare('SELECT id, name, description, is_system FROM project_roles ORDER BY position, lower(name)').all()
+      .map((row) => ({ id: row.id, name: row.name, description: row.description, isSystem: Boolean(row.is_system) })),
+    fields: Object.entries(FIELD_RULES).map(([value, field]) => ({ value, ...field })),
+    adminRole: ADMIN_PROJECT_ROLE,
+    allMemberRole: ALL_MEMBER_ROLE,
+    canEdit: context.isProjectAdmin,
+    grants: grantsFor(context)
+  };
+}
+
+router.get('/:spaceId/permissions', (req, res) => {
+  if (!canAccessSpace(req.user, req.params.spaceId)) return res.status(404).json({ error: 'Space not found.' });
+  res.json(permissionsPayload(req.params.spaceId, req.user));
+});
+
+router.put('/:spaceId/permissions/:key', (req, res) => {
+  const { spaceId, key } = req.params;
+  if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
+  if (!memberContext(req.user, spaceId).isProjectAdmin) return res.status(403).json({ error: 'Only a project admin can change project permissions.' });
+  const { rules, error } = validateRules(key, req.body?.rules);
+  if (error) return res.status(400).json({ error });
+  saveRules(spaceId, key, rules);
+  logActivity({ spaceId, actorName: req.user.fullName || 'You', description: `changed the access rules of ${key}` });
+  res.json(permissionsPayload(spaceId, req.user));
+});
+
+router.post('/:spaceId/permissions/reset', (req, res) => {
+  const { spaceId } = req.params;
+  if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
+  if (!memberContext(req.user, spaceId).isProjectAdmin) return res.status(403).json({ error: 'Only a project admin can change project permissions.' });
+  resetRules(spaceId);
+  logActivity({ spaceId, actorName: req.user.fullName || 'You', description: 'reset the project permissions to the defaults' });
+  res.json(permissionsPayload(spaceId, req.user));
 });
 
 export default router;

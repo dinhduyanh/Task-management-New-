@@ -9,7 +9,8 @@ import { widgetRowToObject } from './admin.js';
 const router = Router();
 
 router.get('/project-roles', (_req, res) => {
-  res.json(db.prepare('SELECT id, name, description FROM project_roles ORDER BY position, lower(name)').all());
+  res.json(db.prepare('SELECT id, name, description, is_system FROM project_roles ORDER BY position, lower(name)').all()
+    .map((row) => ({ id: row.id, name: row.name, description: row.description, isSystem: Boolean(row.is_system) })));
 });
 
 /** Active widgets the user may see. Regular users never receive the SQL text. */

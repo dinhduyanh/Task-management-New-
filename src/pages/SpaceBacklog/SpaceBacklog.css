@@ -798,3 +798,20 @@
   .bl-form-row { grid-template-columns: 1fr; }
   .bl-goal { margin-left: 0; }
 }
+
+.bl-dates:disabled {
+  cursor: default;
+}
+
+.bl-dates:disabled svg {
+  display: none;
+}
+
+.bl-estimate.is-readonly {
+  cursor: default;
+}
+
+.bl-status:disabled {
+  cursor: default;
+  opacity: 1;
+}

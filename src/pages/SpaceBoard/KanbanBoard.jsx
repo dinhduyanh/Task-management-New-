@@ -24,7 +24,9 @@ export default function KanbanBoard({
   onUpdateTask = () => {},
   onOpenIssue = () => {},
   onCreateInColumn = () => {},
-  onToast = () => {}
+  onToast = () => {},
+  canCreate = true,
+  canMove = () => true // (issue) => may the signed-in user move it ("Move task")
 }) {
   const [draggingId, setDraggingId] = useState(null);
   const [dropCell, setDropCell] = useState(null); // `${laneId}:${columnId}`
@@ -83,6 +85,10 @@ export default function KanbanBoard({
     if (!issueId) return;
     const issue = allIssues.find((item) => String(item.id) === issueId);
     if (!issue) return;
+    if (!canMove(issue)) {
+      onToast({ type: 'error', message: `You do not have the Move task permission for ${issueKey(issue)}.` });
+      return;
+    }
     const target = resolveTarget(issue, column, allIssues);
     if (target.same) return;
     if (!target.status) {
@@ -109,15 +115,17 @@ export default function KanbanBoard({
             <header key={column.id} className={`sb-column-head tone-${columnTone(column)}`}>
               <span className="sb-column-name"><span className="sb-column-dot" aria-hidden="true" />{column.name}</span>
               <span className="sb-column-count">{columnCounts.get(column.id)}</span>
-              <button
-                type="button"
-                className="sb-icon-button"
-                onClick={() => onCreateInColumn(column)}
-                aria-label={`Create work item in ${column.name}`}
-                title={`Create in ${column.name}`}
-              >
-                <Icon name="plus" size={15} />
-              </button>
+              {canCreate && (
+                <button
+                  type="button"
+                  className="sb-icon-button"
+                  onClick={() => onCreateInColumn(column)}
+                  aria-label={`Create work item in ${column.name}`}
+                  title={`Create in ${column.name}`}
+                >
+                  <Icon name="plus" size={15} />
+                </button>
+              )}
             </header>
           ))}
 
@@ -161,6 +169,7 @@ export default function KanbanBoard({
                           issue={issue}
                           childCount={childCounts.get(String(issue.id)) || 0}
                           dragging={String(draggingId) === String(issue.id)}
+                          draggable={canMove(issue)}
                           onOpen={() => onOpenIssue(issue.id)}
                           onDragStart={() => setDraggingId(issue.id)}
                           onDragEnd={() => { setDraggingId(null); setDropCell(null); }}

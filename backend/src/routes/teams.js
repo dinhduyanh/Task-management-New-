@@ -4,6 +4,7 @@ import { Router } from 'express';
 import { db, createId, nowIso, parseJson, logActivity } from '../db.js';
 import { optionalAuth } from '../middleware/auth.js';
 import { requireSpaceAccess, spaceIdOf } from '../access.js';
+import { requirePermission } from '../projectPermissions.js';
 
 const router = Router();
 router.use(optionalAuth);
@@ -117,13 +118,14 @@ function saveMembers(teamId, members) {
 }
 
 const teamAccess = requireSpaceAccess((req) => spaceIdOf.team(req.params.id), 'Team not found.');
+const mayManageTeam = requirePermission('team', (req) => spaceIdOf.team(req.params.id));
 
 router.get('/spaces/:spaceId/teams', requireSpaceAccess((req) => req.params.spaceId, 'Space not found.'), (req, res) => {
   const rows = db.prepare('SELECT * FROM teams WHERE space_id = ? ORDER BY created_at DESC').all(req.params.spaceId);
   res.json(rows.map(teamRowToObject));
 });
 
-router.post('/spaces/:spaceId/teams', requireSpaceAccess((req) => req.params.spaceId, 'Space not found.'), (req, res, next) => {
+router.post('/spaces/:spaceId/teams', requireSpaceAccess((req) => req.params.spaceId, 'Space not found.'), requirePermission('team', (req) => req.params.spaceId), (req, res, next) => {
   try {
     const space = db.prepare('SELECT id FROM spaces WHERE id = ?').get(req.params.spaceId);
     if (!space) return res.status(404).json({ error: 'Space not found.' });
@@ -150,7 +152,7 @@ router.post('/spaces/:spaceId/teams', requireSpaceAccess((req) => req.params.spa
   } catch (error) { next(error); }
 });
 
-router.patch('/teams/:id', teamAccess, (req, res, next) => {
+router.patch('/teams/:id', teamAccess, mayManageTeam, (req, res, next) => {
   try {
     const row = getTeamRow(req.params.id);
     if (!row) return res.status(404).json({ error: 'Team not found.' });
@@ -169,7 +171,7 @@ router.patch('/teams/:id', teamAccess, (req, res, next) => {
 });
 
 // Deleting a team removes it from its work items (they are kept).
-router.delete('/teams/:id', teamAccess, (req, res, next) => {
+router.delete('/teams/:id', teamAccess, mayManageTeam, (req, res, next) => {
   try {
     const row = getTeamRow(req.params.id);
     if (!row) return res.status(404).json({ error: 'Team not found.' });

@@ -17,6 +17,7 @@ import { collectStatuses, findColumnForStatus, getBoardColumns, resolveTarget } 
 import { CompleteSprintModal, SprintFormModal } from '../SpaceBacklog/SprintModals';
 import { daysLeft, formatShortDate, summarize } from '../SpaceBacklog/backlogModel';
 import useSprints from '../SpaceBacklog/useSprints';
+import { useProjectPermissions } from '../../services/projectPermissions';
 import './SpaceActiveSprints.css';
 
 const GROUP_KEY = 'taskflow.activeSprint.group';
@@ -121,6 +122,8 @@ export default function SpaceActiveSprints({
   const [editOpen, setEditOpen] = useState(false);
   const [completeOpen, setCompleteOpen] = useState(false);
   const [toast, setToast] = useState(null);
+  const { can } = useProjectPermissions(space);
+  const maySprintUpdate = can('sprint.update');
 
   const spaceName = space.name || space.code || 'Untitled Space';
   const columns = useMemo(() => getBoardColumns(space), [space]);
@@ -193,12 +196,16 @@ export default function SpaceActiveSprints({
       <>
         <IssueToolbar filters={filters} statusOptions={statusOptions} searchLabel="Search work items in the active sprint">
           <div className="as-actions">
-            <button type="button" className="as-icon-button" onClick={() => setEditOpen(true)} aria-label="Edit sprint" title="Edit sprint">
-              <Icon name="edit" size={16} />
-            </button>
-            <button type="button" className="as-button is-primary" onClick={() => setCompleteOpen(true)}>
-              <Icon name="check" size={15} /> Complete sprint
-            </button>
+            {maySprintUpdate && (
+              <>
+                <button type="button" className="as-icon-button" onClick={() => setEditOpen(true)} aria-label="Edit sprint" title="Edit sprint">
+                  <Icon name="edit" size={16} />
+                </button>
+                <button type="button" className="as-button is-primary" onClick={() => setCompleteOpen(true)}>
+                  <Icon name="check" size={15} /> Complete sprint
+                </button>
+              </>
+            )}
             <label className="as-group">
               <span>Group</span>
               <select value={group} onChange={(event) => setGroup(event.target.value)} aria-label="Group work items by">
@@ -246,6 +253,8 @@ export default function SpaceActiveSprints({
                 onOpenIssue={setDetailIssueId}
                 onCreateInColumn={(column) => setCreateRequest({ columnId: column.id, parentId: '', allowedIssueTypes: null })}
                 onToast={setToast}
+                canCreate={can('task.create')}
+                canMove={(issue) => can('task.move', issue)}
               />
             </>
           )}

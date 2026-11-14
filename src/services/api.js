@@ -87,6 +87,13 @@ export const api = {
 
   // Project roles (read: every user; manage: admins)
   getProjectRoles: () => request('/project-roles'),
+  // Project permissions (read: members; change: project admins)
+  getSpacePermissions: (id) => request(`/spaces/${encodeURIComponent(id)}/permissions`),
+  updateSpacePermission: (id, key, rules) => request(
+    `/spaces/${encodeURIComponent(id)}/permissions/${encodeURIComponent(key)}`,
+    { method: 'PUT', body: JSON.stringify({ rules }) }
+  ),
+  resetSpacePermissions: (id) => request(`/spaces/${encodeURIComponent(id)}/permissions/reset`, { method: 'POST' }),
 
   // Dashboard widgets visible to the signed-in user
   getDashboardWidgets: () => request('/dashboard/widgets'),

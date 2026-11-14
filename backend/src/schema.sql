@@ -206,8 +206,20 @@ CREATE TABLE IF NOT EXISTS project_roles (
   name TEXT NOT NULL UNIQUE COLLATE NOCASE,
   description TEXT NOT NULL DEFAULT '',
   position INTEGER NOT NULL DEFAULT 0,
+  is_system INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
+);
+
+-- Access rules per project and permission (see src/projectPermissions.js).
+-- rules_json: [{ "type": "role" | "field", "value": "Developer" | "assignee" | "creator" }]
+CREATE TABLE IF NOT EXISTS project_permissions (
+  space_id TEXT NOT NULL,
+  permission_key TEXT NOT NULL,
+  rules_json TEXT NOT NULL DEFAULT '[]',
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (space_id, permission_key),
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
 );
 
 -- Dashboard widgets backed by a read-only SQL query (managed by system admins).

@@ -333,3 +333,7 @@
 @media (max-width: 760px) {
   .sb-grid { grid-template-columns: repeat(var(--sb-cols, 3), 260px); }
 }
+
+.sb-card.is-locked {
+  cursor: pointer;
+}

@@ -40,7 +40,8 @@ function RoleFormModal({ role = null, onClose, onSaved }) {
       <div className="ss-form-grid">
         <label className="ss-field ss-span-2">
           <span>Role name <b>*</b></span>
-          <input value={name} maxLength={60} autoFocus onChange={(event) => setName(event.target.value)} placeholder="e.g. Business Analyst" />
+          <input value={name} maxLength={60} autoFocus={!role?.isSystem} readOnly={role?.isSystem} onChange={(event) => setName(event.target.value)} placeholder="e.g. Business Analyst" />
+          {role?.isSystem && <small className="ss-hint">Built-in roles cannot be renamed; you can change the description.</small>}
           {role?.memberCount > 0 && <small className="ss-hint">Renaming updates the {role.memberCount} project member{role.memberCount === 1 ? '' : 's'} who have this role.</small>}
         </label>
         <label className="ss-field ss-span-2">
@@ -70,7 +71,7 @@ export default function ProjectRolesPanel({ onToast, onDataChanged }) {
   function remove(role) {
     setConfirm({
       title: `Delete ${role.name}?`,
-      message: 'The role will no longer be available when adding project members.',
+      message: 'The role will no longer be available for project members and is removed from every project permission rule.',
       onConfirm: async () => {
         try {
           await api.admin.deleteProjectRole(role.id);
@@ -88,7 +89,7 @@ export default function ProjectRolesPanel({ onToast, onDataChanged }) {
       <div className="ss-panel-head">
         <div>
           <h2>Project Roles</h2>
-          <p>Roles that project owners and admins can give to members inside a project (Space settings › People).</p>
+          <p>Roles given to members inside a project (Space settings › People) and used by project permission rules. “Admin Project” always has every permission; “All Member” means every member.</p>
         </div>
         <button type="button" className="ss-button is-primary" onClick={() => setForm({ role: null })}><Icon name="plus" size={15} /> New role</button>
       </div>
@@ -101,11 +102,11 @@ export default function ProjectRolesPanel({ onToast, onDataChanged }) {
             <article key={role.id} className="ss-role-card">
               <span className="ss-role-icon"><Icon name="shield" size={18} /></span>
               <div className="ss-role-text">
-                <strong>{role.name}</strong>
+                <strong>{role.name}{role.isSystem && <span className="ss-pill ss-builtin">Built-in</span>}</strong>
                 <p>{role.description || <span className="ss-muted">No description</span>}</p>
               </div>
               <span className="ss-role-usage" title="Project members with this role">
-                <Icon name="users" size={14} /> {role.memberCount} member{role.memberCount === 1 ? '' : 's'}
+                <Icon name="users" size={14} /> {role.memberCount === null ? 'Every member' : `${role.memberCount} member${role.memberCount === 1 ? '' : 's'}`}
               </span>
               <div className="ss-role-actions">
                 <button type="button" className="ss-icon-button" onClick={() => setForm({ role })} aria-label={`Edit ${role.name}`} title="Edit"><Icon name="edit" size={15} /></button>
@@ -113,9 +114,9 @@ export default function ProjectRolesPanel({ onToast, onDataChanged }) {
                   type="button"
                   className="ss-icon-button is-danger"
                   onClick={() => remove(role)}
-                  disabled={role.memberCount > 0}
+                  disabled={role.isSystem || role.memberCount > 0}
                   aria-label={`Delete ${role.name}`}
-                  title={role.memberCount > 0 ? 'In use: change these members’ roles first' : 'Delete'}
+                  title={role.isSystem ? 'Built-in roles cannot be deleted' : role.memberCount > 0 ? 'In use: change these members’ roles first' : 'Delete'}
                 >
                   <Icon name="trash" size={15} />
                 </button>

@@ -3,6 +3,7 @@
 import { Router } from 'express';
 import { db, createId, nowIso, logActivity } from '../db.js';
 import { requireSpaceAccess, spaceIdOf } from '../access.js';
+import { requirePermission } from '../projectPermissions.js';
 
 const router = Router();
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -95,6 +96,8 @@ function moveItemsTo(spaceId, itemIds, sprintId) {
 }
 
 const sprintAccess = requireSpaceAccess((req) => spaceIdOf.sprint(req.params.id), 'Sprint not found.');
+const sprintSpace = (req) => spaceIdOf.sprint(req.params.id);
+const mayUpdateSprint = requirePermission('sprint.update', sprintSpace);
 
 router.get('/spaces/:spaceId/sprints', requireSpaceAccess((req) => req.params.spaceId, 'Space not found.'), (req, res) => {
   const rows = db.prepare(`SELECT * FROM sprints WHERE space_id = ?
@@ -102,7 +105,7 @@ router.get('/spaces/:spaceId/sprints', requireSpaceAccess((req) => req.params.sp
   res.json(rows.map(sprintRowToObject));
 });
 
-router.post('/spaces/:spaceId/sprints', requireSpaceAccess((req) => req.params.spaceId, 'Space not found.'), (req, res, next) => {
+router.post('/spaces/:spaceId/sprints', requireSpaceAccess((req) => req.params.spaceId, 'Space not found.'), requirePermission('sprint.create', (req) => req.params.spaceId), (req, res, next) => {
   try {
     const space = db.prepare('SELECT id, code FROM spaces WHERE id = ?').get(req.params.spaceId);
     if (!space) return res.status(404).json({ error: 'Space not found.' });
@@ -118,7 +121,7 @@ router.post('/spaces/:spaceId/sprints', requireSpaceAccess((req) => req.params.s
   } catch (error) { next(error); }
 });
 
-router.patch('/sprints/:id', sprintAccess, (req, res, next) => {
+router.patch('/sprints/:id', sprintAccess, mayUpdateSprint, (req, res, next) => {
   try {
     const sprint = getSprint(req.params.id);
     if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
@@ -130,7 +133,7 @@ router.patch('/sprints/:id', sprintAccess, (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.post('/sprints/:id/start', sprintAccess, (req, res, next) => {
+router.post('/sprints/:id/start', sprintAccess, mayUpdateSprint, (req, res, next) => {
   try {
     const sprint = getSprint(req.params.id);
     if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
@@ -152,7 +155,7 @@ router.post('/sprints/:id/start', sprintAccess, (req, res, next) => {
 });
 
 // Body: { moveTo: 'backlog' | 'new' | <future sprint id> } for the work items that are not done.
-router.post('/sprints/:id/complete', sprintAccess, (req, res, next) => {
+router.post('/sprints/:id/complete', sprintAccess, mayUpdateSprint, (req, res, next) => {
   try {
     const sprint = getSprint(req.params.id);
     if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });
@@ -186,7 +189,7 @@ router.post('/sprints/:id/complete', sprintAccess, (req, res, next) => {
 });
 
 // Deleting a sprint keeps its work items: they return to the backlog.
-router.delete('/sprints/:id', sprintAccess, (req, res, next) => {
+router.delete('/sprints/:id', sprintAccess, requirePermission('sprint.delete', sprintSpace), (req, res, next) => {
   try {
     const sprint = getSprint(req.params.id);
     if (!sprint) return res.status(404).json({ error: 'Sprint not found.' });

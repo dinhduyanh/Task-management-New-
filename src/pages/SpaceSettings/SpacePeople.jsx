@@ -3,10 +3,14 @@ import Icon from '../../components/common/Icon';
 import UserAvatar from '../../components/common/UserAvatar';
 import { useAppShell } from '../../context/appShellContext';
 import { api } from '../../services/api';
+import { useProjectPermissions } from '../../services/projectPermissions';
+
+const ADMIN_PROJECT = 'Admin Project';
 import { ConfirmModal } from '../SpaceBacklog/SprintModals';
 
-function useProjectRoles() {
-  const [roles, setRoles] = useState(null);
+/** Project roles that can be given to members: never "All Member" (implicit); "Admin Project" only by project admins. */
+function useProjectRoles(isProjectAdmin) {
+  const [allRoles, setRoles] = useState(null);
   const [error, setError] = useState('');
   useEffect(() => {
     let active = true;
@@ -15,6 +19,7 @@ function useProjectRoles() {
       .catch((loadError) => { if (active) { setRoles([]); setError(loadError.message); } });
     return () => { active = false; };
   }, []);
+  const roles = allRoles && allRoles.filter((role) => (role.isSystem ? role.name === ADMIN_PROJECT && isProjectAdmin : true));
   return { roles, error };
 }
 
@@ -95,11 +100,13 @@ function AddMemberForm({ space, roles, onAdd }) {
   );
 }
 
-function MemberRow({ member, space, roles, canManage, onAdd, onRemove }) {
+function MemberRow({ member, space, roles, canManage, isProjectAdmin, onAdd, onRemove }) {
   const { user: currentUser } = useAppShell();
   const userId = member.userId || member.id;
   const isOwner = Boolean(space.ownerId) && space.ownerId === userId;
   const current = memberRoles(member);
+  // Only project admins may change or remove another project admin.
+  const lockedAdmin = current.includes(ADMIN_PROJECT) && !isProjectAdmin;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(current);
   const [error, setError] = useState('');
@@ -133,7 +140,7 @@ function MemberRow({ member, space, roles, canManage, onAdd, onRemove }) {
             {current.length ? current.map((role) => <span key={role} className="sp-role-chip">{role}</span>) : <span className="sp-role-chip is-empty">No role</span>}
           </div>
         )}
-        {canManage && !editing && (
+        {canManage && !lockedAdmin && !editing && (
           <div className="sp-member-actions">
             <button type="button" className="sp-icon-button" onClick={() => { setDraft(current); setEditing(true); }} aria-label={`Change roles of ${name}`} title="Change roles"><Icon name="edit" size={15} /></button>
             <button
@@ -165,8 +172,9 @@ function MemberRow({ member, space, roles, canManage, onAdd, onRemove }) {
 
 export function PeopleSettings({ space, onAddMember, onRemoveMember }) {
   const members = Array.isArray(space.members) ? space.members : [];
-  const canManage = Boolean(space.permissions?.manage);
-  const { roles, error: rolesError } = useProjectRoles();
+  const { can, isProjectAdmin } = useProjectPermissions(space);
+  const canManage = can('project.setting');
+  const { roles, error: rolesError } = useProjectRoles(isProjectAdmin);
   const [confirm, setConfirm] = useState(null);
   const [notice, setNotice] = useState('');
 
@@ -177,7 +185,7 @@ export function PeopleSettings({ space, onAddMember, onRemoveMember }) {
     <section className="settings-secondary-content">
       <div className="settings-content-heading">
         <h1>People</h1>
-        <p>{canManage ? 'Add people to this project and choose their project roles. Only members can see the project.' : 'People who have access to this project. Only the project owner or an administrator can change members.'}</p>
+        <p>{canManage ? 'Add people to this project and choose their project roles. Only members can see the project.' : 'People who have access to this project. Only people with the Project Setting permission can change members.'}</p>
       </div>
 
       {canManage && (
@@ -199,6 +207,7 @@ export function PeopleSettings({ space, onAddMember, onRemoveMember }) {
               space={space}
               roles={roles || []}
               canManage={canManage && roles !== null}
+              isProjectAdmin={isProjectAdmin}
               onAdd={onAddMember}
               onRemove={(target, name) => setConfirm({ target, name })}
             />
@@ -227,47 +236,6 @@ export function PeopleSettings({ space, onAddMember, onRemoveMember }) {
           }}
         />
       )}
-    </section>
-  );
-}
-
-export function PermissionsSettings({ space }) {
-  const { isAdmin, navigate } = useAppShell();
-  const { roles, error } = useProjectRoles();
-  const members = Array.isArray(space.members) ? space.members : [];
-
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Permissions</h1><p>Who can do what in this project.</p></div>
-
-      <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Access rules</strong><span>System-wide</span></div>
-        <div className="settings-role-row"><span className="settings-role-icon"><Icon name="shield" size={17} /></span><div><strong>Administrators</strong><p>See and manage every project, its members and its work items.</p></div></div>
-        <div className="settings-role-row"><span className="settings-role-icon"><Icon name="users" size={17} /></span><div><strong>Project owner</strong><p>The person who created the project. Can add and remove members, change their roles and delete the project.</p></div></div>
-        <div className="settings-role-row"><span className="settings-role-icon"><Icon name="lock" size={17} /></span><div><strong>Project members</strong><p>Can view the project and create and update its work items, sprints, teams and files. People who are not members cannot see the project.</p></div></div>
-      </div>
-
-      <div className="settings-section-card">
-        <div className="settings-section-card-header">
-          <strong>Project roles</strong>
-          {isAdmin
-            ? <button type="button" className="sp-link" onClick={() => navigate('systemSettings', { tab: 'project-roles' })}>Manage in System settings</button>
-            : <span>Managed by administrators</span>}
-        </div>
-        {roles === null && <div className="settings-empty-state">Loading roles…</div>}
-        {error && <p className="sp-error sp-pad" role="alert">{error}</p>}
-        {(roles || []).map((role) => {
-          const count = members.filter((member) => memberRoles(member).includes(role.name)).length;
-          return (
-            <div className="settings-role-row" key={role.id}>
-              <span className="settings-role-icon"><Icon name="shield" size={17} /></span>
-              <div className="sp-role-row-text"><strong>{role.name}</strong><p>{role.description || 'No description.'}</p></div>
-              <span className="sp-role-count">{count} in this project</span>
-            </div>
-          );
-        })}
-        <p className="settings-note">Project roles describe each member&apos;s responsibility in the project; they are labels and do not change what a member can access.</p>
-      </div>
     </section>
   );
 }

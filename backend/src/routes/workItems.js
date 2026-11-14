@@ -1,8 +1,10 @@
 import { Router } from 'express';
-import { db, createId, nowIso, parseJson, workItemRowToObject, logActivity } from '../db.js';
+import { db, createId, nowIso, parseJson, logActivity } from '../db.js';
 import { ISSUE_WORKFLOWS, initialStatus, normalizeIssueType } from '../workflows.js';
 import { mergeAttachmentList } from './attachments.js';
 import { canAccessSpace, requireSpaceAccess, spaceFilter, spaceIdOf } from '../access.js';
+import { allowed, presentItem, reviewItemCreate, reviewItemUpdate, userRecord } from '../workItemPermissions.js';
+import { denied } from '../projectPermissions.js';
 
 const router = Router();
 
@@ -59,7 +61,7 @@ function syncLinks(workItemId, links) {
 
 /** Rows for the given ids, or an error status when any is missing or not accessible. */
 function accessibleItems(req, ids) {
-  const rows = ids.map((id) => db.prepare('SELECT id, space_id FROM work_items WHERE id = ?').get(id));
+  const rows = ids.map((id) => db.prepare('SELECT * FROM work_items WHERE id = ?').get(id));
   if (rows.some((row) => !row || !canAccessSpace(req.user, row.space_id))) return null;
   return rows;
 }
@@ -72,7 +74,7 @@ router.get('/', (req, res) => {
   const rows = req.query.spaceId
     ? db.prepare('SELECT * FROM work_items WHERE space_id = ? ORDER BY created_at DESC').all(String(req.query.spaceId))
     : db.prepare(`SELECT * FROM work_items WHERE ${filter.sql} ORDER BY created_at DESC`).all(...filter.params);
-  res.json(rows.map(workItemRowToObject));
+  res.json(rows.map((row) => presentItem(req, row)));
 });
 
 router.get('/search', (req, res) => {
@@ -82,7 +84,7 @@ router.get('/search', (req, res) => {
   const rows = db.prepare(`SELECT wi.*, s.name AS space_name, s.code AS space_code
     FROM work_items wi JOIN spaces s ON s.id = wi.space_id
     WHERE lower(wi.issue_key) = lower(?) AND ${filter.sql} ORDER BY s.name`).all(key, ...filter.params);
-  res.json(rows.map((row) => ({ ...workItemRowToObject(row), spaceName: row.space_name, spaceCode: row.space_code })));
+  res.json(rows.map((row) => ({ ...presentItem(req, row), spaceName: row.space_name, spaceCode: row.space_code })));
 });
 
 // Moves work items into a sprint (or the backlog with sprintId null) and sets their order.
@@ -98,10 +100,11 @@ router.post('/rank', (req, res, next) => {
     if (rows.some((row) => row.space_id !== spaceId)) return res.status(400).json({ error: 'Work items must belong to the same Space.' });
     const error = sprintError(spaceId, sprintId);
     if (error) return res.status(400).json({ error });
+    if (rows.some((row) => !allowed(req, spaceId, 'task.move', row))) return denied(res, 'task.move');
     const now = nowIso();
     const update = db.prepare("UPDATE work_items SET data_json = json_set(data_json, '$.sprintId', json(?), '$.rank', ?, '$.updatedAt', ?), updated_at = ? WHERE id = ?");
     db.transaction(() => ids.forEach((id, index) => update.run(JSON.stringify(sprintId), index, now, now, id)))();
-    res.json(ids.map((id) => workItemRowToObject(db.prepare('SELECT * FROM work_items WHERE id = ?').get(id))));
+    res.json(ids.map((id) => presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(id))));
   } catch (error) { next(error); }
 });
 
@@ -114,6 +117,12 @@ router.post('/', (req, res, next) => {
     const issueType = issueTypeOf(body);
     const title = String(body.title || body.summary || '').trim();
     if (!title) return res.status(400).json({ error: 'Title is required.' });
+    // A clone names its source (cloneOf) and needs "Clone task" on it instead of "Create task".
+    const source = body.cloneOf ? db.prepare('SELECT * FROM work_items WHERE id = ?').get(String(body.cloneOf)) : null;
+    if (body.cloneOf && (!source || source.space_id !== spaceId)) return res.status(400).json({ error: 'The work item to clone was not found in this Project/Space.' });
+    const refusal = reviewItemCreate(req, spaceId, body, source);
+    if (refusal) return res.status(refusal.status).json({ error: refusal.error, permission: refusal.permission });
+    const creator = userRecord(req.user);
 
     const parentId = body.parentId || body.parent?.id || null;
     if (issueType === 'Sub-task' && !parentId) return res.status(400).json({ error: 'Parent is required for a Sub-task.' });
@@ -137,6 +146,10 @@ router.post('/', (req, res, next) => {
     const status = String(body.status || initialStatus(issueType));
     const data = {
       ...body,
+      cloneOf: undefined,
+      // The creator is always the signed-in user; comments and work logs start empty.
+      creator, creatorId: creator.id,
+      comments: [], workLogs: [],
       id, key, code: key,
       title, summary: title,
       type: issueType, issueType,
@@ -158,7 +171,7 @@ router.post('/', (req, res, next) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(id, spaceId, key, issueType, title, status, data.priority, parentId,
           body.assignee?.id || body.assigneeId || null,
-          body.creator?.id || body.creatorId || null,
+          creator.id,
           body.team?.id || body.teamId || null,
           body.release?.id || body.releaseId || null,
           JSON.stringify(Array.isArray(body.labels) ? body.labels : []),
@@ -166,25 +179,27 @@ router.post('/', (req, res, next) => {
       syncLinks(id, body.links);
       db.prepare(`INSERT INTO work_item_status_history (id, work_item_id, from_status, to_status, actor_name, created_at)
         VALUES (?, ?, NULL, ?, ?, ?)`)
-        .run(createId('status'), id, status, 'You', now);
-      logActivity({ spaceId, workItemId: id, description: `created ${issueType} ${key}` });
+        .run(createId('status'), id, status, creator.fullName, now);
+      logActivity({ spaceId, workItemId: id, actorName: creator.fullName, description: `created ${issueType} ${key}` });
     })();
 
-    res.status(201).json(workItemRowToObject(db.prepare('SELECT * FROM work_items WHERE id = ?').get(id)));
+    res.status(201).json(presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(id)));
   } catch (error) { next(error); }
 });
 
 router.get('/:id', itemAccess, (req, res) => {
   const row = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Work item not found.' });
-  res.json(workItemRowToObject(row));
+  res.json(presentItem(req, row));
 });
 
 router.patch('/:id', itemAccess, (req, res, next) => {
   try {
     const row = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Work item not found.' });
-    const updates = req.body || {};
+    const review = reviewItemUpdate(req, row, req.body);
+    if (review.error) return res.status(review.status).json({ error: review.error, permission: review.permission });
+    const updates = review.updates;
     const currentData = parseJson(row.data_json, {});
     const nextData = { ...currentData, ...updates, updatedAt: nowIso() };
     const title = String(nextData.title || nextData.summary || row.title).trim();
@@ -233,7 +248,7 @@ router.patch('/:id', itemAccess, (req, res, next) => {
         WHERE id = ?`)
         .run(title, status, priority, parentId,
           nextData.assignee?.id || nextData.assigneeId || null,
-          nextData.creator?.id || nextData.creatorId || null,
+          row.creator_id,
           nextData.team?.id || nextData.teamId || null,
           nextData.release?.id || nextData.releaseId || null,
           JSON.stringify(Array.isArray(nextData.labels) ? nextData.labels : []),
@@ -242,19 +257,21 @@ router.patch('/:id', itemAccess, (req, res, next) => {
       if (status !== row.status) {
         db.prepare(`INSERT INTO work_item_status_history (id, work_item_id, from_status, to_status, actor_name, created_at)
           VALUES (?, ?, ?, ?, ?, ?)`)
-          .run(createId('status'), row.id, row.status, status, 'You', nextData.updatedAt);
+          .run(createId('status'), row.id, row.status, status, req.user.fullName || 'You', nextData.updatedAt);
       }
-      logActivity({ spaceId: row.space_id, workItemId: row.id, description: `updated ${Object.keys(updates).join(', ') || 'work item'}` });
+      logActivity({ spaceId: row.space_id, workItemId: row.id, actorName: req.user.fullName || 'You', description: `updated ${Object.keys(updates).join(', ') || 'work item'}` });
     })();
 
-    res.json(workItemRowToObject(db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.id)));
+    res.json(presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.id)));
   } catch (error) { next(error); }
 });
 
 router.delete('/bulk', (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
   if (!ids.length) return res.status(400).json({ error: 'At least one Work Item ID is required.' });
-  if (!accessibleItems(req, ids)) return res.status(404).json({ error: 'Work item not found.' });
+  const rows = accessibleItems(req, ids);
+  if (!rows) return res.status(404).json({ error: 'Work item not found.' });
+  if (rows.some((row) => !allowed(req, row.space_id, 'task.delete', row))) return denied(res, 'task.delete');
   const placeholders = ids.map(() => '?').join(',');
   const result = db.prepare(`DELETE FROM work_items WHERE id IN (${placeholders})`).run(...ids);
   res.json({ deletedCount: result.changes });
@@ -266,7 +283,10 @@ router.post('/bulk-move', (req, res, next) => {
     const targetSpaceId = String(req.body?.targetSpaceId || '');
     const targetSpace = db.prepare('SELECT id, code FROM spaces WHERE id = ?').get(targetSpaceId);
     if (!ids.length || !targetSpace || !canAccessSpace(req.user, targetSpace.id)) return res.status(400).json({ error: 'Work Items and a valid target Project are required.' });
-    if (!accessibleItems(req, ids)) return res.status(404).json({ error: 'Work item not found.' });
+    const rows = accessibleItems(req, ids);
+    if (!rows) return res.status(404).json({ error: 'Work item not found.' });
+    if (rows.some((row) => !allowed(req, row.space_id, 'task.move', row))) return denied(res, 'task.move');
+    if (!allowed(req, targetSpace.id, 'task.create')) return denied(res, 'task.create');
     const update = db.prepare('UPDATE work_items SET space_id = ?, updated_at = ?, data_json = json_set(data_json, "$.spaceId", ?, "$.projectId", ?, "$.spaceCode", ?) WHERE id = ?');
     const now = nowIso();
     db.transaction(() => ids.forEach((id) => update.run(targetSpaceId, now, targetSpaceId, targetSpaceId, targetSpace.code, id)))();
@@ -275,27 +295,32 @@ router.post('/bulk-move', (req, res, next) => {
 });
 
 router.delete('/:id', itemAccess, (req, res) => {
+  const row = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
+  if (!allowed(req, row.space_id, 'task.delete', row)) return denied(res, 'task.delete');
   const result = db.prepare('DELETE FROM work_items WHERE id = ?').run(req.params.id);
   if (!result.changes) return res.status(404).json({ error: 'Work item not found.' });
   res.status(204).end();
 });
 
 router.get('/:id/comments', itemAccess, (req, res) => {
+  const item = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
+  if (!allowed(req, item.space_id, 'comment.view', item)) return denied(res, 'comment.view');
   const rows = db.prepare('SELECT * FROM comments WHERE work_item_id = ? AND deleted_at IS NULL ORDER BY created_at').all(req.params.id);
   res.json(rows.map((row) => ({ ...parseJson(row.data_json, {}), id: row.id, parentCommentId: row.parent_comment_id, authorId: row.author_id, author: row.author_name, body: row.body, createdAt: row.created_at, updatedAt: row.updated_at })));
 });
 
 router.post('/:id/comments', itemAccess, (req, res) => {
-  const issue = db.prepare('SELECT id FROM work_items WHERE id = ?').get(req.params.id);
+  const issue = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
   if (!issue) return res.status(404).json({ error: 'Work item not found.' });
+  if (!allowed(req, issue.space_id, 'comment.add', issue)) return denied(res, 'comment.add');
   const body = String(req.body?.body || '').trim();
   if (!body) return res.status(400).json({ error: 'Comment cannot be empty.' });
   const id = createId('comment'); const now = nowIso();
-  const authorName = String(req.body?.authorName || 'You');
+  const authorName = req.user.fullName || req.user.username;
   db.prepare(`INSERT INTO comments (id, work_item_id, parent_comment_id, author_id, author_name, body, created_at, updated_at, data_json)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, issue.id, req.body?.parentCommentId || null, req.body?.authorId || null, authorName, body, now, now, JSON.stringify(req.body?.metadata || {}));
-  res.status(201).json({ id, workItemId: issue.id, parentCommentId: req.body?.parentCommentId || null, authorId: req.body?.authorId || null, author: authorName, body, createdAt: now, updatedAt: now });
+    .run(id, issue.id, req.body?.parentCommentId || null, req.user.id, authorName, body, now, now, JSON.stringify(req.body?.metadata || {}));
+  res.status(201).json({ id, workItemId: issue.id, parentCommentId: req.body?.parentCommentId || null, authorId: req.user.id, author: authorName, body, createdAt: now, updatedAt: now });
 });
 
 export default router;

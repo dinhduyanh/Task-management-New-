@@ -27,6 +27,7 @@ import {
   isPlannable,
   summarize
 } from './backlogModel';
+import { useProjectPermissions } from '../../services/projectPermissions';
 import './SpaceBacklog.css';
 
 const SETTINGS_KEY = 'taskflow.backlog.view';
@@ -176,6 +177,10 @@ export default function SpaceBacklog({
     try { localStorage.setItem(SETTINGS_KEY, JSON.stringify(next)); } catch { /* per-viewer preference only */ }
   }
 
+  const { can } = useProjectPermissions(space);
+  const maySprintCreate = can('sprint.create');
+  const maySprintUpdate = can('sprint.update');
+  const maySprintDelete = can('sprint.delete');
   const inSpace = useMemo(() => (Array.isArray(tasks) ? tasks : []).filter((task) => isInSpace(task, space)), [tasks, space]);
   const plannable = useMemo(() => inSpace.filter((issue) => isPlannable(issue, settings)), [inSpace, settings]);
   const filters = useIssueFilters(plannable);
@@ -261,6 +266,11 @@ export default function SpaceBacklog({
     setDrop(null);
     setDragIds(null);
     if (!ids.length) return;
+    const locked = ids.map((id) => inSpace.find((issue) => String(issue.id) === String(id))).filter((issue) => issue && !can('task.move', issue));
+    if (locked.length) {
+      setToast({ type: 'error', message: `You do not have the Move task permission for ${locked.map(issueKey).join(', ')}.` });
+      return;
+    }
     let beforeId = null;
     if (target.rowId) {
       const full = (lists.get(listId) || []).map((issue) => String(issue.id));
@@ -408,6 +418,9 @@ export default function SpaceBacklog({
           onDragEnd={() => { setDragIds(null); setDrop(null); }}
           onDragOver={(event) => handleRowDragOver(event, listId, issue)}
           onDrop={(event) => handleDrop(event, listId)}
+          canMove={can('task.move', issue)}
+          canUpdate={can('task.update', issue)}
+          canDelete={can('task.delete', issue)}
         />
       );
     });
@@ -454,7 +467,7 @@ export default function SpaceBacklog({
           <h2>{title}</h2>
           {sprint?.status === 'active' && <span className="bl-active-badge">Active</span>}
           {sprint && (
-            <button type="button" className="bl-dates" onClick={() => setSprintForm({ mode: 'edit', sprint })}>
+            <button type="button" className="bl-dates" disabled={!maySprintUpdate} onClick={() => setSprintForm({ mode: 'edit', sprint })}>
               <Icon name="edit" size={14} />
               {sprint.startDate || sprint.endDate
                 ? `${formatShortDate(sprint.startDate) || '…'} – ${formatShortDate(sprint.endDate) || '…'}`
@@ -467,10 +480,10 @@ export default function SpaceBacklog({
           <span className="bl-head-spacer" />
           {settings.showEstimates && summary.estimate > 0 && <span className="bl-points" title="Total estimate">{summary.estimate} pts</span>}
           <StatusCounters counts={summary.counts} />
-          {isBacklog && (
+          {isBacklog && maySprintCreate && (
             <button type="button" className="bl-button" onClick={createSprint}>Create sprint</button>
           )}
-          {sprint?.status === 'future' && (
+          {sprint?.status === 'future' && maySprintUpdate && (
             <button
               type="button"
               className="bl-button"
@@ -484,15 +497,15 @@ export default function SpaceBacklog({
           {sprint?.status === 'active' && (
             <>
               <button type="button" className="bl-button" onClick={() => navigateProjectTab(onNavigate, space, 'Active Sprints')}>Open board</button>
-              <button type="button" className="bl-button is-primary" onClick={() => setCompleteSprint(sprint)}>Complete sprint</button>
+              {maySprintUpdate && <button type="button" className="bl-button is-primary" onClick={() => setCompleteSprint(sprint)}>Complete sprint</button>}
             </>
           )}
-          {sprint && (
+          {sprint && (maySprintUpdate || maySprintDelete) && (
             <MenuButton
               label={`${sprint.name} actions`}
               items={[
-                { label: 'Edit sprint', onSelect: () => setSprintForm({ mode: 'edit', sprint }) },
-                { label: 'Delete sprint', danger: true, onSelect: () => confirmDeleteSprint(sprint) }
+                ...(maySprintUpdate ? [{ label: 'Edit sprint', onSelect: () => setSprintForm({ mode: 'edit', sprint }) }] : []),
+                ...(maySprintDelete ? [{ label: 'Delete sprint', danger: true, onSelect: () => confirmDeleteSprint(sprint) }] : [])
               ]}
             />
           )}
@@ -519,9 +532,11 @@ export default function SpaceBacklog({
                     )
               )}
             </div>
-            <button type="button" className="bl-create" onClick={() => setCreateRequest({ listId, parentId: '', allowedIssueTypes: null })}>
-              <Icon name="plus" size={15} /> Create
-            </button>
+            {can('task.create') && (
+              <button type="button" className="bl-create" onClick={() => setCreateRequest({ listId, parentId: '', allowedIssueTypes: null })}>
+                <Icon name="plus" size={15} /> Create
+              </button>
+            )}
           </>
         )}
       </section>
@@ -549,7 +564,7 @@ export default function SpaceBacklog({
               label="More backlog actions"
               className="bl-tool"
               items={[
-                { label: 'Create sprint', onSelect: createSprint },
+                ...(maySprintCreate ? [{ label: 'Create sprint', onSelect: createSprint }] : []),
                 { label: 'Expand all', onSelect: () => setCollapsedLists(new Set()) },
                 { label: 'Collapse all', onSelect: () => setCollapsedLists(new Set([...lists.keys()])) }
               ]}
@@ -560,15 +575,15 @@ export default function SpaceBacklog({
         {selectedList.length > 0 && (
           <div className="bl-bulk" role="region" aria-label="Selected work items">
             <strong>{selectedList.length} selected</strong>
-            <label>
+            {selectedList.every((id) => can('task.move', inSpace.find((issue) => String(issue.id) === id))) && <label>
               Move to
               <select value="" onChange={(event) => { if (event.target.value) { moveIssues(selectedList, event.target.value); setSelectedIds(new Set()); } }}>
                 <option value="">Choose…</option>
                 {openSprints.map((sprint) => <option key={sprint.id} value={String(sprint.id)}>{sprint.name}</option>)}
                 <option value={BACKLOG_ID}>Backlog</option>
               </select>
-            </label>
-            <button type="button" className="danger" onClick={() => confirmDeleteIssues(selectedList)}><Icon name="trash" size={14} /> Delete</button>
+            </label>}
+            {selectedList.every((id) => can('task.delete', inSpace.find((issue) => String(issue.id) === id))) && <button type="button" className="danger" onClick={() => confirmDeleteIssues(selectedList)}><Icon name="trash" size={14} /> Delete</button>}
             <button type="button" onClick={() => setSelectedIds(new Set())}>Clear selection</button>
           </div>
         )}

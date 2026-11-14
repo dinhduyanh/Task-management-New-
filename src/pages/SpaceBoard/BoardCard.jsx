@@ -24,7 +24,7 @@ function startOfToday() {
 }
 
 /** A work item on the board. Click (or Enter) opens it; drag to move it to another column. */
-export default function BoardCard({ issue, childCount = 0, dragging = false, onOpen, onDragStart, onDragEnd }) {
+export default function BoardCard({ issue, childCount = 0, dragging = false, draggable = true, onOpen, onDragStart, onDragEnd }) {
   const type = issueType(issue);
   const status = getIssueStatus(issue);
   const completed = isCompletedStatus(status);
@@ -45,8 +45,8 @@ export default function BoardCard({ issue, childCount = 0, dragging = false, onO
 
   return (
     <article
-      className={`sb-card ${dragging ? 'is-dragging' : ''}`}
-      draggable
+      className={`sb-card ${dragging ? 'is-dragging' : ''} ${draggable ? '' : 'is-locked'}`}
+      draggable={draggable}
       tabIndex={0}
       aria-label={`${key} ${title}. Status ${status}. Press Enter to open.`}
       onClick={onOpen}

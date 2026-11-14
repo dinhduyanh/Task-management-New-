@@ -18,6 +18,7 @@ import SpaceTeams from './pages/SpaceTeams/SpaceTeams';
 import Documents from './pages/Documents/Documents';
 import SystemSettings from './pages/SystemSettings/SystemSettings';
 import AccessDenied from './pages/SystemSettings/AccessDenied';
+import { canInSpace } from './services/projectPermissions';
 import Dashboard from './pages/Dashboard/Dashboard';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
@@ -445,6 +446,16 @@ export default function App() {
           title="Space not found"
           activeSection="Spaces"
           onBack={goBack}
+        />
+      );
+    } else if (!canInSpace(selectedSpace, 'project.setting', null, currentUser)) {
+      // Route guard: project settings need the "Project Setting" permission (the API enforces it too).
+      pageContent = (
+        <AccessDenied
+          {...sharedNavigationProps}
+          message={`You need the Project Setting permission to open the settings of ${selectedSpace.name}. Ask a project admin if you need access.`}
+          backLabel="Back to project"
+          onBack={() => navigate('space', { id: selectedSpace.id, name: selectedSpace.name })}
         />
       );
     } else {

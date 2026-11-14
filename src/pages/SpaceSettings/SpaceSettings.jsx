@@ -1,7 +1,8 @@
 import { useMemo, useRef, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Icon from '../../components/common/Icon';
-import { PeopleSettings, PermissionsSettings } from './SpacePeople';
+import { PeopleSettings } from './SpacePeople';
+import PermissionsSettings from './SpacePermissions';
 import './SpaceSettings.css';
 
 const SETTINGS_ITEMS = [

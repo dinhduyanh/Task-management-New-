@@ -580,3 +580,7 @@
   .tm-row > span:last-child { grid-column: 2; }
   .tm-row-head > span:last-child { display: none; }
 }
+
+.tt-name:disabled {
+  cursor: default;
+}

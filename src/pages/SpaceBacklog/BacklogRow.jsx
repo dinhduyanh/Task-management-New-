@@ -14,9 +14,10 @@ import { getIssueStatus, getTransitionOptions } from '../SpacesList/workflows';
 import { getEstimate } from './backlogModel';
 import MenuButton from './MenuButton';
 
-function EstimateField({ issue, onChange }) {
+function EstimateField({ issue, onChange, disabled = false }) {
   const value = getEstimate(issue);
   const [draft, setDraft] = useState(null); // null = not editing
+  if (disabled) return <span className={`bl-estimate is-readonly ${value === null ? 'is-empty' : ''}`} title="Estimate (story points)">{value ?? '-'}</span>;
 
   function commit() {
     if (draft === null) return;
@@ -62,7 +63,7 @@ function EstimateField({ issue, onChange }) {
 }
 
 /** Status dropdown limited to the transitions the issue's workflow allows. */
-function StatusSelect({ issue, allIssues, onChange }) {
+function StatusSelect({ issue, allIssues, onChange, disabled = false }) {
   const status = getIssueStatus(issue);
   const options = getTransitionOptions(issue, allIssues);
   return (
@@ -70,6 +71,8 @@ function StatusSelect({ issue, allIssues, onChange }) {
       className={`bl-status tone-${statusTone(status)}`}
       value={status}
       aria-label={`Status of ${issueKey(issue)}`}
+      disabled={disabled}
+      title={disabled ? 'You do not have the Move task permission' : undefined}
       onChange={(event) => onChange(event.target.value)}
       onClick={(event) => event.stopPropagation()}
     >
@@ -102,7 +105,10 @@ export default function BacklogRow({
   onDragStart,
   onDragEnd,
   onDragOver,
-  onDrop
+  onDrop,
+  canMove = true,
+  canUpdate = true,
+  canDelete = true
 }) {
   const type = issueType(issue);
   const status = getIssueStatus(issue);
@@ -117,7 +123,7 @@ export default function BacklogRow({
   return (
     <div
       className={`bl-row ${selected ? 'is-selected' : ''} ${dragging ? 'is-dragging' : ''} ${dropPosition ? `drop-${dropPosition}` : ''}`}
-      draggable
+      draggable={canMove}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       onDragOver={onDragOver}
@@ -138,8 +144,8 @@ export default function BacklogRow({
       <span className="bl-hierarchy" title={hierarchy || undefined} aria-label={hierarchy || undefined}>
         {hierarchy && <Icon name="subTask" size={15} />}
       </span>
-      <StatusSelect issue={issue} allIssues={allIssues} onChange={(next) => onStatusChange(next)} />
-      {showEstimate && <EstimateField issue={issue} onChange={onEstimateChange} />}
+      <StatusSelect issue={issue} allIssues={allIssues} onChange={(next) => onStatusChange(next)} disabled={!canMove} />
+      {showEstimate && <EstimateField issue={issue} onChange={onEstimateChange} disabled={!canUpdate} />}
       <span className={`bl-avatar ${assignee ? '' : 'is-unassigned'}`} title={assignee ? `Assignee: ${assignee}` : 'Unassigned'}>
         {assignee ? getInitials(assignee) : <Icon name="user" size={13} />}
       </span>
@@ -147,11 +153,13 @@ export default function BacklogRow({
         label={`Actions for ${issueKey(issue)}`}
         items={[
           { label: 'View details', onSelect: onOpen },
-          { heading: 'Move to' },
-          ...moveTargets.map((target) => ({ label: target.name, onSelect: () => onMove(target.id) })),
-          { label: 'Top of list', onSelect: () => onMoveToEdge('top') },
-          { label: 'Bottom of list', onSelect: () => onMoveToEdge('bottom') },
-          { label: 'Delete', danger: true, onSelect: onDelete }
+          ...(canMove ? [
+            { heading: 'Move to' },
+            ...moveTargets.map((target) => ({ label: target.name, onSelect: () => onMove(target.id) })),
+            { label: 'Top of list', onSelect: () => onMoveToEdge('top') },
+            { label: 'Bottom of list', onSelect: () => onMoveToEdge('bottom') }
+          ] : []),
+          ...(canDelete ? [{ label: 'Delete', danger: true, onSelect: onDelete }] : [])
         ]}
       />
     </div>

@@ -1361,3 +1361,21 @@
 /* Key button opens the Task Detail drawer */
 .slv-key{padding:0;border:0;background:transparent;font:inherit;font-size:11px;line-height:1.3;cursor:pointer}
 .slv-key:focus-visible{outline:2px solid var(--tf-bd-4c9aff);outline-offset:2px;border-radius:2px}
+
+/* Controls the user has no permission to use stay readable but inert. */
+.slv-priority-trigger:disabled,
+.slv-status:disabled,
+.slv-assignee-trigger:disabled {
+  cursor: default;
+  opacity: 1;
+}
+
+.slv-priority-trigger:disabled > svg,
+.slv-status:disabled > svg,
+.slv-assignee-trigger:disabled .slv-assignee-action {
+  visibility: hidden;
+}
+
+.slv-inline-date.is-readonly {
+  cursor: default;
+}

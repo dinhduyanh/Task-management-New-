@@ -200,7 +200,7 @@ export default function Documents({
     PREVIEWABLE_EXTENSIONS.has(file.extension) ? { label: 'Preview', onSelect: () => setPreviewId(file.id) } : null,
     { label: 'Download', onSelect: () => { window.location.assign(api.attachmentUrl(file.id, 'download')); } },
     { label: `Open ${file.workItem?.key || 'work item'}`, onSelect: () => openWorkItem(file) },
-    { label: 'Delete', danger: true, onSelect: () => confirmDelete(file) }
+    file.permissions?.delete ? { label: 'Delete', danger: true, onSelect: () => confirmDelete(file) } : null
   ];
 
 
@@ -357,7 +357,7 @@ export default function Documents({
           files={previewable}
           onNavigate={(file) => setPreviewId(file.id)}
           onOpenWorkItem={() => openWorkItem(previewFile)}
-          onDelete={() => confirmDelete(previewFile)}
+          onDelete={previewFile.permissions?.delete ? () => confirmDelete(previewFile) : null}
           onClose={() => setPreviewId(null)}
         />
       )}

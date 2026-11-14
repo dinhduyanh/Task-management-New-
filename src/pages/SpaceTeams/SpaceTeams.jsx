@@ -11,6 +11,7 @@ import { MultiFilter } from '../SpacesList/IssueFilters';
 import MenuButton from '../SpaceBacklog/MenuButton';
 import { ConfirmModal } from '../SpaceBacklog/SprintModals';
 import TeamFormModal from './TeamFormModal';
+import { useProjectPermissions } from '../../services/projectPermissions';
 import './SpaceTeams.css';
 
 const PAGE_SIZES = [10, 20, 50];
@@ -65,6 +66,7 @@ export default function SpaceTeams({
   const [form, setForm] = useState(null); // { team } (team null = create)
   const [confirm, setConfirm] = useState(null);
   const [toast, setToast] = useState(null);
+  const mayManageTeams = useProjectPermissions(space).can('team');
 
   // Teams belong to this project only; App remounts the page per Space (key={space.id}).
   useEffect(() => {
@@ -202,15 +204,17 @@ export default function SpaceTeams({
           {hasFilters && (
             <button type="button" className="it-clear-filters" onClick={clearFilters}><Icon name="close" size={13} /> Clear filters</button>
           )}
-          <button type="button" className="tt-create" onClick={() => setForm({ team: null })}>
-            <Icon name="plus" size={15} /> Create Team
-          </button>
+          {mayManageTeams && (
+            <button type="button" className="tt-create" onClick={() => setForm({ team: null })}>
+              <Icon name="plus" size={15} /> Create Team
+            </button>
+          )}
         </section>
 
         {selectedTeams.length > 0 && (
           <div className="tt-bulk" role="region" aria-label="Selected teams">
             <strong>{selectedTeams.length} selected</strong>
-            <button type="button" className="danger" onClick={() => confirmDelete(selectedTeams)}><Icon name="trash" size={14} /> Delete</button>
+            {mayManageTeams && <button type="button" className="danger" onClick={() => confirmDelete(selectedTeams)}><Icon name="trash" size={14} /> Delete</button>}
             <button type="button" onClick={() => setSelectedIds(new Set())}>Clear selection</button>
           </div>
         )}
@@ -250,7 +254,7 @@ export default function SpaceTeams({
                       <input type="checkbox" checked={selectedIds.has(team.id)} onChange={() => toggleSelected(team.id)} aria-label={`Select team ${team.code || team.name}`} />
                     </td>
                     <td>
-                      <button type="button" className="tt-name" onClick={() => setForm({ team })}>
+                      <button type="button" className="tt-name" onClick={() => setForm({ team })} disabled={!mayManageTeams}>
                         <strong>{team.code ? `[${team.code}] ` : ''}{team.name}</strong>
                         {(team.unit || team.description) && <small>{[team.unit, team.description].filter(Boolean).join(' · ')}</small>}
                       </button>
@@ -276,7 +280,7 @@ export default function SpaceTeams({
                     <td><Person person={team.creator} /></td>
                     <td className="tt-date">{formatDate(team.createdAt)}</td>
                     <td className="tt-actions">
-                      <MenuButton
+                      {mayManageTeams && <MenuButton
                         label={`Actions for team ${team.code || team.name}`}
                         icon="moreVertical"
                         items={[
@@ -286,7 +290,7 @@ export default function SpaceTeams({
                             : { label: 'Activate', onSelect: () => setStatus(team, 'active') },
                           { label: 'Delete', danger: true, onSelect: () => confirmDelete([team]) }
                         ]}
-                      />
+                      />}
                     </td>
                   </tr>
                 ))}

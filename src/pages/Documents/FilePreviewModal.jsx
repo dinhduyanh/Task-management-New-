@@ -35,7 +35,7 @@ export default function FilePreviewModal({ file, files = [], uploadedAt = '', on
             {files.length > 1 && <span className="dc-preview-count">{index + 1} / {files.length}</span>}
             <button type="button" onClick={onOpenWorkItem}>Open {file.workItem?.key || 'work item'}</button>
             <a href={api.attachmentUrl(file.id, 'download')} className="dc-preview-button"><Icon name="download" size={15} /> Download</a>
-            <button type="button" className="danger" onClick={onDelete} aria-label={`Delete ${file.name}`}><Icon name="trash" size={15} /></button>
+            {onDelete && <button type="button" className="danger" onClick={onDelete} aria-label={`Delete ${file.name}`}><Icon name="trash" size={15} /></button>}
             <button type="button" onClick={onClose} aria-label="Close preview"><Icon name="close" size={16} /></button>
           </div>
         </header>

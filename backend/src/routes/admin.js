@@ -2,6 +2,7 @@
 // user accounts and system roles, project roles, dashboard SQL widgets.
 import { Router } from 'express';
 import { db, createId, nowIso } from '../db.js';
+import { ALL_MEMBER_ROLE, renameRoleInRules } from '../projectPermissions.js';
 import { PASSWORD_RULE, PASSWORD_RULE_MESSAGE, hashPassword } from '../passwords.js';
 import { CHART_TYPES, runWidgetSql, validateWidgetSql } from '../widgetQuery.js';
 
@@ -143,7 +144,7 @@ function roleUsage(name) {
 }
 
 function projectRole(row) {
-  return { id: row.id, name: row.name, description: row.description, position: row.position, memberCount: roleUsage(row.name), createdAt: row.created_at, updatedAt: row.updated_at };
+  return { id: row.id, name: row.name, description: row.description, position: row.position, isSystem: Boolean(row.is_system), memberCount: row.name === ALL_MEMBER_ROLE ? null : roleUsage(row.name), createdAt: row.created_at, updatedAt: row.updated_at };
 }
 
 function readRole(body, current = null) {
@@ -184,6 +185,9 @@ router.post('/project-roles', (req, res) => {
 router.patch('/project-roles/:id', (req, res) => {
   const current = db.prepare('SELECT * FROM project_roles WHERE id = ?').get(req.params.id);
   if (!current) return res.status(404).json({ error: 'Project role not found.' });
+  if (current.is_system && req.body?.name !== undefined && String(req.body.name).trim() !== current.name) {
+    return res.status(400).json({ error: `"${current.name}" is a built-in role and cannot be renamed.` });
+  }
   const { values, error, status } = readRole(req.body || {}, current);
   if (error) return res.status(status || 400).json({ error });
   db.transaction(() => {
@@ -199,6 +203,7 @@ router.patch('/project-roles/:id', (req, res) => {
         member.role = member.roles.join(', ');
         update.run(JSON.stringify(member), row.space_id, row.user_id);
       }
+      renameRoleInRules(current.name, values.name);
     }
   })();
   res.json(projectRole(db.prepare('SELECT * FROM project_roles WHERE id = ?').get(current.id)));
@@ -207,10 +212,13 @@ router.patch('/project-roles/:id', (req, res) => {
 router.delete('/project-roles/:id', (req, res) => {
   const current = db.prepare('SELECT * FROM project_roles WHERE id = ?').get(req.params.id);
   if (!current) return res.status(404).json({ error: 'Project role not found.' });
+  if (current.is_system) return res.status(400).json({ error: `"${current.name}" is a built-in role and cannot be deleted.` });
   const usage = roleUsage(current.name);
   if (usage) return res.status(409).json({ error: `"${current.name}" is assigned to ${usage} project member${usage === 1 ? '' : 's'}. Change their role first.` });
-  if (db.prepare('SELECT COUNT(*) AS count FROM project_roles').get().count <= 1) return res.status(400).json({ error: 'Keep at least one project role.' });
-  db.prepare('DELETE FROM project_roles WHERE id = ?').run(current.id);
+  db.transaction(() => {
+    db.prepare('DELETE FROM project_roles WHERE id = ?').run(current.id);
+    renameRoleInRules(current.name, null);
+  })();
   res.status(204).end();
 });
 

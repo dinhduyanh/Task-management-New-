@@ -13,6 +13,7 @@ import { getIssueStatus } from '../SpacesList/workflows';
 import BoardSettingsModal from './BoardSettingsModal';
 import KanbanBoard from './KanbanBoard';
 import { collectStatuses, findColumnForStatus, getBoardColumns, resolveTarget } from './boardConfig';
+import { useProjectPermissions } from '../../services/projectPermissions';
 import './SpaceBoard.css';
 
 export default function SpaceBoard({
@@ -31,6 +32,7 @@ export default function SpaceBoard({
   onOpenTask = () => {}
 }) {
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const { can } = useProjectPermissions(space);
   const [detailIssueId, setDetailIssueId] = useState(null);
   const [createRequest, setCreateRequest] = useState(null); // { columnId, parentId, allowedIssueTypes }
   const [toast, setToast] = useState(null);
@@ -87,9 +89,11 @@ export default function SpaceBoard({
         <ProjectHeader space={space} title={`${space.code || spaceName} board`} activeTab="Board" onNavigate={onNavigate} />
 
         <IssueToolbar filters={filters} statusOptions={statusOptions} searchLabel="Search work items on the board">
-          <button type="button" className="it-toolbar-button" onClick={() => setSettingsOpen(true)}>
-            <Icon name="sliders" size={15} /> Board settings
-          </button>
+          {can('project.setting') && (
+            <button type="button" className="it-toolbar-button" onClick={() => setSettingsOpen(true)}>
+              <Icon name="sliders" size={15} /> Board settings
+            </button>
+          )}
         </IssueToolbar>
 
         {hiddenCount > 0 && (
@@ -99,7 +103,7 @@ export default function SpaceBoard({
               {hiddenCount} work item{hiddenCount === 1 ? ' is' : 's are'} hidden because
               {hiddenCount === 1 ? ' its status is' : ' their statuses are'} not mapped to a column.
             </span>
-            <button type="button" onClick={() => setSettingsOpen(true)}>Map statuses</button>
+            {can('project.setting') && <button type="button" onClick={() => setSettingsOpen(true)}>Map statuses</button>}
           </div>
         )}
 
@@ -113,6 +117,8 @@ export default function SpaceBoard({
           onOpenIssue={setDetailIssueId}
           onCreateInColumn={(column) => setCreateRequest({ columnId: column.id, parentId: '', allowedIssueTypes: null })}
           onToast={setToast}
+          canCreate={can('task.create')}
+          canMove={(issue) => can('task.move', issue)}
         />
       </main>
 
