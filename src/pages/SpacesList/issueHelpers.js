@@ -1,8 +1,22 @@
 // Shared helpers for reading work items and filtering/sorting them.
-// Used by the Space List and Board views so both behave the same way.
+// Used by the Space List, Board and Timeline views so they behave the same way.
 import { getIssueStatus } from './workflows';
 
 export const ISSUE_TYPES = ['Epic', 'Task', 'Bug', 'Improvement', 'Story', 'Sub-task', 'Feature'];
+/** Issue types a parent of each type may contain. */
+export const CHILD_TYPES_BY_PARENT = {
+  Epic: ['Story', 'Task', 'Bug', 'Improvement'],
+  Feature: ['Story', 'Task', 'Bug', 'Improvement'],
+  Story: ['Sub-task'],
+  Task: ['Bug', 'Sub-task'],
+  Bug: ['Sub-task'],
+  Improvement: ['Sub-task'],
+  'Sub-task': []
+};
+export function getAllowedChildTypes(type) {
+  return CHILD_TYPES_BY_PARENT[type] || [];
+}
+
 export const STATUSES = ['Backlog', 'To Do', 'In Progress', 'In Review', 'Blocked', 'Done', 'Cancel'];
 export const PRIORITIES = ['High', 'Highest', 'Low', 'Lowest', 'Medium'];
 export const ORDER_OPTIONS = ['All', 'Newest created', 'Oldest created', 'Most recently updated', 'Least recently updated', 'Highest priority first', 'Lowest priority first', 'Latest start date', 'Earliest start date', 'Latest due date', 'Earliest due date'];
@@ -73,6 +87,31 @@ export function iconForType(type) {
     'Sub-task': 'subTask'
   };
   return icons[type] || 'tasks';
+}
+
+/** Colour family for a status badge. */
+export function statusTone(status) {
+  const value = String(status || '').toLowerCase();
+  if (/done|complete|closed|resolved/.test(value)) return 'done';
+  if (/cancel|reject/.test(value)) return 'cancel';
+  if (/block/.test(value)) return 'blocked';
+  if (/review|approv|test|qa/.test(value)) return 'review';
+  if (/progress|develop|doing/.test(value)) return 'progress';
+  return 'todo';
+}
+
+export function isCompletedStatus(status) {
+  const tone = statusTone(status);
+  return tone === 'done' || tone === 'cancel';
+}
+
+/** True when the work item belongs to the Space (by id or by code). */
+export function isInSpace(task, space) {
+  const id = String(space?.id ?? '');
+  const code = String(space?.code ?? '').toLowerCase();
+  const taskSpaceId = task?.spaceId ?? task?.projectId ?? task?.space?.id;
+  const taskCode = String(task?.spaceCode ?? task?.projectCode ?? '').toLowerCase();
+  return Boolean((id && String(taskSpaceId ?? '') === id) || (code && taskCode === code));
 }
 
 const DATE_FIELD_BY_FILTER = { 'Start Date': 'startDate', 'End Date': 'dueDate', 'Create Date': 'createdAt', 'Updated Date': 'updatedAt' };

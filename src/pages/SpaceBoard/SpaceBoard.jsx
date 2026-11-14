@@ -1,30 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import Toast from '../../components/common/Toast';
 import TaskDetailDrawer from '../SpacesList/TaskDetailDrawer';
 import { IssueModal, StartTransitionModal } from '../SpacesList/SpacesList';
-import { ExtraFilterControls, MoreFilters, MultiFilter, OrderFilter } from '../SpacesList/IssueFilters';
-import {
-  ISSUE_TYPES,
-  ORDER_PRESETS,
-  assigneeName,
-  getInitials,
-  issueKey,
-  matchesIssueFilters,
-  sortIssues
-} from '../SpacesList/issueHelpers';
+import IssueToolbar from '../SpacesList/IssueToolbar';
+import ProjectHeader from '../SpacesList/ProjectHeader';
+import useIssueFilters from '../SpacesList/useIssueFilters';
+import { assigneeName, isInSpace, issueKey, statusTone } from '../SpacesList/issueHelpers';
 import { getChildIssues, getIssueStatus, validateIssueTransition } from '../SpacesList/workflows';
 import BoardCard, { ISSUE_DRAG_TYPE } from './BoardCard';
 import BoardSettingsModal from './BoardSettingsModal';
-import { collectStatuses, findColumnForStatus, getBoardColumns, statusTone } from './boardConfig';
+import { collectStatuses, findColumnForStatus, getBoardColumns } from './boardConfig';
 import './SpaceBoard.css';
-
-const PROJECT_TABS = [
-  ['Summary', 'dashboard'], ['Timeline', 'calendar'], ['Board', 'board'], ['List', 'file'],
-  ['Backlog', 'spaces'], ['Active Sprints', 'check'], ['Teams', 'users']
-];
-const MAX_AVATAR_FILTERS = 6;
 
 /** Column colour from the statuses it holds, so it stays right after columns are reordered. */
 function columnTone(column) {
@@ -47,14 +36,6 @@ function resolveTarget(issue, column, allIssues) {
   return { reason: reason || `"${column.name}" has no statuses mapped to it.` };
 }
 
-function belongsToSpace(task, space) {
-  const id = String(space.id ?? '');
-  const code = String(space.code ?? '').toLowerCase();
-  const taskId = task.spaceId ?? task.projectId ?? task.space?.id;
-  const taskCode = String(task.spaceCode ?? task.projectCode ?? '').toLowerCase();
-  return (id && String(taskId ?? '') === id) || (code && taskCode === code);
-}
-
 export default function SpaceBoard({
   space = {},
   tasks = [],
@@ -70,14 +51,6 @@ export default function SpaceBoard({
   onGlobalCreate = () => {},
   onOpenTask = () => {}
 }) {
-  const [search, setSearch] = useState('');
-  const [types, setTypes] = useState([]);
-  const [assignees, setAssignees] = useState([]);
-  const [statuses, setStatuses] = useState([]);
-  const [orderBy, setOrderBy] = useState('All');
-  const [moreFields, setMoreFields] = useState([]);
-  const [priorities, setPriorities] = useState([]);
-  const [dateRanges, setDateRanges] = useState({});
   const [settingsOpen, setSettingsOpen] = useState(false);
   const [detailIssueId, setDetailIssueId] = useState(null);
   const [createRequest, setCreateRequest] = useState(null); // { columnId, parentId, allowedIssueTypes }
@@ -90,29 +63,13 @@ export default function SpaceBoard({
   const spaceName = space.name || space.code || 'Untitled Space';
   const columns = useMemo(() => getBoardColumns(space), [space]);
   const inSpace = useMemo(
-    () => (Array.isArray(tasks) ? tasks : []).filter((task) => belongsToSpace(task, space)),
+    () => (Array.isArray(tasks) ? tasks : []).filter((task) => isInSpace(task, space)),
     [tasks, space]
   );
 
-  useEffect(() => {
-    if (!toast) return undefined;
-    const timer = setTimeout(() => setToast(null), 4500);
-    return () => clearTimeout(timer);
-  }, [toast]);
-
   const statusOptions = useMemo(() => collectStatuses(columns, inSpace), [columns, inSpace]);
-  const assigneeOptions = useMemo(
-    () => [...new Set(inSpace.map(assigneeName).filter(Boolean))].sort((a, b) => a.localeCompare(b)),
-    [inSpace]
-  );
-
-  const filtered = useMemo(() => {
-    const rows = inSpace.filter((issue) => matchesIssueFilters(issue, {
-      keyword: search, types, assignees, statuses, priorities, moreFields, dateRanges
-    }));
-    const [field, direction] = ORDER_PRESETS[orderBy] || [];
-    return sortIssues(rows, field, direction);
-  }, [inSpace, search, types, assignees, statuses, priorities, moreFields, dateRanges, orderBy]);
+  const filters = useIssueFilters(inSpace);
+  const { filtered } = filters;
 
   const issuesByColumn = useMemo(() => {
     const groups = new Map(columns.map((column) => [column.id, []]));
@@ -193,42 +150,6 @@ export default function SpaceBoard({
     return Boolean(saved);
   }
 
-  function navigateTab(tab) {
-    if (tab === 'Board') return;
-    if (tab === 'Summary') onNavigate('space', { id: space.id, name: spaceName });
-    else if (tab === 'List') onNavigate('spaceList', { id: space.id, name: spaceName });
-    else onNavigate('spaceTab', { id: space.id, name: spaceName, tab });
-  }
-
-  function toggleAssignee(name) {
-    setAssignees((current) => current.includes(name) ? current.filter((item) => item !== name) : [...current, name]);
-  }
-
-  function updateMoreFields(next) {
-    const removed = moreFields.filter((field) => !next.includes(field));
-    if (removed.includes('Priority')) setPriorities([]);
-    setDateRanges((current) => {
-      const updated = { ...current };
-      removed.forEach((field) => delete updated[field]);
-      return updated;
-    });
-    setMoreFields(next);
-  }
-
-  const hasFilters = Boolean(search || types.length || assignees.length || statuses.length ||
-    priorities.length || moreFields.length || orderBy !== 'All');
-
-  function clearFilters() {
-    setSearch('');
-    setTypes([]);
-    setAssignees([]);
-    setStatuses([]);
-    setPriorities([]);
-    setMoreFields([]);
-    setDateRanges({});
-    setOrderBy('All');
-  }
-
   const detailIssue = detailIssueId === null ? null : inSpace.find((issue) => String(issue.id) === String(detailIssueId));
 
   return (
@@ -237,81 +158,13 @@ export default function SpaceBoard({
       <Sidebar activeSection="Spaces" activeSpaceId={space.id} spaces={spaces} onCreateSpace={onCreateSpace} onNavigate={onNavigate} onOpenSpaceSettings={onOpenSpaceSettings} onDeleteSpace={onDeleteSpace} />
 
       <main className="spaces-list-main sb-main">
-        <div className="slv-project-heading">
-          <div className="slv-breadcrumb"><span>Projects</span><span>/</span><strong>{spaceName}</strong></div>
-          <h1>{space.code || spaceName} board</h1>
-        </div>
+        <ProjectHeader space={space} title={`${space.code || spaceName} board`} activeTab="Board" onNavigate={onNavigate} />
 
-        <nav className="slv-tabs" aria-label="Project navigation">
-          {PROJECT_TABS.map(([label, icon]) => (
-            <button
-              key={label}
-              type="button"
-              className={`slv-tab ${label === 'Board' ? 'active' : ''}`}
-              aria-current={label === 'Board' ? 'page' : undefined}
-              onClick={() => navigateTab(label)}
-            >
-              <Icon name={icon} size={15} /><span>{label}</span>
-            </button>
-          ))}
-        </nav>
-
-        <section className="slv-toolbar sb-toolbar" aria-label="Board filters">
-          <div className="slv-search">
-            <Icon name="search" size={15} />
-            <input placeholder="Search board" value={search} onChange={(event) => setSearch(event.target.value)} aria-label="Search work items on the board" />
-            {search && <button type="button" onClick={() => setSearch('')} aria-label="Clear search">×</button>}
-          </div>
-
-          {assigneeOptions.length > 0 && (
-            <div className="sb-avatar-filters" role="group" aria-label="Filter by assignee">
-              {assigneeOptions.slice(0, MAX_AVATAR_FILTERS).map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  className={`sb-avatar sb-avatar-filter ${assignees.includes(name) ? 'is-active' : ''}`}
-                  aria-pressed={assignees.includes(name)}
-                  title={name}
-                  onClick={() => toggleAssignee(name)}
-                >
-                  {getInitials(name)}
-                </button>
-              ))}
-              <button
-                type="button"
-                className={`sb-avatar sb-avatar-filter is-unassigned ${assignees.includes('Unassigned') ? 'is-active' : ''}`}
-                aria-pressed={assignees.includes('Unassigned')}
-                title="Unassigned"
-                onClick={() => toggleAssignee('Unassigned')}
-              >
-                <Icon name="user" size={13} />
-              </button>
-            </div>
-          )}
-
-          <MultiFilter label="Issue Type" options={ISSUE_TYPES} selected={types} onChange={setTypes} />
-          <MultiFilter label="Assignee" options={['Unassigned', ...assigneeOptions]} selected={assignees} onChange={setAssignees} width={210} />
-          <MultiFilter label="Status" options={statusOptions} selected={statuses} onChange={setStatuses} />
-          <OrderFilter value={orderBy} onChange={setOrderBy} />
-          <ExtraFilterControls
-            moreFields={moreFields}
-            dateRanges={dateRanges}
-            onDateRangesChange={setDateRanges}
-            priorities={priorities}
-            onPrioritiesChange={setPriorities}
-            onRemoveField={(field) => updateMoreFields(moreFields.filter((item) => item !== field))}
-          />
-          <MoreFilters selected={moreFields} onChange={updateMoreFields} />
-          {hasFilters && (
-            <button type="button" className="sb-clear-filters" onClick={clearFilters}>
-              <Icon name="close" size={13} /> Clear filters
-            </button>
-          )}
-
-          <button type="button" className="sb-settings-button" onClick={() => setSettingsOpen(true)}>
+        <IssueToolbar filters={filters} statusOptions={statusOptions} searchLabel="Search work items on the board">
+          <button type="button" className="it-toolbar-button" onClick={() => setSettingsOpen(true)}>
             <Icon name="sliders" size={15} /> Board settings
           </button>
-        </section>
+        </IssueToolbar>
 
         {issuesByColumn.hidden > 0 && (
           <div className="sb-notice" role="status">
@@ -384,12 +237,7 @@ export default function SpaceBoard({
         </div>
       </main>
 
-      {toast && (
-        <div className={`sb-toast is-${toast.type}`} role={toast.type === 'error' ? 'alert' : 'status'}>
-          <span>{toast.message}</span>
-          <button type="button" onClick={() => setToast(null)} aria-label="Dismiss">×</button>
-        </div>
-      )}
+      <Toast toast={toast} onClose={() => setToast(null)} />
 
       {settingsOpen && (
         <BoardSettingsModal

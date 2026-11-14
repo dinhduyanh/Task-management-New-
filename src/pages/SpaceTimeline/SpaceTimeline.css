@@ -1,0 +1,485 @@
+/* Space Timeline (Gantt).
+ * One scroll container holds both panes: the work item list is sticky on the left and the
+ * date scale is sticky on top, so vertical scrolling stays in sync with no JavaScript. */
+.tl-main {
+  display: flex;
+  flex-direction: column;
+}
+
+.tl-legend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  margin: -4px 3px 10px;
+  color: var(--tf-fg-5e6c84);
+  font-size: 12px;
+}
+
+.tl-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.tl-swatch {
+  width: 18px;
+  height: 8px;
+  border-radius: 4px;
+}
+
+.tl-swatch.is-overdue {
+  border: 1.5px dashed var(--tf-bd-e04444);
+  background: transparent;
+}
+
+.tl-scroll {
+  position: relative;
+  min-height: 260px;
+  max-height: calc(100vh - 250px);
+  overflow: auto;
+  border: 1px solid var(--tf-bd-dfe1e6);
+  border-radius: 6px;
+  background: var(--tf-bg-ffffff);
+}
+
+.tl-grid {
+  position: relative;
+  min-width: 100%;
+}
+
+/* Header */
+.tl-head {
+  position: sticky;
+  z-index: 5;
+  top: 0;
+  display: flex;
+  height: 58px;
+  border-bottom: 1px solid var(--tf-bd-dfe1e6);
+  background: var(--tf-bg-ffffff);
+}
+
+.tl-corner {
+  position: sticky;
+  z-index: 6;
+  left: 0;
+  display: flex;
+  width: var(--tl-left);
+  flex: 0 0 var(--tl-left);
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px 0 16px;
+  border-right: 1px solid var(--tf-bd-dfe1e6);
+  background: var(--tf-bg-ffffff);
+}
+
+.tl-corner-title {
+  margin-right: auto;
+  color: var(--tf-fg-42526e);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.tl-zoom {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--tf-bd-dfe1e6);
+  border-radius: 6px;
+  background: var(--tf-bg-f4f5f7);
+}
+
+.tl-zoom button,
+.tl-today-button {
+  height: 28px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tf-fg-5e6c84);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tl-zoom button.active {
+  background: var(--tf-bg-ffffff);
+  box-shadow: 0 1px 2px rgba(9, 30, 66, 0.15);
+  color: var(--tf-fg-172b4d);
+}
+
+.tl-today-button {
+  height: 32px;
+  border: 1px solid var(--tf-bd-dfe1e6);
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-42526e);
+}
+
+.tl-zoom button:hover,
+.tl-today-button:hover {
+  color: var(--tf-fg-0052cc);
+}
+
+.tl-scale {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.tl-scale-row {
+  position: relative;
+  height: 29px;
+}
+
+.tl-scale-row span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  display: flex;
+  align-items: center;
+  overflow: hidden;
+  color: var(--tf-fg-5e6c84);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.tl-scale-months {
+  border-bottom: 1px solid var(--tf-bd-ebecf0);
+}
+
+.tl-scale-months span {
+  padding-left: 8px;
+  border-left: 1px solid var(--tf-bd-dfe1e6);
+}
+
+.tl-scale-months b {
+  position: sticky;
+  left: calc(var(--tl-left) + 8px);
+  color: var(--tf-fg-172b4d);
+  font-size: 12px;
+}
+
+.tl-scale-units span {
+  justify-content: center;
+}
+
+.zoom-month .tl-scale-units span {
+  justify-content: flex-start;
+  padding-left: 4px;
+  border-left: 1px solid var(--tf-bd-ebecf0);
+}
+
+.tl-scale-units span.is-weekend {
+  background: var(--tf-bg-f4f5f7);
+  color: var(--tf-fg-97a0af);
+}
+
+.tl-scale-units span.is-today {
+  color: var(--tf-fg-0052cc);
+  font-weight: 700;
+}
+
+/* Rows */
+.tl-body {
+  position: relative;
+}
+
+.tl-row {
+  display: flex;
+  min-height: 56px;
+  border-bottom: 1px solid var(--tf-bd-ebecf0);
+}
+
+.tl-row:hover .tl-cell,
+.tl-row:hover .tl-track {
+  background-color: var(--tf-bg-fafbfc);
+}
+
+.tl-cell {
+  position: sticky;
+  z-index: 3;
+  left: 0;
+  display: flex;
+  width: var(--tl-left);
+  flex: 0 0 var(--tl-left);
+  align-items: center;
+  gap: 6px;
+  padding-right: 6px;
+  border-right: 1px solid var(--tf-bd-dfe1e6);
+  background: var(--tf-bg-ffffff);
+}
+
+/* Sticky cells share one z-index, so later rows would cover an open menu; lift that row. */
+.tl-cell:has(.tl-menu),
+.tl-cell:focus-within {
+  z-index: 4;
+}
+
+.tl-toggle,
+.tl-toggle-spacer {
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+}
+
+.tl-toggle {
+  display: inline-grid;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tf-fg-42526e);
+  cursor: pointer;
+}
+
+.tl-toggle svg {
+  transform: rotate(-90deg);
+  transition: transform 0.15s;
+}
+
+.tl-toggle[aria-expanded="true"] svg {
+  transform: none;
+}
+
+.tl-toggle:hover {
+  background: var(--tf-bg-ebecf0);
+}
+
+.tl-cell-text {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 3px;
+}
+
+.tl-cell-title {
+  display: flex;
+  min-width: 0;
+  align-items: baseline;
+  gap: 8px;
+  color: var(--tf-fg-172b4d);
+  font-size: 13px;
+}
+
+.tl-cell-title > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tl-key {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tf-fg-0052cc);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.tl-key:hover {
+  text-decoration: underline;
+}
+
+.tl-cell .is-completed {
+  text-decoration: line-through;
+}
+
+.tl-cell-due {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--tf-fg-6b778c);
+  font-size: 11px;
+}
+
+.tl-cell-due.tone-muted {
+  color: var(--tf-fg-97a0af);
+}
+
+.tl-cell-due strong {
+  font-weight: 600;
+}
+
+.tl-cell-due.tone-overdue strong {
+  color: var(--tf-fg-de350b);
+}
+
+.tl-cell-due.tone-today strong {
+  color: var(--tf-fg-974f0c);
+}
+
+.tl-icon-button {
+  display: inline-grid;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  place-items: center;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tf-fg-42526e);
+  cursor: pointer;
+}
+
+.tl-icon-button:hover:not(:disabled),
+.tl-icon-button:focus-visible {
+  background: var(--tf-bg-ebecf0);
+  outline: none;
+}
+
+.tl-icon-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.35;
+}
+
+.tl-menu-wrap {
+  position: relative;
+}
+
+.tl-menu {
+  position: absolute;
+  z-index: 8;
+  top: 30px;
+  right: 0;
+  width: 190px;
+  padding: 4px;
+  border: 1px solid var(--tf-bd-dfe1e6);
+  border-radius: 8px;
+  background: var(--tf-bg-ffffff);
+  box-shadow: 0 8px 24px rgba(9, 30, 66, 0.2);
+}
+
+.tl-menu button {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tf-fg-172b4d);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+}
+
+.tl-menu button:hover,
+.tl-menu button:focus-visible {
+  background: var(--tf-bg-f4f5f7);
+  outline: none;
+}
+
+.tl-menu button.danger {
+  color: var(--tf-fg-de350b);
+}
+
+/* Chart track: weekend shading + grid lines drawn with repeating gradients. The range always
+ * starts on a Monday, so days 6 and 7 of every 7-day period are the weekend. */
+.tl-track {
+  position: relative;
+  flex: 1 0 auto;
+  background-image:
+    repeating-linear-gradient(90deg, var(--tf-bg-ebecf0) 0 1px, transparent 1px var(--tl-grid-step)),
+    repeating-linear-gradient(90deg, transparent 0 calc(var(--tl-day) * 5), var(--tf-bg-f7f8f9) calc(var(--tl-day) * 5) calc(var(--tl-day) * 7));
+}
+
+.zoom-month .tl-track {
+  background-image: repeating-linear-gradient(90deg, var(--tf-bg-ebecf0) 0 1px, transparent 1px var(--tl-grid-step));
+}
+
+.tl-bar {
+  position: absolute;
+  z-index: 1;
+  top: 50%;
+  height: 22px;
+  padding: 0;
+  border: 0;
+  border-radius: 5px;
+  background: var(--tf-bg-2684ff);
+  box-shadow: 0 1px 2px rgba(9, 30, 66, 0.25);
+  cursor: pointer;
+  transform: translateY(-50%);
+  transition: filter 0.12s, box-shadow 0.12s;
+}
+
+.tl-bar:hover,
+.tl-bar:focus-visible {
+  box-shadow: 0 0 0 2px var(--tf-bd-ffffff), 0 0 0 4px var(--tf-bd-4c9aff);
+  filter: brightness(1.08);
+  outline: none;
+}
+
+.tl-bar.is-completed {
+  opacity: 0.5;
+}
+
+/* Bar colours follow the issue type colours used for the type icons. */
+.tl-bar.type-epic, .tl-swatch.type-epic { background: var(--tf-bg-6554c0); }
+.tl-bar.type-feature, .tl-swatch.type-feature { background: var(--tf-bg-00a6a6); }
+.tl-bar.type-story, .tl-swatch.type-story { background: var(--tf-bg-22a06b); }
+.tl-bar.type-task, .tl-swatch.type-task { background: var(--tf-bg-2684ff); }
+.tl-bar.type-bug, .tl-swatch.type-bug { background: var(--tf-bg-e04444); }
+.tl-bar.type-improvement, .tl-swatch.type-improvement { background: var(--tf-bg-7ab800); }
+.tl-bar.type-sub-task, .tl-swatch.type-sub-task { background: var(--tf-bg-4c9aff); }
+
+.tl-overdue {
+  position: absolute;
+  top: 50%;
+  height: 22px;
+  border: 1.5px dashed var(--tf-bd-e04444);
+  border-left: 0;
+  border-radius: 0 5px 5px 0;
+  background: var(--tf-bg-ffebe6);
+  opacity: 0.8;
+  transform: translateY(-50%);
+}
+
+.tl-today-line {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  margin-left: -1px;
+  background: var(--tf-bg-ff5630);
+  pointer-events: none;
+}
+
+.tl-create-row,
+.tl-empty-row {
+  min-height: 44px;
+  border-bottom: 0;
+}
+
+.tl-create {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  margin-left: 14px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tf-fg-42526e);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+}
+
+.tl-create:hover {
+  background: var(--tf-bg-f4f5f7);
+  color: var(--tf-fg-0052cc);
+}
+
+.tl-empty {
+  padding-left: 18px;
+  color: var(--tf-fg-6b778c);
+  font-size: 13px;
+}
+
+@media (max-width: 760px) {
+  .tl-cell .tf-status-badge { display: none; }
+}

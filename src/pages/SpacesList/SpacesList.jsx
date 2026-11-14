@@ -12,18 +12,10 @@ import {
   matchesIssueFilters, sortIssues
 } from './issueHelpers';
 import { ExtraFilterControls, MoreFilters, MultiFilter, OrderFilter } from './IssueFilters';
+import ProjectHeader from './ProjectHeader';
 import './SpacesList.css';
 import './GlobalCreateSearch.css';
 
-const CHILD_TYPES_BY_PARENT = {
-  Epic: ['Story', 'Task', 'Bug', 'Improvement'],
-  Feature: ['Story', 'Task', 'Bug', 'Improvement'],
-  Story: ['Sub-task'],
-  Task: ['Bug', 'Sub-task'],
-  Bug: ['Sub-task'],
-  Improvement: ['Sub-task'],
-  'Sub-task': []
-};
 const PARENT_TYPES_BY_CHILD = {
   Story: ['Epic', 'Feature'],
   Task: ['Epic', 'Feature'],
@@ -1171,7 +1163,6 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
   const pageSize = 20;
 
   const autoOpenedTaskRequestRef = useRef(null);
-  const spaceName = space.name || space.code || 'Untitled Space';
 
   const inSpace = useMemo(() => {
     const id = String(space.id ?? '');
@@ -1290,20 +1281,11 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
     if (startRequest.issues.length > 1) setSelected([]);
     closeStartRequest();
   }
-  function navigateTab(tab) {
-    if (tab === 'Summary') onNavigate('space', { id: space.id, name: spaceName });
-    else if (tab === 'List') onNavigate('spaceList', { id: space.id, name: spaceName });
-    else onNavigate('spaceTab', { id: space.id, name: spaceName, tab });
-  }
-
   return <div className="app-shell spaces-list-shell">
     <Header spaces={spaces} tasks={tasks} onGlobalCreate={onGlobalCreate} onOpenTask={onOpenTask} />
     <Sidebar activeSection="Spaces" activeSpaceId={space.id} spaces={spaces} onCreateSpace={onCreateSpace} onNavigate={onNavigate} onOpenSpaceSettings={onOpenSpaceSettings} onDeleteSpace={onDeleteSpace} />
     <main className="spaces-list-main">
-      <div className="slv-project-heading"><div className="slv-breadcrumb"><span>Projects</span><span>/</span><strong>{spaceName}</strong></div><h1>{spaceName}</h1></div>
-      <nav className="slv-tabs" aria-label="Project navigation">
-        { [['Summary','dashboard'],['Timeline','calendar'],['Board','tasks'],['List','file'],['Backlog','spaces'],['Active Sprints','check'],['Teams','users']].map(([label, icon]) => <button key={label} type="button" className={`slv-tab ${label === 'List' ? 'active' : ''}`} onClick={() => navigateTab(label)}><Icon name={icon} size={15} /><span>{label}</span></button>) }
-      </nav>
+      <ProjectHeader space={space} activeTab="List" onNavigate={onNavigate} />
       <section className="slv-toolbar">
         <form className="slv-search" onSubmit={applySearch}><Icon name="search" size={15} /><input placeholder="Search" value={searchText} onChange={(event) => setSearchText(event.target.value)} aria-label="Search work items" />{searchText && <button type="button" onClick={() => { setSearchText(''); setSearchApplied(''); }} aria-label="Clear search">×</button>}</form>
         <MultiFilter label="Issue Type" options={ISSUE_TYPES} selected={selectedTypes} onChange={setSelectedTypes} />

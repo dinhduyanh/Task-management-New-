@@ -5,9 +5,9 @@ import {
   countIssuesByStatus,
   createColumnId,
   getUnmappedStatuses,
-  statusTone,
   validateBoardColumns
 } from './boardConfig';
+import { statusTone } from '../SpacesList/issueHelpers';
 import './BoardSettingsModal.css';
 
 const UNMAPPED = '__unmapped__';

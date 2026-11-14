@@ -72,22 +72,6 @@ export function countIssuesByStatus(issues) {
   return (status) => counts.get(String(status).toLowerCase()) || 0;
 }
 
-/** Colour family for a status badge. */
-export function statusTone(status) {
-  const value = String(status || '').toLowerCase();
-  if (/done|complete|closed|resolved/.test(value)) return 'done';
-  if (/cancel|reject/.test(value)) return 'cancel';
-  if (/block/.test(value)) return 'blocked';
-  if (/review|approv|test|qa/.test(value)) return 'review';
-  if (/progress|develop|doing/.test(value)) return 'progress';
-  return 'todo';
-}
-
-export function isCompletedStatus(status) {
-  const tone = statusTone(status);
-  return tone === 'done' || tone === 'cancel';
-}
-
 /** Returns an error message, or '' when the columns can be saved. */
 export function validateBoardColumns(columns) {
   if (!columns.length) return 'The board needs at least one column.';

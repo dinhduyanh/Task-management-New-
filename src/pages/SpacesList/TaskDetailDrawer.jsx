@@ -7,6 +7,7 @@ import {
   getTransitionOptions,
   validateIssueTransition
 } from './workflows';
+import { CHILD_TYPES_BY_PARENT } from './issueHelpers';
 import './TaskDetailDrawer.css';
 
 const CURRENT_USER = {
@@ -47,15 +48,6 @@ function issueType(issue) {
   return issue?.issueType || issue?.type || 'Task';
 }
 
-const CHILD_TYPES_BY_PARENT = {
-  Epic: ['Story', 'Task', 'Bug', 'Improvement'],
-  Feature: ['Story', 'Task', 'Bug', 'Improvement'],
-  Story: ['Sub-task'],
-  Task: ['Bug', 'Sub-task'],
-  Bug: ['Sub-task'],
-  Improvement: ['Sub-task'],
-  'Sub-task': []
-};
 
 const PARENT_TYPES_BY_CHILD = {
   Story: ['Epic', 'Feature'],

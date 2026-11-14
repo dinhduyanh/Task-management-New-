@@ -9,10 +9,11 @@ import {
   issueKey,
   issueSummary,
   issueType,
+  isCompletedStatus,
   toDate
 } from '../SpacesList/issueHelpers';
 import { getIssueStatus } from '../SpacesList/workflows';
-import { isCompletedStatus, statusTone } from './boardConfig';
+import StatusBadge from '../SpacesList/StatusBadge';
 
 // Custom MIME type so board columns can recognise a dragged card during dragover.
 export const ISSUE_DRAG_TYPE = 'application/x-taskflow-issue';
@@ -63,7 +64,7 @@ export default function BoardCard({ issue, childCount = 0, dragging = false, onO
           <Icon name={iconForType(type)} size={15} />
         </span>
         <span className={`sb-card-key ${completed ? 'is-completed' : ''}`}>{key}</span>
-        <span className={`sb-status tone-${statusTone(status)}`}>{status}</span>
+        <StatusBadge status={status} className="sb-card-status" />
       </div>
 
       <h3 className="sb-card-title" title={title}>{title}</h3>
