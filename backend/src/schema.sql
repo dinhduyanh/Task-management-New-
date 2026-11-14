@@ -160,3 +160,17 @@ CREATE TABLE IF NOT EXISTS sprints (
 );
 
 CREATE INDEX IF NOT EXISTS idx_sprints_space ON sprints(space_id);
+
+-- Members of a project team (teams are scoped to one Space). role: lead | member.
+-- Team code, unit, description, status and creator live in teams.data_json.
+CREATE TABLE IF NOT EXISTS team_members (
+  team_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  role TEXT NOT NULL DEFAULT 'member',
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (team_id, user_id),
+  FOREIGN KEY (team_id) REFERENCES teams(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);

@@ -114,6 +114,28 @@ export const api = {
     json('POST', { ids, sprintId: sprintId || null })
   ),
 
+  // Users directory (signed-in users only)
+  getUsers: () => request('/users'),
+
+  // Teams (scoped to one Space)
+  getTeams: (spaceId) => request(`/spaces/${encodeURIComponent(spaceId)}/teams`),
+
+  /** data: { code, name, unit, description, members: [{ userId, role: 'lead' | 'member' }] } */
+  createTeam: (spaceId, data) => request(
+    `/spaces/${encodeURIComponent(spaceId)}/teams`,
+    json('POST', data)
+  ),
+
+  updateTeam: (id, data) => request(
+    `/teams/${encodeURIComponent(id)}`,
+    json('PATCH', data)
+  ),
+
+  deleteTeam: (id) => request(
+    `/teams/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
+  ),
+
   // Sprints
   getSprints: (spaceId) => request(`/spaces/${encodeURIComponent(spaceId)}/sprints`),
 

@@ -788,7 +788,8 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
   const [error, setError] = useState('');
 
   const members = Array.isArray(activeSpace?.members) ? activeSpace.members : [];
-  const teams = Array.isArray(activeSpace?.teams) ? activeSpace.teams : [];
+  // Inactive project teams cannot be chosen for new work items.
+  const teams = (Array.isArray(activeSpace?.teams) ? activeSpace.teams : []).filter((team) => team?.status !== 'inactive');
   const releases = Array.isArray(activeSpace?.releases) ? activeSpace.releases : [];
   const memberById = new Map(members.map((member) => [getUserId(member), member]));
   const selectedAssignee = form.assigneeId === CURRENT_USER.id

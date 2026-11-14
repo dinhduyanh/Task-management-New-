@@ -14,6 +14,7 @@ import SpaceBoard from './pages/SpaceBoard/SpaceBoard';
 import SpaceTimeline from './pages/SpaceTimeline/SpaceTimeline';
 import SpaceBacklog from './pages/SpaceBacklog/SpaceBacklog';
 import SpaceActiveSprints from './pages/SpaceActiveSprints/SpaceActiveSprints';
+import SpaceTeams from './pages/SpaceTeams/SpaceTeams';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
 import './App.css';
@@ -385,6 +386,16 @@ export default function App() {
         />
       );
     }
+  } else if (currentRoute.page === 'spaceTab' && currentRoute.data?.tab === 'Teams') {
+    const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
+    pageContent = (
+      <SpaceTeams
+        key={selectedSpace.id}
+        {...sharedNavigationProps}
+        space={selectedSpace}
+        onRefreshData={loadPersistentData}
+      />
+    );
   } else if (currentRoute.page === 'spaceTab' && currentRoute.data?.tab === 'Active Sprints') {
     const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
     pageContent = (

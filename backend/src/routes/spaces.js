@@ -57,7 +57,9 @@ router.patch('/:spaceId', (req, res, next) => {
     if (!current) return res.status(404).json({ error: 'Space not found.' });
     const updates = req.body || {};
     const previousData = parseJson(current.data_json, {});
-    const nextData = { ...previousData, ...updates, updatedAt: nowIso() };
+    const safeUpdates = { ...updates };
+    delete safeUpdates.teams; // teams have their own API (see routes/teams.js)
+    const nextData = { ...previousData, ...safeUpdates, updatedAt: nowIso() };
     const code = String(nextData.code || current.code).trim().toUpperCase();
     const name = String(nextData.name || current.name).trim();
     const prefix = String(nextData.taskKeyPrefix || code).trim().toUpperCase();
@@ -66,14 +68,8 @@ router.patch('/:spaceId', (req, res, next) => {
       db.prepare(`UPDATE spaces SET code = ?, task_key_prefix = ?, name = ?, owner_id = ?, visibility = ?, updated_at = ?, data_json = ? WHERE id = ?`)
         .run(code, prefix, name, nextData.ownerId ?? current.owner_id, nextData.visibility ?? current.visibility, nextData.updatedAt, JSON.stringify(nextData), current.id);
 
-      if (Array.isArray(updates.teams)) {
-        db.prepare('DELETE FROM teams WHERE space_id = ?').run(current.id);
-        for (const team of updates.teams) {
-          const id = String(team.id || createId('team'));
-          db.prepare('INSERT INTO teams (id, space_id, name, data_json, created_at) VALUES (?, ?, ?, ?, ?)')
-            .run(id, current.id, String(team.name || team.label || team), JSON.stringify(team), nowIso());
-        }
-      }
+      // Teams are managed through /api/spaces/:spaceId/teams (they keep stable ids that
+      // work items reference), so a `teams` array here is ignored.
       if (Array.isArray(updates.releases)) {
         db.prepare('DELETE FROM releases WHERE space_id = ?').run(current.id);
         for (const release of updates.releases) {

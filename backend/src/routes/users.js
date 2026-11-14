@@ -25,6 +25,13 @@ async function hashPassword(password) {
 
 router.use(requireAuth);
 
+// User directory (used to pick team members). Active users only, no private fields.
+router.get('/', (_req, res) => {
+  const rows = db.prepare(`SELECT id, username, email, full_name, avatar_url, created_at, updated_at
+    FROM users WHERE is_active = 1 ORDER BY lower(full_name), lower(username)`).all();
+  res.json(rows.map(publicUser));
+});
+
 router.get('/me', (req, res) => {
   const row = db.prepare(`SELECT id, username, email, full_name, avatar_url, created_at, updated_at
     FROM users WHERE id = ?`).get(req.user.id);

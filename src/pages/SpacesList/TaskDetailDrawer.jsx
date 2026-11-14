@@ -40,6 +40,11 @@ function issueKey(issue) {
   return issue?.key || issue?.code || issue?.taskCode || '—';
 }
 
+/** Project teams that can still be assigned (inactive teams are hidden from pickers). */
+function activeTeams(space) {
+  return (Array.isArray(space?.teams) ? space.teams : []).filter((team) => team?.status !== 'inactive');
+}
+
 function issueTitle(issue) {
   return issue?.summary || issue?.title || issue?.name || 'Untitled work item';
 }
@@ -516,7 +521,7 @@ export default function TaskDetailDrawer({
     else if (field.key === 'startDate' || field.key === 'dueDate') setInfoDraft(toDateInputValue(current));
     else if (field.key === 'priority') setInfoDraft(current || 'Medium');
     else if (field.key === 'team' || field.key === 'release') {
-      const options = field.key === 'team' ? (Array.isArray(space.teams) ? space.teams : []) : (Array.isArray(space.releases) ? space.releases : []);
+      const options = field.key === 'team' ? activeTeams(space) : (Array.isArray(space.releases) ? space.releases : []);
       setInfoDraft(current ? optionId(current) : '');
     }
     else setInfoDraft(current ?? '');
@@ -541,7 +546,7 @@ export default function TaskDetailDrawer({
       patch = { [keyName]: infoDraft || null };
       detail = infoDraft ? userName(infoDraft) : `${field.label} cleared`;
     } else if (keyName === 'team' || keyName === 'release') {
-      const options = keyName === 'team' ? (Array.isArray(space.teams) ? space.teams : []) : (Array.isArray(space.releases) ? space.releases : []);
+      const options = keyName === 'team' ? activeTeams(space) : (Array.isArray(space.releases) ? space.releases : []);
       const selected = options.find((option) => optionId(option) === String(infoDraft));
       patch = { [keyName]: selected || null };
       detail = optionLabel(patch[keyName]) || `${field.label} cleared`;
@@ -596,7 +601,7 @@ export default function TaskDetailDrawer({
     }
 
     if (keyName === 'team' || keyName === 'release') {
-      const options = keyName === 'team' ? (Array.isArray(space.teams) ? space.teams : []) : (Array.isArray(space.releases) ? space.releases : []);
+      const options = keyName === 'team' ? activeTeams(space) : (Array.isArray(space.releases) ? space.releases : []);
       return (
         <SearchableOptionSelect
           options={options}
