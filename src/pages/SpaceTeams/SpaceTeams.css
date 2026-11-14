@@ -20,10 +20,6 @@
   background: var(--tf-bg-0747a6);
 }
 
-.tt-empty .tt-create {
-  margin: 8px auto 0;
-}
-
 .tt-bulk {
   display: flex;
   align-items: center;

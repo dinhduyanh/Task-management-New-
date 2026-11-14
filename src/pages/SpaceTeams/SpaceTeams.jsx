@@ -297,7 +297,6 @@ export default function SpaceTeams({
                       <Icon name="users" size={28} />
                       <strong>{list.length ? 'No teams match your filters' : 'No teams in this project yet'}</strong>
                       <span>{list.length ? 'Try changing the search or filters.' : 'Teams created here are only available in this project.'}</span>
-                      {!list.length && <button type="button" className="tt-create" onClick={() => setForm({ team: null })}><Icon name="plus" size={15} /> Create Team</button>}
                     </td>
                   </tr>
                 )}
