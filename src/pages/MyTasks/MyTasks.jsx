@@ -3,7 +3,13 @@ import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import FilterBar from './components/FilterBar';
 import TaskTable from './components/TaskTable';
-import { getTaskFieldOptions, getTaskFieldValue } from './filterFields';
+import {
+  getAssigneeName,
+  getTaskCode,
+  getTaskFieldOptions,
+  getTaskFieldValue,
+  getTaskTitle
+} from './filterFields';
 import './MyTasks.css';
 
 function parseDate(value) {
@@ -122,10 +128,9 @@ export default function MyTasks({ onCreateSpace, onNavigate, onOpenSpaceSettings
 
     const result = tasks.filter((task) => {
       const searchableText = [
-        task.title,
-        task.name,
-        task.code,
-        task.assignee
+        getTaskTitle(task),
+        getTaskCode(task),
+        getAssigneeName(task)
       ]
         .filter(Boolean)
         .join(' ')
