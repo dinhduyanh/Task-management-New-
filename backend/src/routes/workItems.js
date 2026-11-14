@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { db, createId, nowIso, parseJson, workItemRowToObject, logActivity } from '../db.js';
 import { ISSUE_WORKFLOWS, initialStatus, normalizeIssueType } from '../workflows.js';
 import { mergeAttachmentList } from './attachments.js';
+import { canAccessSpace, requireSpaceAccess, spaceFilter, spaceIdOf } from '../access.js';
 
 const router = Router();
 
@@ -56,19 +57,31 @@ function syncLinks(workItemId, links) {
   }
 }
 
+/** Rows for the given ids, or an error status when any is missing or not accessible. */
+function accessibleItems(req, ids) {
+  const rows = ids.map((id) => db.prepare('SELECT id, space_id FROM work_items WHERE id = ?').get(id));
+  if (rows.some((row) => !row || !canAccessSpace(req.user, row.space_id))) return null;
+  return rows;
+}
+
+const itemAccess = requireSpaceAccess((req) => spaceIdOf.workItem(req.params.id), 'Work item not found.');
+
 router.get('/', (req, res) => {
+  if (req.query.spaceId && !canAccessSpace(req.user, String(req.query.spaceId))) return res.json([]);
+  const filter = spaceFilter(req.user, 'space_id');
   const rows = req.query.spaceId
     ? db.prepare('SELECT * FROM work_items WHERE space_id = ? ORDER BY created_at DESC').all(String(req.query.spaceId))
-    : db.prepare('SELECT * FROM work_items ORDER BY created_at DESC').all();
+    : db.prepare(`SELECT * FROM work_items WHERE ${filter.sql} ORDER BY created_at DESC`).all(...filter.params);
   res.json(rows.map(workItemRowToObject));
 });
 
 router.get('/search', (req, res) => {
   const key = String(req.query.key || '').trim();
   if (!key) return res.json([]);
+  const filter = spaceFilter(req.user, 'wi.space_id');
   const rows = db.prepare(`SELECT wi.*, s.name AS space_name, s.code AS space_code
     FROM work_items wi JOIN spaces s ON s.id = wi.space_id
-    WHERE lower(wi.issue_key) = lower(?) ORDER BY s.name`).all(key);
+    WHERE lower(wi.issue_key) = lower(?) AND ${filter.sql} ORDER BY s.name`).all(key, ...filter.params);
   res.json(rows.map((row) => ({ ...workItemRowToObject(row), spaceName: row.space_name, spaceCode: row.space_code })));
 });
 
@@ -79,8 +92,8 @@ router.post('/rank', (req, res, next) => {
     const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String))] : [];
     const sprintId = req.body?.sprintId ? String(req.body.sprintId) : null;
     if (!ids.length) return res.status(400).json({ error: 'At least one Work Item ID is required.' });
-    const rows = ids.map((id) => db.prepare('SELECT id, space_id FROM work_items WHERE id = ?').get(id));
-    if (rows.some((row) => !row)) return res.status(404).json({ error: 'Work item not found.' });
+    const rows = accessibleItems(req, ids);
+    if (!rows) return res.status(404).json({ error: 'Work item not found.' });
     const spaceId = rows[0].space_id;
     if (rows.some((row) => row.space_id !== spaceId)) return res.status(400).json({ error: 'Work items must belong to the same Space.' });
     const error = sprintError(spaceId, sprintId);
@@ -97,7 +110,7 @@ router.post('/', (req, res, next) => {
     const body = req.body || {};
     const spaceId = String(body.spaceId || body.projectId || '');
     const space = db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId);
-    if (!space) return res.status(400).json({ error: 'A valid Project/Space is required.' });
+    if (!space || !canAccessSpace(req.user, space.id)) return res.status(400).json({ error: 'A valid Project/Space is required.' });
     const issueType = issueTypeOf(body);
     const title = String(body.title || body.summary || '').trim();
     if (!title) return res.status(400).json({ error: 'Title is required.' });
@@ -161,13 +174,13 @@ router.post('/', (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.get('/:id', (req, res) => {
+router.get('/:id', itemAccess, (req, res) => {
   const row = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Work item not found.' });
   res.json(workItemRowToObject(row));
 });
 
-router.patch('/:id', (req, res, next) => {
+router.patch('/:id', itemAccess, (req, res, next) => {
   try {
     const row = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Work item not found.' });
@@ -241,6 +254,7 @@ router.patch('/:id', (req, res, next) => {
 router.delete('/bulk', (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
   if (!ids.length) return res.status(400).json({ error: 'At least one Work Item ID is required.' });
+  if (!accessibleItems(req, ids)) return res.status(404).json({ error: 'Work item not found.' });
   const placeholders = ids.map(() => '?').join(',');
   const result = db.prepare(`DELETE FROM work_items WHERE id IN (${placeholders})`).run(...ids);
   res.json({ deletedCount: result.changes });
@@ -251,7 +265,8 @@ router.post('/bulk-move', (req, res, next) => {
     const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
     const targetSpaceId = String(req.body?.targetSpaceId || '');
     const targetSpace = db.prepare('SELECT id, code FROM spaces WHERE id = ?').get(targetSpaceId);
-    if (!ids.length || !targetSpace) return res.status(400).json({ error: 'Work Items and a valid target Project are required.' });
+    if (!ids.length || !targetSpace || !canAccessSpace(req.user, targetSpace.id)) return res.status(400).json({ error: 'Work Items and a valid target Project are required.' });
+    if (!accessibleItems(req, ids)) return res.status(404).json({ error: 'Work item not found.' });
     const update = db.prepare('UPDATE work_items SET space_id = ?, updated_at = ?, data_json = json_set(data_json, "$.spaceId", ?, "$.projectId", ?, "$.spaceCode", ?) WHERE id = ?');
     const now = nowIso();
     db.transaction(() => ids.forEach((id) => update.run(targetSpaceId, now, targetSpaceId, targetSpaceId, targetSpace.code, id)))();
@@ -259,18 +274,18 @@ router.post('/bulk-move', (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', itemAccess, (req, res) => {
   const result = db.prepare('DELETE FROM work_items WHERE id = ?').run(req.params.id);
   if (!result.changes) return res.status(404).json({ error: 'Work item not found.' });
   res.status(204).end();
 });
 
-router.get('/:id/comments', (req, res) => {
+router.get('/:id/comments', itemAccess, (req, res) => {
   const rows = db.prepare('SELECT * FROM comments WHERE work_item_id = ? AND deleted_at IS NULL ORDER BY created_at').all(req.params.id);
   res.json(rows.map((row) => ({ ...parseJson(row.data_json, {}), id: row.id, parentCommentId: row.parent_comment_id, authorId: row.author_id, author: row.author_name, body: row.body, createdAt: row.created_at, updatedAt: row.updated_at })));
 });
 
-router.post('/:id/comments', (req, res) => {
+router.post('/:id/comments', itemAccess, (req, res) => {
   const issue = db.prepare('SELECT id FROM work_items WHERE id = ?').get(req.params.id);
   if (!issue) return res.status(404).json({ error: 'Work item not found.' });
   const body = String(req.body?.body || '').trim();

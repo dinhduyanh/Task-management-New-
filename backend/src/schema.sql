@@ -8,6 +8,9 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash TEXT,
   avatar_url TEXT,
   is_active INTEGER NOT NULL DEFAULT 1,
+  -- System role: 'admin' (manages the system, sees every project) or 'user'.
+  -- Existing databases get this column from the migration in db.js.
+  role TEXT NOT NULL DEFAULT 'user',
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
@@ -196,3 +199,29 @@ CREATE TABLE IF NOT EXISTS work_item_files (
 
 CREATE INDEX IF NOT EXISTS idx_work_item_files_item ON work_item_files(work_item_id);
 CREATE INDEX IF NOT EXISTS idx_work_item_files_space ON work_item_files(space_id);
+
+-- Roles that can be given to members inside a project (managed by system admins).
+CREATE TABLE IF NOT EXISTS project_roles (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  description TEXT NOT NULL DEFAULT '',
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+-- Dashboard widgets backed by a read-only SQL query (managed by system admins).
+-- visibility: 'admins' (only admins see it) or 'everyone'.
+CREATE TABLE IF NOT EXISTS dashboard_widgets (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  chart_type TEXT NOT NULL DEFAULT 'table',
+  sql_query TEXT NOT NULL,
+  visibility TEXT NOT NULL DEFAULT 'admins',
+  is_active INTEGER NOT NULL DEFAULT 1,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_by TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);

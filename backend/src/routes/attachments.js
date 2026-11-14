@@ -5,6 +5,7 @@ import express, { Router } from 'express';
 import { Buffer } from 'node:buffer';
 import { db, createId, nowIso, parseJson, workItemRowToObject, logActivity } from '../db.js';
 import { optionalAuth } from '../middleware/auth.js';
+import { requireSpaceAccess, spaceFilter, spaceIdOf } from '../access.js';
 
 const router = Router();
 router.use(optionalAuth);
@@ -82,8 +83,11 @@ function contentDisposition(type, name) {
   return `${type}; filename="${fallback}"; filename*=UTF-8''${encodeURIComponent(name)}`;
 }
 
+const fileAccess = requireSpaceAccess((req) => spaceIdOf.file(req.params.id), 'File not found.');
+
 router.post(
   '/work-items/:id/attachments',
+  requireSpaceAccess((req) => spaceIdOf.workItem(req.params.id), 'Work item not found.'),
   express.raw({ type: () => true, limit: MAX_ATTACHMENT_BYTES }),
   (req, res, next) => {
     try {
@@ -119,9 +123,10 @@ router.post(
 
 // All stored files with the work item and Space they belong to (newest first).
 router.get('/attachments', (req, res) => {
-  const params = [];
-  let where = '';
-  if (req.query.spaceId) { where = 'WHERE a.space_id = ?'; params.push(String(req.query.spaceId)); }
+  const filter = spaceFilter(req.user, 'a.space_id');
+  const params = [...filter.params];
+  let where = `WHERE ${filter.sql}`;
+  if (req.query.spaceId) { where += ' AND a.space_id = ?'; params.push(String(req.query.spaceId)); }
   const rows = db.prepare(`SELECT a.id, a.file_name, a.extension, a.mime_type, a.size, a.source, a.uploaded_by_id, a.uploaded_by_name, a.created_at,
       w.id AS wi_id, w.issue_key, w.title, w.issue_type, w.status, s.id AS s_id, s.name AS s_name, s.code AS s_code
     FROM work_item_files a
@@ -148,10 +153,10 @@ function sendFile(req, res, inlineRequested) {
   res.end(row.content);
 }
 
-router.get('/attachments/:id/content', (req, res) => sendFile(req, res, true));
-router.get('/attachments/:id/download', (req, res) => sendFile(req, res, false));
+router.get('/attachments/:id/content', fileAccess, (req, res) => sendFile(req, res, true));
+router.get('/attachments/:id/download', fileAccess, (req, res) => sendFile(req, res, false));
 
-router.delete('/attachments/:id', (req, res, next) => {
+router.delete('/attachments/:id', fileAccess, (req, res, next) => {
   try {
     const row = db.prepare('SELECT id, work_item_id, space_id, file_name FROM work_item_files WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'File not found.' });

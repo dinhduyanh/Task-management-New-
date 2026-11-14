@@ -10,6 +10,8 @@ export const AppShellContext = createContext({
   setTheme: () => {},
   navigate: () => {},
   signOut: () => {},
+  /** System role check for showing admin-only UI; the API enforces it independently. */
+  isAdmin: false,
   /** Replaces a work item in the app state with the server's copy (e.g. after an upload). */
   replaceWorkItem: () => {}
 });

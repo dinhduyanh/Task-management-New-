@@ -74,10 +74,40 @@ export const api = {
     { method: 'DELETE' }
   ),
 
+  /** payload: { userId, roles } (adds the member or changes their roles). */
   addSpaceMember: (id, payload) => request(
     `/spaces/${encodeURIComponent(id)}/members`,
     json('POST', payload)
   ),
+
+  removeSpaceMember: (id, userId) => request(
+    `/spaces/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+    { method: 'DELETE' }
+  ),
+
+  // Project roles (read: every user; manage: admins)
+  getProjectRoles: () => request('/project-roles'),
+
+  // Dashboard widgets visible to the signed-in user
+  getDashboardWidgets: () => request('/dashboard/widgets'),
+  getDashboardWidgetData: (id) => request(`/dashboard/widgets/${encodeURIComponent(id)}/data`),
+
+  // System administration (admins only)
+  admin: {
+    getUsers: () => request('/admin/users'),
+    createUser: (data) => request('/admin/users', json('POST', data)),
+    updateUser: (id, data) => request(`/admin/users/${encodeURIComponent(id)}`, json('PATCH', data)),
+    resetPassword: (id, password) => request(`/admin/users/${encodeURIComponent(id)}/password`, json('POST', { password })),
+    getProjectRoles: () => request('/admin/project-roles'),
+    createProjectRole: (data) => request('/admin/project-roles', json('POST', data)),
+    updateProjectRole: (id, data) => request(`/admin/project-roles/${encodeURIComponent(id)}`, json('PATCH', data)),
+    deleteProjectRole: (id) => request(`/admin/project-roles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    getWidgets: () => request('/admin/widgets'),
+    createWidget: (data) => request('/admin/widgets', json('POST', data)),
+    updateWidget: (id, data) => request(`/admin/widgets/${encodeURIComponent(id)}`, json('PATCH', data)),
+    deleteWidget: (id) => request(`/admin/widgets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    previewWidget: (sql) => request('/admin/widgets/preview', json('POST', { sql }))
+  },
 
   // Work Items
   getWorkItems: (spaceId) => request(

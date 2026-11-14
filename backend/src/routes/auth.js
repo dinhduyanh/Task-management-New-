@@ -35,7 +35,7 @@ router.post('/login', async (req, res, next) => {
     const password = String(req.body?.password || '');
     if (!identity || !password) return res.status(400).json({ error: 'Username/Email and password are required.' });
 
-    const user = db.prepare(`SELECT id, username, email, full_name, password_hash, avatar_url, is_active
+    const user = db.prepare(`SELECT id, username, email, full_name, password_hash, avatar_url, is_active, role
       FROM users WHERE lower(username) = lower(?) OR lower(email) = lower(?) LIMIT 1`).get(identity, identity);
     if (!user || !user.is_active || !(await verifyPassword(password, user.password_hash))) {
       return res.status(401).json({ error: 'Username/Email or password is incorrect.' });
@@ -51,7 +51,8 @@ router.post('/login', async (req, res, next) => {
 
     res.json({ user: {
       id: user.id, username: user.username, email: user.email,
-      fullName: user.full_name, avatarUrl: user.avatar_url
+      fullName: user.full_name, avatarUrl: user.avatar_url,
+      role: user.role === 'admin' ? 'admin' : 'user'
     }});
   } catch (error) { next(error); }
 });

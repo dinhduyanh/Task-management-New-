@@ -16,18 +16,31 @@ import SpaceBacklog from './pages/SpaceBacklog/SpaceBacklog';
 import SpaceActiveSprints from './pages/SpaceActiveSprints/SpaceActiveSprints';
 import SpaceTeams from './pages/SpaceTeams/SpaceTeams';
 import Documents from './pages/Documents/Documents';
+import SystemSettings from './pages/SystemSettings/SystemSettings';
+import AccessDenied from './pages/SystemSettings/AccessDenied';
+import Dashboard from './pages/Dashboard/Dashboard';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
 import './App.css';
 
 const initialRoute = { page: 'myTasks', data: null };
+const SETTINGS_HASH = /^#\/settings(?:\/([a-z-]+))?$/;
+
+/** System Settings is the one page with its own URL (#/settings/<tab>), so it can be bookmarked. */
+function settingsRouteFromHash() {
+  const match = window.location.hash.match(SETTINGS_HASH);
+  return match ? { page: 'systemSettings', data: { tab: match[1] || 'users' } } : null;
+}
 
 export default function App() {
   const [isLoggedIn, setIsLoggedIn] = useState(isAuthenticated);
   const [currentUser, setCurrentUser] = useState(getStoredUser);
   const [loginNotice, setLoginNotice] = useState('');
   const [theme, setTheme] = useState(getInitialTheme);
-  const [navigationStack, setNavigationStack] = useState([initialRoute]);
+  const [navigationStack, setNavigationStack] = useState(() => {
+    const settings = settingsRouteFromHash();
+    return settings ? [initialRoute, settings] : [initialRoute];
+  });
   const [spaces, setSpaces] = useState([]);
   // Spaces and Work Items are loaded from the persistent SQLite Backend.
   const [tasks, setTasks] = useState([]);
@@ -41,13 +54,20 @@ export default function App() {
       setTasks(Array.isArray(taskRows) ? taskRows : []);
       setBackendError('');
     } catch (error) {
+      if (error?.status === 401) {
+        endLocalSession('Your session has expired. Please sign in again.');
+        return;
+      }
       setBackendError(error.message || 'Cannot connect to TASKFLOW Backend.');
     }
   }
 
+  // Projects and work items are only available to a signed-in user (and only the
+  // projects that user may access), so they load after sign-in.
   useEffect(() => {
+    if (!isLoggedIn) return;
     loadPersistentData();
-  }, []);
+  }, [isLoggedIn]);
 
   useEffect(() => {
     applyTheme(theme);
@@ -68,6 +88,30 @@ export default function App() {
   }, [isLoggedIn]);
 
   const currentRoute = navigationStack[navigationStack.length - 1] || initialRoute;
+  const isAdmin = currentUser?.role === 'admin';
+
+  // Keep the address bar in sync with System Settings (and open it when the URL is typed).
+  useEffect(() => {
+    const settingsTab = currentRoute.page === 'systemSettings' ? currentRoute.data?.tab || 'users' : null;
+    const target = settingsTab ? `#/settings/${settingsTab}` : '';
+    if (window.location.hash !== target && (settingsTab || SETTINGS_HASH.test(window.location.hash))) {
+      window.history.replaceState(null, '', `${window.location.pathname}${window.location.search}${target}`);
+    }
+  }, [currentRoute]);
+
+  useEffect(() => {
+    const onHashChange = () => {
+      const settings = settingsRouteFromHash();
+      if (settings) setNavigationStack((current) => [...current, settings]);
+    };
+    window.addEventListener('hashchange', onHashChange);
+    return () => window.removeEventListener('hashchange', onHashChange);
+  }, []);
+
+  /** Replaces the data of the current route (e.g. the selected settings tab). */
+  function updateCurrentRoute(data) {
+    setNavigationStack((current) => [...current.slice(0, -1), { ...current[current.length - 1], data }]);
+  }
 
   function navigate(page, data = null) {
     setNavigationStack((current) => {
@@ -88,7 +132,9 @@ export default function App() {
     setCurrentUser(user);
     setLoginNotice('');
     setIsLoggedIn(true);
-    setNavigationStack([initialRoute]);
+    // Arriving through a #/settings link: open it after signing in (the page still checks the role).
+    const settings = settingsRouteFromHash();
+    setNavigationStack(settings ? [initialRoute, settings] : [initialRoute]);
   }
 
   function handleUserUpdated(updatedUser) {
@@ -98,6 +144,8 @@ export default function App() {
 
   function endLocalSession(notice = '') {
     clearSession();
+    setSpaces([]);
+    setTasks([]);
     setCurrentUser(null);
     setIsLoggedIn(false);
     setLoginNotice(notice);
@@ -149,18 +197,29 @@ export default function App() {
     }
   }
 
-  async function handleAddSpaceMembers(spaceId, { user, roles }) {
-    if (!user || !Array.isArray(roles) || roles.length === 0) return null;
+  /** Adds a member or changes their project roles. Resolves to '' or an error message. */
+  async function handleAddSpaceMembers(spaceId, { userId, roles }) {
     try {
-      const members = await api.addSpaceMember(spaceId, { user, roles });
+      const members = await api.addSpaceMember(spaceId, { userId, roles });
       setSpaces((currentSpaces) => currentSpaces.map((space) =>
         space.id === spaceId ? { ...space, members } : space
       ));
-      setBackendError('');
-      return members;
+      return '';
     } catch (error) {
-      setBackendError(error.message || 'Unable to add Space member.');
-      return null;
+      return error.message || 'Unable to add the member.';
+    }
+  }
+
+  /** Resolves to '' or an error message. */
+  async function handleRemoveSpaceMember(spaceId, userId) {
+    try {
+      const members = await api.removeSpaceMember(spaceId, userId);
+      setSpaces((currentSpaces) => currentSpaces.map((space) =>
+        space.id === spaceId ? { ...space, members } : space
+      ));
+      return '';
+    } catch (error) {
+      return error.message || 'Unable to remove the member.';
     }
   }
 
@@ -312,6 +371,7 @@ export default function App() {
     setTheme,
     navigate,
     signOut: handleSignOut,
+    isAdmin,
     replaceWorkItem
   };
 
@@ -389,10 +449,26 @@ export default function App() {
           space={selectedSpace}
           onBack={() => navigate('space', { id: selectedSpace.id, name: selectedSpace.name })}
           onSave={(updates) => handleUpdateSpace(selectedSpace.id, updates)}
-          onAddMembers={(payload) => handleAddSpaceMembers(selectedSpace.id, payload)}
+          onAddMember={(payload) => handleAddSpaceMembers(selectedSpace.id, payload)}
+          onRemoveMember={(userId) => handleRemoveSpaceMember(selectedSpace.id, userId)}
         />
       );
     }
+  } else if (currentRoute.page === 'systemSettings') {
+    // Route guard: the settings page is for administrators only (the API enforces it too).
+    pageContent = isAdmin ? (
+      <SystemSettings
+        {...sharedNavigationProps}
+        tab={currentRoute.data?.tab || 'users'}
+        onTabChange={(tab) => updateCurrentRoute({ tab })}
+        onBack={goBack}
+        onDataChanged={loadPersistentData}
+      />
+    ) : (
+      <AccessDenied {...sharedNavigationProps} onBack={() => setNavigationStack([initialRoute])} />
+    );
+  } else if (currentRoute.page === 'dashboard') {
+    pageContent = <Dashboard {...sharedNavigationProps} isAdmin={isAdmin} />;
   } else if (currentRoute.page === 'documents') {
     pageContent = <Documents {...sharedNavigationProps} />;
   } else if (currentRoute.page === 'spaceTab' && currentRoute.data?.tab === 'Teams') {
@@ -471,7 +547,7 @@ export default function App() {
       />
     );
   } else {
-    const placeholderTitles = { documents: 'Documents', dashboard: 'Dashboard', filter: 'Filter' };
+    const placeholderTitles = { filter: 'Filter' };
     pageContent = (
       <PlaceholderPage
         {...sharedNavigationProps}

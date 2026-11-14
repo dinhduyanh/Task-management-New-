@@ -3,6 +3,7 @@
 import { Router } from 'express';
 import { db, createId, nowIso, parseJson, logActivity } from '../db.js';
 import { optionalAuth } from '../middleware/auth.js';
+import { requireSpaceAccess, spaceIdOf } from '../access.js';
 
 const router = Router();
 router.use(optionalAuth);
@@ -115,12 +116,14 @@ function saveMembers(teamId, members) {
   members.forEach((member) => insert.run(teamId, member.userId, member.role, now));
 }
 
-router.get('/spaces/:spaceId/teams', (req, res) => {
+const teamAccess = requireSpaceAccess((req) => spaceIdOf.team(req.params.id), 'Team not found.');
+
+router.get('/spaces/:spaceId/teams', requireSpaceAccess((req) => req.params.spaceId, 'Space not found.'), (req, res) => {
   const rows = db.prepare('SELECT * FROM teams WHERE space_id = ? ORDER BY created_at DESC').all(req.params.spaceId);
   res.json(rows.map(teamRowToObject));
 });
 
-router.post('/spaces/:spaceId/teams', (req, res, next) => {
+router.post('/spaces/:spaceId/teams', requireSpaceAccess((req) => req.params.spaceId, 'Space not found.'), (req, res, next) => {
   try {
     const space = db.prepare('SELECT id FROM spaces WHERE id = ?').get(req.params.spaceId);
     if (!space) return res.status(404).json({ error: 'Space not found.' });
@@ -147,7 +150,7 @@ router.post('/spaces/:spaceId/teams', (req, res, next) => {
   } catch (error) { next(error); }
 });
 
-router.patch('/teams/:id', (req, res, next) => {
+router.patch('/teams/:id', teamAccess, (req, res, next) => {
   try {
     const row = getTeamRow(req.params.id);
     if (!row) return res.status(404).json({ error: 'Team not found.' });
@@ -166,7 +169,7 @@ router.patch('/teams/:id', (req, res, next) => {
 });
 
 // Deleting a team removes it from its work items (they are kept).
-router.delete('/teams/:id', (req, res, next) => {
+router.delete('/teams/:id', teamAccess, (req, res, next) => {
   try {
     const row = getTeamRow(req.params.id);
     if (!row) return res.status(404).json({ error: 'Team not found.' });

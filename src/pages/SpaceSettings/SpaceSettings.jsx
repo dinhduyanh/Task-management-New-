@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Icon from '../../components/common/Icon';
+import { PeopleSettings, PermissionsSettings } from './SpacePeople';
 import './SpaceSettings.css';
 
 const SETTINGS_ITEMS = [
@@ -48,12 +49,6 @@ function formatDate(value) {
   const date = parseDate(value);
   if (!date) return '—';
   return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
-}
-
-function initials(name) {
-  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return '—';
-  return words.length === 1 ? words[0].slice(0, 2).toUpperCase() : `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
 }
 
 function SettingsDateField({ id, label, value, onChange, required = false, error }) {
@@ -301,41 +296,6 @@ function SummarySettings({ space, onSave }) {
   );
 }
 
-function PeopleSettings({ space }) {
-  const members = Array.isArray(space.members) ? space.members : [];
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>People</h1><p>People who have access to this space.</p></div>
-      <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Space members</strong><span>{members.length} members</span></div>
-        {members.length ? members.map((member, index) => {
-          const memberName = member.name || member.fullName || 'Unnamed member';
-          return <div className="settings-member-row" key={member.id || `${memberName}-${index}`}><span className="settings-member-avatar">{member.initials || initials(memberName)}</span><div className="settings-member-name"><strong>{memberName}</strong><small>{member.role || 'Member'}</small></div><span className="settings-member-role">{member.role || 'Member'}</span></div>;
-        }) : <div className="settings-empty-state">No members have been added to this space yet.</div>}
-      </div>
-    </section>
-  );
-}
-
-function PermissionsSettings() {
-  const roles = [
-    ['Owner', 'Full control over space settings, members and work items.'],
-    ['Project Manager', 'Manage project work, members and project-level configuration.'],
-    ['Member', 'Create and update work items according to assigned permissions.'],
-    ['Viewer', 'View project information and work items.']
-  ];
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Permissions</h1><p>Review the roles used to manage access within this space.</p></div>
-      <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Project roles</strong><span>Role overview</span></div>
-        {roles.map(([role, description]) => <div className="settings-role-row" key={role}><span className="settings-role-icon"><Icon name="shield" size={17} /></span><div><strong>{role}</strong><p>{description}</p></div></div>)}
-        <p className="settings-note">Permission rules and role assignments will be configurable when the authorization module is implemented.</p>
-      </div>
-    </section>
-  );
-}
-
 function FeaturesSettings() {
   const features = [
     ['Summary', 'Project overview and key metrics.'],
@@ -385,18 +345,18 @@ function WorkItemsSettings() {
   );
 }
 
-export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {} }) {
+export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {}, onAddMember = async () => '', onRemoveMember = async () => '' }) {
   const [activeTab, setActiveTab] = useState('Summary');
   const pageContent = useMemo(() => {
     switch (activeTab) {
-      case 'People': return <PeopleSettings space={space} />;
-      case 'Permissions': return <PermissionsSettings />;
+      case 'People': return <PeopleSettings space={space} onAddMember={onAddMember} onRemoveMember={onRemoveMember} />;
+      case 'Permissions': return <PermissionsSettings space={space} />;
       case 'Features': return <FeaturesSettings />;
       case 'Workflow': return <WorkflowSettings />;
       case 'Work Items': return <WorkItemsSettings />;
       default: return <SummarySettings key={space.id} space={space} onSave={onSave} />;
     }
-  }, [activeTab, onSave, space]);
+  }, [activeTab, onSave, onAddMember, onRemoveMember, space]);
 
   return (
     <div className="space-settings-shell">

@@ -304,3 +304,16 @@
     width: 31px;
   }
 }
+
+.header-settings-button svg {
+  transition: transform 0.35s ease;
+}
+
+.header-settings-button:hover svg,
+.header-settings-button:focus-visible svg {
+  transform: rotate(60deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .header-settings-button svg { transition: none; }
+}

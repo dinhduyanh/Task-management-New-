@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../common/Icon';
 import UserProfileMenu from './UserProfileMenu';
+import { useAppShell } from '../../context/appShellContext';
 import './Header.css';
 
 function getTaskKey(task) {
@@ -25,6 +26,7 @@ function getSpaceName(task, spaces) {
 export default function Header({
   spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}
 }) {
+  const { isAdmin, navigate } = useAppShell();
   const [globalSearch, setGlobalSearch] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const searchWrapRef = useRef(null);
@@ -135,9 +137,18 @@ export default function Header({
         <button type="button" className="header-icon-button notification-button" aria-label="Notifications" title="Notifications">
           <Icon name="bell" size={19} /><span className="notification-badge">3</span>
         </button>
-        <button type="button" className="header-icon-button" aria-label="Settings" title="Settings">
-          <Icon name="settings" size={19} />
-        </button>
+        {/* System Settings is for administrators only (the page and its API are guarded too). */}
+        {isAdmin && (
+          <button
+            type="button"
+            className="header-icon-button header-settings-button"
+            aria-label="System settings"
+            title="System settings"
+            onClick={() => navigate('systemSettings', { tab: 'users' })}
+          >
+            <Icon name="settings" size={19} />
+          </button>
+        )}
 
         <UserProfileMenu />
       </div>

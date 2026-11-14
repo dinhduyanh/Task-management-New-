@@ -153,18 +153,21 @@ export default function Sidebar({
                       <Icon name="settings" size={15} />
                       <span>Space setting</span>
                     </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="space-context-delete"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        setSpaceToDelete(space);
-                      }}
-                    >
-                      <Icon name="trash" size={15} />
-                      <span>Delete space</span>
-                    </button>
+                    {/* Only the project owner or an administrator may delete a project. */}
+                    {space.permissions?.manage && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="space-context-delete"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          setSpaceToDelete(space);
+                        }}
+                      >
+                        <Icon name="trash" size={15} />
+                        <span>Delete space</span>
+                      </button>
+                    )}
                   </div>
                 )}
               </div>
