@@ -141,3 +141,22 @@ CREATE TABLE IF NOT EXISTS work_item_status_history (
   created_at TEXT NOT NULL,
   FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE
 );
+
+-- Sprints of a Space. status: future | active | completed. Work items reference a
+-- sprint through data_json.sprintId (null/absent = Product Backlog).
+CREATE TABLE IF NOT EXISTS sprints (
+  id TEXT PRIMARY KEY,
+  space_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  goal TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'future',
+  start_date TEXT,
+  end_date TEXT,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  completed_at TEXT,
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_sprints_space ON sprints(space_id);

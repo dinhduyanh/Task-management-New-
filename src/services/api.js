@@ -108,6 +108,41 @@ export const api = {
     json('POST', { ids, targetSpaceId })
   ),
 
+  /** Moves work items into a sprint (null = backlog); `ids` is that list's complete new order. */
+  rankWorkItems: (ids, sprintId) => request(
+    '/work-items/rank',
+    json('POST', { ids, sprintId: sprintId || null })
+  ),
+
+  // Sprints
+  getSprints: (spaceId) => request(`/spaces/${encodeURIComponent(spaceId)}/sprints`),
+
+  createSprint: (spaceId, data = {}) => request(
+    `/spaces/${encodeURIComponent(spaceId)}/sprints`,
+    json('POST', data)
+  ),
+
+  updateSprint: (id, data) => request(
+    `/sprints/${encodeURIComponent(id)}`,
+    json('PATCH', data)
+  ),
+
+  startSprint: (id, data) => request(
+    `/sprints/${encodeURIComponent(id)}/start`,
+    json('POST', data)
+  ),
+
+  /** moveTo: 'backlog' | 'new' | a future sprint id, for the work items that are not done. */
+  completeSprint: (id, moveTo) => request(
+    `/sprints/${encodeURIComponent(id)}/complete`,
+    json('POST', { moveTo })
+  ),
+
+  deleteSprint: (id) => request(
+    `/sprints/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
+  ),
+
   getComments: (workItemId) => request(
     `/work-items/${encodeURIComponent(workItemId)}/comments`
   ),

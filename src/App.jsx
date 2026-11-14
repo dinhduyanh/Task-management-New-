@@ -12,6 +12,7 @@ import SpacesList, { IssueModal } from './pages/SpacesList/SpacesList';
 import SpaceSettings from './pages/SpaceSettings/SpaceSettings';
 import SpaceBoard from './pages/SpaceBoard/SpaceBoard';
 import SpaceTimeline from './pages/SpaceTimeline/SpaceTimeline';
+import SpaceBacklog from './pages/SpaceBacklog/SpaceBacklog';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
 import './App.css';
@@ -232,6 +233,25 @@ export default function App() {
     }
   }
 
+  /** Moves work items into a sprint (null = backlog) in the given order. Optimistic. */
+  async function handleRankTasks(ids, sprintId) {
+    const order = new Map(ids.map((id, index) => [String(id), index]));
+    setTasks((currentTasks) => currentTasks.map((task) => order.has(String(task.id))
+      ? { ...task, sprintId: sprintId || null, rank: order.get(String(task.id)) }
+      : task));
+    try {
+      const updated = await api.rankWorkItems(ids, sprintId);
+      const byId = new Map(updated.map((task) => [String(task.id), task]));
+      setTasks((currentTasks) => currentTasks.map((task) => byId.get(String(task.id)) || task));
+      setBackendError('');
+      return true;
+    } catch (error) {
+      setBackendError(error.message || 'Unable to move Work Items.');
+      loadPersistentData();
+      return false;
+    }
+  }
+
   async function handleDeleteTasks(itemsOrIds) {
     const taskIds = (Array.isArray(itemsOrIds) ? itemsOrIds : []).map((item) =>
       typeof item === 'object' && item !== null ? item.id : item
@@ -364,6 +384,20 @@ export default function App() {
         />
       );
     }
+  } else if (currentRoute.page === 'spaceTab' && currentRoute.data?.tab === 'Backlog') {
+    const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
+    pageContent = (
+      <SpaceBacklog
+        key={selectedSpace.id}
+        {...sharedNavigationProps}
+        space={selectedSpace}
+        onCreateTask={handleCreateTask}
+        onUpdateTask={handleUpdateTask}
+        onDeleteTasks={handleDeleteTasks}
+        onRankTasks={handleRankTasks}
+        onRefreshTasks={loadPersistentData}
+      />
+    );
   } else if (currentRoute.page === 'spaceTab' && currentRoute.data?.tab === 'Timeline') {
     const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
     pageContent = (

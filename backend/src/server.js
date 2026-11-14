@@ -4,6 +4,7 @@ import spacesRouter from './routes/spaces.js';
 import workItemsRouter from './routes/workItems.js';
 import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
+import sprintsRouter from './routes/sprints.js';
 import { db } from './db.js';
 
 const app = express();
@@ -19,6 +20,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/spaces', spacesRouter);
 app.use('/api/work-items', workItemsRouter);
+app.use('/api', sprintsRouter);
 
 app.use((error, _req, res, _next) => {
   if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'This Code or Key already exists.' });

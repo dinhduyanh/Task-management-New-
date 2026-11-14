@@ -26,6 +26,22 @@ function nextKey(space) {
   return `${prefix}-${Math.max(0, ...numbers) + 1}`;
 }
 
+/** Error message when sprintId cannot hold work items of this Space, '' when valid (null = backlog). */
+function sprintError(spaceId, sprintId) {
+  if (sprintId === null || sprintId === undefined || sprintId === '') return '';
+  const sprint = db.prepare('SELECT space_id, status FROM sprints WHERE id = ?').get(String(sprintId));
+  if (!sprint || sprint.space_id !== spaceId) return 'Sprint not found in this Space.';
+  if (sprint.status === 'completed') return 'Work items cannot be added to a completed sprint.';
+  return '';
+}
+
+function nextRank(spaceId, sprintId) {
+  const row = sprintId
+    ? db.prepare("SELECT MAX(CAST(json_extract(data_json, '$.rank') AS REAL)) AS max FROM work_items WHERE json_extract(data_json, '$.sprintId') = ?").get(String(sprintId))
+    : db.prepare("SELECT MAX(CAST(json_extract(data_json, '$.rank') AS REAL)) AS max FROM work_items WHERE space_id = ? AND json_extract(data_json, '$.sprintId') IS NULL").get(spaceId);
+  return (row.max ?? -1) + 1;
+}
+
 function syncLinks(workItemId, links) {
   db.prepare('DELETE FROM work_item_links WHERE source_work_item_id = ?').run(workItemId);
   for (const link of Array.isArray(links) ? links : []) {
@@ -55,6 +71,26 @@ router.get('/search', (req, res) => {
   res.json(rows.map((row) => ({ ...workItemRowToObject(row), spaceName: row.space_name, spaceCode: row.space_code })));
 });
 
+// Moves work items into a sprint (or the backlog with sprintId null) and sets their order.
+// Body: { sprintId, ids } where ids is the complete new order of that sprint/backlog.
+router.post('/rank', (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String))] : [];
+    const sprintId = req.body?.sprintId ? String(req.body.sprintId) : null;
+    if (!ids.length) return res.status(400).json({ error: 'At least one Work Item ID is required.' });
+    const rows = ids.map((id) => db.prepare('SELECT id, space_id FROM work_items WHERE id = ?').get(id));
+    if (rows.some((row) => !row)) return res.status(404).json({ error: 'Work item not found.' });
+    const spaceId = rows[0].space_id;
+    if (rows.some((row) => row.space_id !== spaceId)) return res.status(400).json({ error: 'Work items must belong to the same Space.' });
+    const error = sprintError(spaceId, sprintId);
+    if (error) return res.status(400).json({ error });
+    const now = nowIso();
+    const update = db.prepare("UPDATE work_items SET data_json = json_set(data_json, '$.sprintId', json(?), '$.rank', ?, '$.updatedAt', ?), updated_at = ? WHERE id = ?");
+    db.transaction(() => ids.forEach((id, index) => update.run(JSON.stringify(sprintId), index, now, now, id)))();
+    res.json(ids.map((id) => workItemRowToObject(db.prepare('SELECT * FROM work_items WHERE id = ?').get(id))));
+  } catch (error) { next(error); }
+});
+
 router.post('/', (req, res, next) => {
   try {
     const body = req.body || {};
@@ -77,6 +113,10 @@ router.post('/', (req, res, next) => {
       }
     }
 
+    const sprintId = body.sprintId ? String(body.sprintId) : null;
+    const sprintProblem = sprintError(space.id, sprintId);
+    if (sprintProblem) return res.status(400).json({ error: sprintProblem });
+
     const id = createId('issue');
     const key = nextKey(space);
     const now = nowIso();
@@ -91,6 +131,8 @@ router.post('/', (req, res, next) => {
       spaceId, projectId: spaceId,
       spaceCode: space.code,
       parentId,
+      sprintId,
+      rank: nextRank(space.id, sprintId),
       createdAt: now, updatedAt: now
     };
 
@@ -133,6 +175,11 @@ router.patch('/:id', (req, res, next) => {
     const status = String(nextData.status || row.status);
     const priority = String(nextData.priority || row.priority);
     const parentId = nextData.parentId ?? nextData.parent?.id ?? null;
+    if (Object.prototype.hasOwnProperty.call(updates, 'sprintId')) {
+      const sprintProblem = sprintError(row.space_id, updates.sprintId);
+      if (sprintProblem) return res.status(400).json({ error: sprintProblem });
+      nextData.sprintId = updates.sprintId || null;
+    }
 
     // Enforce the approved Issue Type workflow on the server, not only in React.
     if (status !== row.status) {
