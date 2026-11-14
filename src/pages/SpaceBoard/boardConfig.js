@@ -2,8 +2,8 @@
 // Stored on the Space as `space.board = { columns: [{ id, name, statuses: [] }] }`.
 // A status belongs to at most one column; statuses in no column are "unmapped"
 // and their work items are not shown on the board.
-import { STATUSES } from '../SpacesList/issueHelpers';
-import { getIssueStatus } from '../SpacesList/workflows';
+import { STATUSES, statusTone } from '../SpacesList/issueHelpers';
+import { getIssueStatus, validateIssueTransition } from '../SpacesList/workflows';
 
 export const DEFAULT_BOARD_COLUMNS = [
   { id: 'col-todo', name: 'To do', statuses: ['To Do'] },
@@ -80,4 +80,25 @@ export function validateBoardColumns(columns) {
   const duplicate = names.find((name, index) => names.findIndex((other) => sameText(other, name)) !== index);
   if (duplicate) return `Column names must be unique ("${duplicate}" is used twice).`;
   return '';
+}
+
+/** Column colour from the statuses it holds, so it stays right after columns are reordered. */
+export function columnTone(column) {
+  const tones = column.statuses.map(statusTone);
+  if (tones.length && tones.every((tone) => tone === 'done' || tone === 'cancel')) return 'done';
+  if (tones.some((tone) => tone === 'progress' || tone === 'review' || tone === 'blocked')) return 'progress';
+  return 'todo';
+}
+
+/** First status in the column the issue may move to, or the reason it cannot. */
+export function resolveTarget(issue, column, allIssues) {
+  const current = getIssueStatus(issue);
+  if (column.statuses.some((status) => status.toLowerCase() === current.toLowerCase())) return { same: true };
+  let reason = '';
+  for (const status of column.statuses) {
+    const result = validateIssueTransition(issue, status, allIssues);
+    if (result.allowed) return { status };
+    reason ||= result.reason;
+  }
+  return { reason: reason || `"${column.name}" has no statuses mapped to it.` };
 }

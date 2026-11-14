@@ -8,12 +8,14 @@ import TaskDetailDrawer from '../SpacesList/TaskDetailDrawer';
 import { IssueModal, StartTransitionModal } from '../SpacesList/SpacesList';
 import IssueToolbar from '../SpacesList/IssueToolbar';
 import ProjectHeader from '../SpacesList/ProjectHeader';
+import { navigateProjectTab } from '../SpacesList/projectNavigation';
 import useIssueFilters from '../SpacesList/useIssueFilters';
 import { assigneeName, isInSpace, issueKey } from '../SpacesList/issueHelpers';
 import { getChildIssues } from '../SpacesList/workflows';
 import { ISSUE_DRAG_TYPE } from '../SpaceBoard/BoardCard';
 import BacklogRow from './BacklogRow';
 import MenuButton from './MenuButton';
+import useSprints from './useSprints';
 import { CompleteSprintModal, ConfirmModal, SprintFormModal } from './SprintModals';
 import {
   BACKLOG_ID,
@@ -153,9 +155,7 @@ export default function SpaceBacklog({
   onGlobalCreate = () => {},
   onOpenTask = () => {}
 }) {
-  const [sprints, setSprints] = useState(null);
-  const [loadError, setLoadError] = useState('');
-  const [reloadKey, setReloadKey] = useState(0);
+  const { sprints, setSprints, error: loadError, reload: reloadSprints } = useSprints(space.id);
   const [settings, setSettingsState] = useState(readSettings);
   const [insightsOpen, setInsightsOpen] = useState(false);
   const [collapsedLists, setCollapsedLists] = useState(() => new Set());
@@ -170,16 +170,6 @@ export default function SpaceBacklog({
   const [dragIds, setDragIds] = useState(null);
   const [drop, setDrop] = useState(null); // { listId, rowId, position }
   const [toast, setToast] = useState(null);
-
-  // Sprints are loaded per Space (App remounts this page with key={space.id}).
-  useEffect(() => {
-    if (!space.id) return undefined;
-    let active = true;
-    api.getSprints(space.id)
-      .then((rows) => { if (active) { setSprints(rows); setLoadError(''); } })
-      .catch((error) => { if (active) setLoadError(error.message || 'Unable to load sprints.'); });
-    return () => { active = false; };
-  }, [space.id, reloadKey]);
 
   function setSettings(next) {
     setSettingsState(next);
@@ -215,10 +205,6 @@ export default function SpaceBacklog({
   const listName = (listId) => listId === BACKLOG_ID ? 'Backlog' : openSprints.find((sprint) => String(sprint.id) === listId)?.name || 'Sprint';
   const listOf = (issueId) => [...lists].find(([, items]) => items.some((issue) => String(issue.id) === String(issueId)))?.[0] || BACKLOG_ID;
   const visualOrderIds = [...visibleLists.values()].flat().map((issue) => String(issue.id));
-
-  function reloadSprints() {
-    setReloadKey((value) => value + 1);
-  }
 
   async function moveIssues(ids, targetListId, beforeId = null) {
     const targetIds = (lists.get(targetListId) || []).map((issue) => String(issue.id));
@@ -496,7 +482,10 @@ export default function SpaceBacklog({
             </button>
           )}
           {sprint?.status === 'active' && (
-            <button type="button" className="bl-button is-primary" onClick={() => setCompleteSprint(sprint)}>Complete sprint</button>
+            <>
+              <button type="button" className="bl-button" onClick={() => navigateProjectTab(onNavigate, space, 'Active Sprints')}>Open board</button>
+              <button type="button" className="bl-button is-primary" onClick={() => setCompleteSprint(sprint)}>Complete sprint</button>
+            </>
           )}
           {sprint && (
             <MenuButton
