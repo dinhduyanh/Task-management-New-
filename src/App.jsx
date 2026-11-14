@@ -120,6 +120,11 @@ export default function App() {
         lastRoute?.page === page &&
         JSON.stringify(lastRoute?.data ?? null) === JSON.stringify(data ?? null)
       ) return current;
+      // Already in System settings (e.g. the gear clicked again): switch tab, keep one entry,
+      // so the back arrow returns to the screen the admin came from.
+      if (page === 'systemSettings' && lastRoute?.page === 'systemSettings') {
+        return [...current.slice(0, -1), { page, data }];
+      }
       return [...current, { page, data }];
     });
   }

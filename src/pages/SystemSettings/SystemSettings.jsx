@@ -1,6 +1,5 @@
 import { useState } from 'react';
 import Header from '../../components/layout/Header';
-import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
 import Toast from '../../components/common/Toast';
 import UsersPanel from './UsersPanel';
@@ -21,12 +20,10 @@ export default function SystemSettings({
   tab = 'users',
   onTabChange = () => {},
   onDataChanged = () => {},
+  onBack = () => {},
   spaces = [],
   tasks = [],
   onNavigate = () => {},
-  onCreateSpace = () => {},
-  onOpenSpaceSettings = () => {},
-  onDeleteSpace = () => {},
   onGlobalCreate = () => {},
   onOpenTask = () => {}
 }) {
@@ -34,38 +31,45 @@ export default function SystemSettings({
   const active = TABS.find((item) => item.id === tab) || TABS[0];
 
   return (
-    <div className="app-shell">
+    <div className="ss-shell">
       <Header spaces={spaces} tasks={tasks} onGlobalCreate={onGlobalCreate} onOpenTask={onOpenTask} />
-      <Sidebar activeSection="" spaces={spaces} onNavigate={onNavigate} onCreateSpace={onCreateSpace} onOpenSpaceSettings={onOpenSpaceSettings} onDeleteSpace={onDeleteSpace} />
 
-      <main className="main-content ss-main">
-        <div className="page-heading">
+      <aside className="ss-sidebar">
+        <button type="button" className="ss-back" onClick={onBack} aria-label="Back to the previous screen" title="Back">
+          <Icon name="arrowLeft" size={17} />
+          <span>System settings</span>
+        </button>
+
+        <div className="ss-identity">
+          <span className="ss-identity-icon"><Icon name="settings" size={18} /></span>
           <div>
-            <div className="breadcrumb">Administration <span>/</span> System settings</div>
-            <h1>System settings</h1>
-            <p className="ss-subtitle">Manage accounts, project roles, languages and dashboard widgets. Only administrators can see this page.</p>
+            <strong>Administration</strong>
+            <small>Only administrators can see this</small>
           </div>
         </div>
 
-        <div className="ss-layout">
-          <nav className="ss-nav" aria-label="System settings sections">
-            {TABS.map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                className={item.id === active.id ? 'active' : ''}
-                aria-current={item.id === active.id ? 'page' : undefined}
-                onClick={() => onTabChange(item.id)}
-              >
-                <Icon name={item.icon} size={17} />
-                <span>
-                  <strong>{item.label}</strong>
-                  <small>{item.description}</small>
-                </span>
-              </button>
-            ))}
-          </nav>
+        <nav className="ss-nav" aria-label="System settings sections">
+          {TABS.map((item) => (
+            <button
+              key={item.id}
+              type="button"
+              className={item.id === active.id ? 'active' : ''}
+              aria-current={item.id === active.id ? 'page' : undefined}
+              onClick={() => onTabChange(item.id)}
+            >
+              <Icon name={item.icon} size={17} />
+              <span>
+                <strong>{item.label}</strong>
+                <small>{item.description}</small>
+              </span>
+            </button>
+          ))}
+        </nav>
+      </aside>
 
+      <main className="ss-content">
+        <div className="ss-content-inner">
+          <div className="ss-crumb">System settings<span>/</span><strong>{active.label}</strong></div>
           <section className="ss-panel" aria-label={active.label}>
             {active.id === 'users' && <UsersPanel onToast={setToast} onDataChanged={onDataChanged} />}
             {active.id === 'project-roles' && <ProjectRolesPanel onToast={setToast} onDataChanged={onDataChanged} />}
