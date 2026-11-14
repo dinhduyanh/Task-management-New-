@@ -10,6 +10,7 @@ import CreateSpace from './pages/CreateSpace/CreateSpace';
 import SpacesSummary from './pages/SpacesSummary/SpacesSummary';
 import SpacesList, { IssueModal } from './pages/SpacesList/SpacesList';
 import SpaceSettings from './pages/SpaceSettings/SpaceSettings';
+import SpaceBoard from './pages/SpaceBoard/SpaceBoard';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
 import './App.css';
@@ -362,6 +363,21 @@ export default function App() {
         />
       );
     }
+  } else if (
+    currentRoute.page === 'spaceBoard' ||
+    (currentRoute.page === 'spaceTab' && currentRoute.data?.tab === 'Board')
+  ) {
+    const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
+    pageContent = (
+      <SpaceBoard
+        {...sharedNavigationProps}
+        space={selectedSpace}
+        onCreateTask={handleCreateTask}
+        onUpdateTask={handleUpdateTask}
+        onDeleteTasks={handleDeleteTasks}
+        onSaveBoard={(columns) => handleUpdateSpace(selectedSpace.id, { board: { columns } })}
+      />
+    );
   } else if (currentRoute.page === 'spaceTab') {
     const space = spaces.find((item) => item.id === currentRoute.data?.id) || currentRoute.data || {};
     const tab = currentRoute.data?.tab || 'Space';

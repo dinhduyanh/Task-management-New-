@@ -5,10 +5,16 @@ import Icon from '../../components/common/Icon';
 import PriorityIcon from '../../components/common/PriorityIcon';
 import { getInitialStatus, getIssueStatus, getTransitionOptions, validateIssueTransition } from './workflows';
 import TaskDetailDrawer from './TaskDetailDrawer';
+import {
+  ISSUE_TYPES, STATUSES, PRIORITIES, ORDER_PRESETS,
+  issueKey, issueSummary, issueType, issueTypeOf, assigneeName, dateValue,
+  formatDateTime, toDateInputValue, formatDateOnly, getInitials, iconForType,
+  matchesIssueFilters, sortIssues
+} from './issueHelpers';
+import { ExtraFilterControls, MoreFilters, MultiFilter, OrderFilter } from './IssueFilters';
 import './SpacesList.css';
 import './GlobalCreateSearch.css';
 
-const ISSUE_TYPES = ['Epic', 'Task', 'Bug', 'Improvement', 'Story', 'Sub-task', 'Feature'];
 const CHILD_TYPES_BY_PARENT = {
   Epic: ['Story', 'Task', 'Bug', 'Improvement'],
   Feature: ['Story', 'Task', 'Bug', 'Improvement'],
@@ -25,124 +31,7 @@ const PARENT_TYPES_BY_CHILD = {
   Improvement: ['Epic', 'Feature'],
   'Sub-task': ['Story', 'Task', 'Bug', 'Improvement']
 };
-const STATUSES = ['Backlog', 'To Do', 'In Progress', 'In Review', 'Blocked', 'Done', 'Cancel'];
-const PRIORITIES = ['High', 'Highest', 'Low', 'Lowest', 'Medium'];
-const ORDER_OPTIONS = ['All', 'Newest created', 'Oldest created', 'Most recently updated', 'Least recently updated', 'Highest priority first', 'Lowest priority first', 'Latest start date', 'Earliest start date', 'Latest due date', 'Earliest due date'];
-const EXTRA_FIELDS = ['Priority', 'Start Date', 'End Date', 'Create Date', 'Updated Date'];
-const PRIORITY_RANK = { Highest: 1, High: 2, Medium: 3, Low: 4, Lowest: 5 };
 
-function issueKey(issue) { return issue.key || issue.code || issue.taskCode || '—'; }
-function issueSummary(issue) { return issue.summary || issue.title || issue.name || 'Untitled work item'; }
-function issueType(issue) {
-  const raw = issue.issueType || issue.type || 'Task';
-  return ISSUE_TYPES.find((type) => type.toLowerCase() === String(raw).toLowerCase()) || String(raw);
-}
-function issueTypeOf(issue) { return issueType(issue); }
-function assigneeName(issue) {
-  if (!issue?.assignee) return '';
-  return typeof issue.assignee === 'string' ? issue.assignee : issue.assignee.name || issue.assignee.fullName || '';
-}
-function dateValue(issue, field) {
-  const names = {
-    createdAt: ['createdAt', 'createdDate', 'createDate', 'created'],
-    updatedAt: ['updatedAt', 'updatedDate', 'lastUpdated'],
-    startDate: ['startDate', 'start'],
-    dueDate: ['dueDate', 'endDate', 'due', 'end']
-  }[field] || [field];
-  for (const name of names) if (issue?.[name] !== undefined && issue?.[name] !== null && issue?.[name] !== '') return issue[name];
-  return null;
-}
-function toDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === 'number') return new Date(value);
-  const text = String(value).trim();
-  const match = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
-  if (match) return new Date(+match[3], +match[2] - 1, +match[1], +(match[4] || 0), +(match[5] || 0), +(match[6] || 0));
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-function formatDateTime(value) {
-  const date = toDate(value);
-  if (!date) return 'None';
-  const pad = (number) => String(number).padStart(2, '0');
-  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-function toDateInputValue(value) {
-  const date = toDate(value);
-  if (!date) return '';
-  const pad = (number) => String(number).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-function formatDateOnly(value) {
-  const date = toDate(value);
-  if (!date) return 'None';
-  const pad = (number) => String(number).padStart(2, '0');
-  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
-}
-function getInitials(value) {
-  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
-  return parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase() : (parts[0] || '—').slice(0, 2).toUpperCase();
-}
-function iconForType(type) {
-  const icons = {
-    Epic: 'epic',
-    Feature: 'feature',
-    Task: 'tasks',
-    Improvement: 'improvement',
-    Bug: 'bug',
-    Story: 'story',
-    'Sub-task': 'subTask'
-  };
-  return icons[type] || 'tasks';
-}
-
-function MultiFilter({ label, options, selected, onChange, width = 190, showPriorityIcons = false }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const shown = options.filter((option) => option.toLowerCase().includes(query.toLowerCase()));
-  return (
-    <div className="slv-filter-wrap">
-      <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((value) => !value); setQuery(''); }}>
-        <span>{label}</span><b>{selected.length ? selected.length : 'All'}</b><Icon name="chevron" size={13} />
-      </button>
-      {open && <div className="slv-popover" style={{ width }}>
-        <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-        <div className="slv-popover-options">
-          {shown.length ? shown.map((option) => <label className="slv-option" key={option}><input type="checkbox" checked={selected.includes(option)} onChange={() => onChange(selected.includes(option) ? selected.filter((item) => item !== option) : [...selected, option])} />{showPriorityIcons && <PriorityIcon priority={option} size={16} />}<span>{option}</span></label>) : <div className="slv-no-options">No options found</div>}
-        </div>
-        <div className="slv-popover-footer"><button type="button" onClick={() => onChange([])}>Clear</button><button type="button" className="primary-link" onClick={() => setOpen(false)}>Done</button></div>
-      </div>}
-    </div>
-  );
-}
-
-function OrderFilter({ value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const shown = ORDER_OPTIONS.filter((item) => item.toLowerCase().includes(query.toLowerCase()));
-  return <div className="slv-filter-wrap">
-    <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((v) => !v); setQuery(''); }}><span>Order by</span><b>{value}</b><Icon name="chevron" size={13} /></button>
-    {open && <div className="slv-popover slv-order-popover">
-      <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-      <div className="slv-popover-options">{shown.map((item) => <button type="button" key={item} className={`slv-single-option ${value === item ? 'selected' : ''}`} onClick={() => { onChange(item); setOpen(false); }}>{item}{value === item && <Icon name="check" size={14} />}</button>)}</div>
-    </div>}
-  </div>;
-}
-
-function MoreFilters({ selected, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const shown = EXTRA_FIELDS.filter((field) => field.toLowerCase().includes(query.toLowerCase()));
-  return <div className="slv-filter-wrap">
-    <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((v) => !v); setQuery(''); }}>More filters{selected.length > 0 && <b className="slv-count">{selected.length}</b>}<Icon name="chevron" size={13} /></button>
-    {open && <div className="slv-popover slv-more-popover">
-      <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search fields" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-      <div className="slv-popover-options">{shown.map((field) => <label className="slv-option" key={field}><input type="checkbox" checked={selected.includes(field)} onChange={() => onChange(selected.includes(field) ? selected.filter((item) => item !== field) : [...selected, field])} /><span>{field}</span></label>)}</div>
-      <div className="slv-popover-footer"><button type="button" onClick={() => onChange([])}>Clear</button><button type="button" className="primary-link" onClick={() => setOpen(false)}>Done</button></div>
-    </div>}
-  </div>;
-}
 
 function SortHeading({ label, field, sort, onSort }) {
   const active = sort.field === field;
@@ -676,7 +565,8 @@ function resolveAssigneeRecord(userId, members = []) {
   };
 }
 
-function StartTransitionModal({ issues, members, assigneeId, onAssigneeChange, onClose, onConfirm }) {
+/** Asks for an assignee before unassigned work items move to In Progress. Calls onConfirm(assigneeRecord). */
+export function StartTransitionModal({ issues, members, assigneeId, onAssigneeChange, onClose, onConfirm }) {
   const isBulk = issues.length > 1;
   return (
     <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -700,7 +590,7 @@ function StartTransitionModal({ issues, members, assigneeId, onAssigneeChange, o
         </div>
         <div className="slv-modal-foot">
           <button type="button" className="slv-btn secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="slv-btn primary" disabled={!assigneeId} onClick={onConfirm}>Update</button>
+          <button type="button" className="slv-btn primary" disabled={!assigneeId} onClick={() => { const assignee = resolveAssigneeRecord(assigneeId, members); if (assignee) onConfirm(assignee); }}>Update</button>
         </div>
       </div>
     </div>
@@ -1315,53 +1205,17 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
   const assigneeOptions = useMemo(() => [...new Set(inSpace.map(assigneeName).filter(Boolean))].sort(), [inSpace]);
 
   const filtered = useMemo(() => {
-    const keyword = searchApplied.trim().toLowerCase();
-    const rows = inSpace.filter((issue) => {
-      const values = [issueKey(issue), issueSummary(issue), issueType(issue), assigneeName(issue)];
-      const textMatch = !keyword || values.some((value) => String(value || '').toLowerCase().includes(keyword));
-      const typeMatch = !selectedTypes.length || selectedTypes.includes(issueType(issue));
-      const name = assigneeName(issue) || 'Unassigned';
-      const assigneeMatch = !selectedAssignees.length || selectedAssignees.includes(name);
-      const statusMatch = !selectedStatuses.length || selectedStatuses.includes(getIssueStatus(issue));
-      const priorityMatch = !priorityFilter.length || priorityFilter.includes(issue.priority || 'Medium');
-      if (!textMatch || !typeMatch || !assigneeMatch || !statusMatch || !priorityMatch) return false;
-      for (const field of moreFields) {
-        if (field === 'Priority') continue;
-        const dateKey = { 'Start Date': 'startDate', 'End Date': 'dueDate', 'Create Date': 'createdAt', 'Updated Date': 'updatedAt' }[field];
-        const date = toDate(dateValue(issue, dateKey));
-        const range = dateRanges[field] || {};
-        if (range.from && (!date || date < new Date(`${range.from}T00:00:00`))) return false;
-        if (range.to && (!date || date > new Date(`${range.to}T23:59:59`))) return false;
-      }
-      return true;
-    });
-
-    const preset = {
-      'Newest created': ['createdAt', 'desc'], 'Oldest created': ['createdAt', 'asc'],
-      'Most recently updated': ['updatedAt', 'desc'], 'Least recently updated': ['updatedAt', 'asc'],
-      'Highest priority first': ['priority', 'asc'], 'Lowest priority first': ['priority', 'desc'],
-      'Latest start date': ['startDate', 'desc'], 'Earliest start date': ['startDate', 'asc'],
-      'Latest due date': ['dueDate', 'desc'], 'Earliest due date': ['dueDate', 'asc']
-    };
-    const activeSort = sort.field ? [sort.field, sort.direction] : (preset[orderBy] || []);
-    if (activeSort.length) {
-      const [field, direction] = activeSort;
-      rows.sort((a, b) => {
-        if (field === 'priority') {
-          const delta = (PRIORITY_RANK[a.priority] || 99) - (PRIORITY_RANK[b.priority] || 99);
-          return direction === 'asc' ? delta : -delta;
-        }
-        const dateFields = ['createdAt', 'updatedAt', 'startDate', 'dueDate'];
-        if (dateFields.includes(field)) {
-          const av = toDate(dateValue(a, field))?.getTime() ?? (direction === 'asc' ? Number.MAX_SAFE_INTEGER : 0);
-          const bv = toDate(dateValue(b, field))?.getTime() ?? (direction === 'asc' ? Number.MAX_SAFE_INTEGER : 0);
-          return direction === 'asc' ? av - bv : bv - av;
-        }
-        const value = (item) => field === 'assignee' ? assigneeName(item) : field === 'status' ? getIssueStatus(item) : field === 'type' ? issueType(item) : field === 'key' ? issueKey(item) : issueSummary(item);
-        return String(value(a) || '').localeCompare(String(value(b) || '')) * (direction === 'asc' ? 1 : -1);
-      });
-    }
-    return rows;
+    const rows = inSpace.filter((issue) => matchesIssueFilters(issue, {
+      keyword: searchApplied,
+      types: selectedTypes,
+      assignees: selectedAssignees,
+      statuses: selectedStatuses,
+      priorities: priorityFilter,
+      moreFields,
+      dateRanges
+    }));
+    const [field, direction] = sort.field ? [sort.field, sort.direction] : (ORDER_PRESETS[orderBy] || []);
+    return sortIssues(rows, field, direction);
   }, [inSpace, searchApplied, selectedTypes, selectedAssignees, selectedStatuses, priorityFilter, moreFields, dateRanges, orderBy, sort]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -1425,10 +1279,8 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
     setStartRequest(null);
     setStartAssigneeId('');
   }
-  function confirmStartRequest() {
-    if (!startRequest || !startAssigneeId) return;
-    const assignee = resolveAssigneeRecord(startAssigneeId, space.members);
-    if (!assignee) return;
+  function confirmStartRequest(assignee) {
+    if (!startRequest || !assignee) return;
     const needsAssignment = new Set(startRequest.issues.filter((issue) => !assigneeName(issue)).map((issue) => issue.id));
     startRequest.issues.forEach((issue) => {
       const changes = { status: startRequest.targetStatus };
@@ -1458,8 +1310,14 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
         <MultiFilter label="Assignee" options={['Unassigned', ...assigneeOptions]} selected={selectedAssignees} onChange={setSelectedAssignees} width={210} />
         <MultiFilter label="Status" options={STATUSES} selected={selectedStatuses} onChange={setSelectedStatuses} />
         <OrderFilter value={orderBy} onChange={(value) => { setOrderBy(value); setSort({ field: '', direction: 'asc' }); }} />
-        {moreFields.filter((field) => field !== 'Priority').map((field) => <div className="slv-date-filter" key={field}><span>{field}</span><input type="date" value={dateRanges[field]?.from || ''} aria-label={`${field} from`} onChange={(event) => setDateRanges((current) => ({ ...current, [field]: { ...current[field], from: event.target.value } }))} /><span>to</span><input type="date" value={dateRanges[field]?.to || ''} aria-label={`${field} to`} onChange={(event) => setDateRanges((current) => ({ ...current, [field]: { ...current[field], to: event.target.value } }))} /><button type="button" onClick={() => updateExtraFields(moreFields.filter((item) => item !== field))} aria-label={`Remove ${field}`}>×</button></div>)}
-        {moreFields.includes('Priority') && <div className="slv-priority-filter"><MultiFilter label="Priority" options={PRIORITIES} selected={priorityFilter} onChange={setPriorityFilter} showPriorityIcons /><button type="button" onClick={() => updateExtraFields(moreFields.filter((item) => item !== 'Priority'))} aria-label="Remove priority filter">×</button></div>}
+        <ExtraFilterControls
+          moreFields={moreFields}
+          dateRanges={dateRanges}
+          onDateRangesChange={setDateRanges}
+          priorities={priorityFilter}
+          onPrioritiesChange={setPriorityFilter}
+          onRemoveField={(field) => updateExtraFields(moreFields.filter((item) => item !== field))}
+        />
         <MoreFilters selected={moreFields} onChange={updateExtraFields} />
       </section>
 
