@@ -15,6 +15,7 @@ import SpaceTimeline from './pages/SpaceTimeline/SpaceTimeline';
 import SpaceBacklog from './pages/SpaceBacklog/SpaceBacklog';
 import SpaceActiveSprints from './pages/SpaceActiveSprints/SpaceActiveSprints';
 import SpaceTeams from './pages/SpaceTeams/SpaceTeams';
+import Documents from './pages/Documents/Documents';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
 import './App.css';
@@ -300,12 +301,18 @@ export default function App() {
     navigate('spaceSettings', { id: space.id, name: space.name, tab: 'Summary' });
   }
 
+  function replaceWorkItem(updated) {
+    if (!updated?.id) return;
+    setTasks((currentTasks) => currentTasks.map((task) => String(task.id) === String(updated.id) ? updated : task));
+  }
+
   const appShell = {
     user: currentUser,
     theme,
     setTheme,
     navigate,
-    signOut: handleSignOut
+    signOut: handleSignOut,
+    replaceWorkItem
   };
 
   if (!isLoggedIn) return <Login onLogin={handleLogin} notice={loginNotice} />;
@@ -386,6 +393,8 @@ export default function App() {
         />
       );
     }
+  } else if (currentRoute.page === 'documents') {
+    pageContent = <Documents {...sharedNavigationProps} />;
   } else if (currentRoute.page === 'spaceTab' && currentRoute.data?.tab === 'Teams') {
     const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
     pageContent = (

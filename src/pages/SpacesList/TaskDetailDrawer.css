@@ -453,3 +453,8 @@
 @media (max-width: 760px) {
   .td-overlay-full-page { left: 65px; }
 }
+
+.td-attachment-item>span a{color:var(--tf-fg-0052cc);text-decoration:none}.td-attachment-item>span a:hover{text-decoration:underline}
+.td-file-size{flex:0 0 auto;color:var(--tf-fg-6b778c);font-size:10px}
+.td-file-error{margin:0 0 8px;padding:7px 9px;border-radius:4px;background:var(--tf-bg-ffebe6);color:var(--tf-fg-bf2600);font-size:11px}
+.td-comment-file-list span a{color:var(--tf-fg-0052cc);text-decoration:none}

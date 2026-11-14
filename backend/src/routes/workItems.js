@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { db, createId, nowIso, parseJson, workItemRowToObject, logActivity } from '../db.js';
 import { ISSUE_WORKFLOWS, initialStatus, normalizeIssueType } from '../workflows.js';
+import { mergeAttachmentList } from './attachments.js';
 
 const router = Router();
 
@@ -133,6 +134,8 @@ router.post('/', (req, res, next) => {
       parentId,
       sprintId,
       rank: nextRank(space.id, sprintId),
+      // Files are uploaded separately (POST /work-items/:id/attachments) once the item exists.
+      attachments: mergeAttachmentList(id, body.attachments),
       createdAt: now, updatedAt: now
     };
 
@@ -175,6 +178,10 @@ router.patch('/:id', (req, res, next) => {
     const status = String(nextData.status || row.status);
     const priority = String(nextData.priority || row.priority);
     const parentId = nextData.parentId ?? nextData.parent?.id ?? null;
+    // Stored files are owned by the attachments table; a client may only drop legacy entries.
+    if (Object.prototype.hasOwnProperty.call(updates, 'attachments')) {
+      nextData.attachments = mergeAttachmentList(row.id, updates.attachments);
+    }
     if (Object.prototype.hasOwnProperty.call(updates, 'sprintId')) {
       const sprintProblem = sprintError(row.space_id, updates.sprintId);
       if (sprintProblem) return res.status(400).json({ error: sprintProblem });

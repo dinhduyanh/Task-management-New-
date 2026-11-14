@@ -9,7 +9,9 @@ export const AppShellContext = createContext({
   theme: 'light',
   setTheme: () => {},
   navigate: () => {},
-  signOut: () => {}
+  signOut: () => {},
+  /** Replaces a work item in the app state with the server's copy (e.g. after an upload). */
+  replaceWorkItem: () => {}
 });
 
 export function useAppShell() {

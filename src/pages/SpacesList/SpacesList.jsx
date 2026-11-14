@@ -13,6 +13,9 @@ import {
 } from './issueHelpers';
 import { ExtraFilterControls, MoreFilters, MultiFilter, OrderFilter } from './IssueFilters';
 import ProjectHeader from './ProjectHeader';
+import { useAppShell } from '../../context/appShellContext';
+import { api } from '../../services/api';
+import { FILE_ACCEPT, formatBytes, validateUploadFile } from '../../services/fileTypes';
 import './SpacesList.css';
 import './GlobalCreateSearch.css';
 
@@ -786,6 +789,10 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
     attachments: []
   });
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  // Set when the work item was created but some files failed to upload; the form then only closes.
+  const [createdWithErrors, setCreatedWithErrors] = useState(false);
+  const { replaceWorkItem } = useAppShell();
 
   const members = Array.isArray(activeSpace?.members) ? activeSpace.members : [];
   // Inactive project teams cannot be chosen for new work items.
@@ -868,17 +875,35 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
       links: form.linkedIssueId
         ? [{ type: form.linkType, issueId: form.linkedIssueId }]
         : [],
-      attachments: form.attachments,
+      // Files are uploaded to the created work item below, not sent as JSON.
+      attachments: [],
       spaceId: activeSpace.id,
       spaceCode: activeSpace.code
     };
 
+    setSubmitting(true);
     try {
       const created = await onCreate(payload);
       if (created === false || created === null) return;
+      const failed = [];
+      for (const file of form.attachments) {
+        try {
+          const result = await api.uploadAttachment(created.id, file);
+          replaceWorkItem(result.workItem);
+        } catch (uploadError) {
+          failed.push(`${file.name} (${uploadError.message})`);
+        }
+      }
+      if (failed.length) {
+        setCreatedWithErrors(true);
+        setError(`${created.key || 'The work item'} was created, but ${failed.length} file${failed.length === 1 ? '' : 's'} could not be uploaded: ${failed.join(', ')}. You can add them from the work item details.`);
+        return;
+      }
       onClose();
     } catch (createError) {
       setError(createError?.message || 'Unable to create Work Item. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -888,7 +913,7 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
     const allowedParentTypes = PARENT_TYPES_BY_CHILD[issueType] || [];
     return !allowedParentTypes.length || allowedParentTypes.includes(issueTypeOf(issue));
   });
-  const allowedFileTypes = '.pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png';
+  const allowedFileTypes = FILE_ACCEPT;
 
   return (
     <div className="slv-create-backdrop" onMouseDown={(event) => {
@@ -1091,19 +1116,22 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
                           accept={allowedFileTypes}
                           onChange={(event) => {
                             const files = Array.from(event.target.files || []);
-                            if (files.length) setField('attachments', [...form.attachments, ...files]);
+                            const problems = files.map(validateUploadFile).filter(Boolean);
+                            const valid = files.filter((file) => !validateUploadFile(file));
+                            if (valid.length) setField('attachments', [...form.attachments, ...valid]);
+                            setError(problems.join(' '));
                             event.target.value = '';
                           }}
                         />
                         <Icon name="upload" size={25} />
                         <span>Click or drag files to this area to upload</span>
-                        <small>Support PDF, XLSX, DOC, JPG/JPEG, PNG</small>
+                        <small>PDF, Word, Excel, PowerPoint, TXT, CSV, ZIP and images (JPG, PNG, GIF, WEBP), up to 10 MB each</small>
                       </label>
                       {form.attachments.length > 0 && (
                         <div className="slv-attachment-list">
                           {form.attachments.map((file, index) => (
                             <div key={`${file.name}-${file.size}-${index}`}>
-                              <span>{file.name}</span>
+                              <span>{file.name} <small>({formatBytes(file.size)})</small></span>
                               <button type="button" onClick={() => setField('attachments', form.attachments.filter((_, fileIndex) => fileIndex !== index))} aria-label={`Remove ${file.name}`}>×</button>
                             </div>
                           ))}
@@ -1120,9 +1148,13 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
 
         <footer className="slv-create-footer">
           <span className="slv-create-footer-hint">{isSubTask ? 'Parent is required for Sub-task.' : 'Fields marked with * are required.'}</span>
-          <button type="submit" className="slv-btn primary" disabled={!activeSpace || !issueType}>
-            Create work item
-          </button>
+          {createdWithErrors ? (
+            <button type="button" className="slv-btn primary" onClick={onClose}>Close</button>
+          ) : (
+            <button type="submit" className="slv-btn primary" disabled={!activeSpace || !issueType || submitting}>
+              {submitting ? (form.attachments.length ? 'Creating and uploading…' : 'Creating…') : 'Create work item'}
+            </button>
+          )}
         </footer>
       </form>
     </div>

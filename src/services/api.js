@@ -114,6 +114,29 @@ export const api = {
     json('POST', { ids, sprintId: sprintId || null })
   ),
 
+  // Files attached to work items
+  getAttachments: (spaceId) => request(`/attachments${spaceId ? `?spaceId=${encodeURIComponent(spaceId)}` : ''}`),
+
+  /** Uploads one file to a work item. Resolves to { attachment, workItem }. */
+  uploadAttachment: (workItemId, file, source = 'work_item') => request(
+    `/work-items/${encodeURIComponent(workItemId)}/attachments`,
+    {
+      method: 'POST',
+      body: file,
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(file.name),
+        ...(source === 'comment' ? { 'X-Attachment-Source': 'comment' } : {})
+      }
+    }
+  ),
+
+  /** Resolves to { workItem } with the updated attachment list. */
+  deleteAttachment: (id) => request(`/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /** URL to show a file inline (images, PDF) or to download it. */
+  attachmentUrl: (id, mode = 'content') => `${API_BASE_URL}/attachments/${encodeURIComponent(id)}/${mode === 'download' ? 'download' : 'content'}`,
+
   // Users directory (signed-in users only)
   getUsers: () => request('/users'),
 

@@ -174,3 +174,25 @@ CREATE TABLE IF NOT EXISTS team_members (
 );
 
 CREATE INDEX IF NOT EXISTS idx_team_members_user ON team_members(user_id);
+
+-- Uploaded files (the older `attachments` table above was never used by the API). Content is stored in the database so deleting a work item (or its
+-- Space) removes its files too. Metadata is mirrored in work_items.data_json.attachments.
+CREATE TABLE IF NOT EXISTS work_item_files (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT NOT NULL,
+  space_id TEXT NOT NULL,
+  file_name TEXT NOT NULL,
+  extension TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size INTEGER NOT NULL,
+  content BLOB NOT NULL,
+  source TEXT NOT NULL DEFAULT 'work_item',
+  uploaded_by_id TEXT,
+  uploaded_by_name TEXT,
+  created_at TEXT NOT NULL,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_work_item_files_item ON work_item_files(work_item_id);
+CREATE INDEX IF NOT EXISTS idx_work_item_files_space ON work_item_files(space_id);

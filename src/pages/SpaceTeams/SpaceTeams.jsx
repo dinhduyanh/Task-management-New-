@@ -4,6 +4,7 @@ import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
 import Toast from '../../components/common/Toast';
 import UserAvatar from '../../components/common/UserAvatar';
+import Pagination from '../../components/common/Pagination';
 import { api } from '../../services/api';
 import ProjectHeader from '../SpacesList/ProjectHeader';
 import { MultiFilter } from '../SpacesList/IssueFilters';
@@ -107,8 +108,6 @@ export default function SpaceTeams({
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
   const currentPage = Math.min(page, pageCount);
   const pageRows = filtered.slice((currentPage - 1) * pageSize, currentPage * pageSize);
-  const firstIndex = filtered.length ? (currentPage - 1) * pageSize + 1 : 0;
-  const lastIndex = Math.min(currentPage * pageSize, filtered.length);
   const hasFilters = Boolean(search || statuses.length || leads.length || creators.length || memberFilter.length || units.length);
   const selectedOnPage = pageRows.filter((team) => selectedIds.has(team.id));
   const allOnPageSelected = pageRows.length > 0 && selectedOnPage.length === pageRows.length;
@@ -306,17 +305,15 @@ export default function SpaceTeams({
               </tbody>
             </table>
           </div>
-          <footer className="tt-foot">
-            <span>{firstIndex}-{lastIndex} of {filtered.length}</span>
-            <div className="tt-pager">
-              <button type="button" disabled={currentPage <= 1} onClick={() => setPage(currentPage - 1)} aria-label="Previous page">‹</button>
-              <span className="tt-page" aria-current="page">{currentPage}</span>
-              <button type="button" disabled={currentPage >= pageCount} onClick={() => setPage(currentPage + 1)} aria-label="Next page">›</button>
-              <select value={pageSize} onChange={(event) => { setPageSize(Number(event.target.value)); setPage(1); }} aria-label="Teams per page">
-                {PAGE_SIZES.map((size) => <option key={size} value={size}>{size} / Page</option>)}
-              </select>
-            </div>
-          </footer>
+          <Pagination
+            page={currentPage}
+            pageSize={pageSize}
+            total={filtered.length}
+            pageSizes={PAGE_SIZES}
+            label="Teams"
+            onPageChange={setPage}
+            onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+          />
         </section>
       </main>
 

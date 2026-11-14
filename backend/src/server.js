@@ -6,6 +6,7 @@ import authRouter from './routes/auth.js';
 import usersRouter from './routes/users.js';
 import sprintsRouter from './routes/sprints.js';
 import teamsRouter from './routes/teams.js';
+import attachmentsRouter from './routes/attachments.js';
 import { db } from './db.js';
 
 const app = express();
@@ -23,10 +24,11 @@ app.use('/api/spaces', spacesRouter);
 app.use('/api/work-items', workItemsRouter);
 app.use('/api', sprintsRouter);
 app.use('/api', teamsRouter);
+app.use('/api', attachmentsRouter);
 
 app.use((error, _req, res, _next) => {
   if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'This Code or Key already exists.' });
-  if (error?.type === 'entity.too.large') return res.status(413).json({ error: 'Request body is too large.' });
+  if (error?.type === 'entity.too.large') return res.status(413).json({ error: 'The upload is too large (files up to 10 MB).' });
   console.error(error);
   res.status(500).json({ error: 'Internal server error.' });
 });

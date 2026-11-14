@@ -8,6 +8,9 @@ import {
   validateIssueTransition
 } from './workflows';
 import { CHILD_TYPES_BY_PARENT } from './issueHelpers';
+import { useAppShell } from '../../context/appShellContext';
+import { api } from '../../services/api';
+import { FILE_ACCEPT, formatBytes, validateUploadFile } from '../../services/fileTypes';
 import './TaskDetailDrawer.css';
 
 const CURRENT_USER = {
@@ -323,6 +326,17 @@ function FieldValue({ value }) {
   return <>{String(value)}</>;
 }
 
+/** A file name: a link that previews/downloads stored files; plain text for legacy entries. */
+function FileName({ file }) {
+  const name = typeof file === 'string' ? file : file?.name || 'Unnamed file';
+  if (!file?.id) return <span title={`${name} (not stored, cannot be opened)`}>{name}</span>;
+  return (
+    <a href={api.attachmentUrl(file.id)} target="_blank" rel="noopener noreferrer" title={`Open ${name}`}>
+      {name}
+    </a>
+  );
+}
+
 function EmptyPanel({ children = 'No data' }) {
   return <div className="td-empty"><span className="td-empty-icon"><Icon name="inbox" size={36} /></span><span>{children}</span></div>;
 }
@@ -395,6 +409,9 @@ export default function TaskDetailDrawer({
   const [activeActivityTab, setActiveActivityTab] = useState('Comments');
   const [commentDraft, setCommentDraft] = useState('');
   const [commentFiles, setCommentFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [fileError, setFileError] = useState('');
+  const { replaceWorkItem } = useAppShell();
   const [replyToId, setReplyToId] = useState(null);
   const [replyDraft, setReplyDraft] = useState('');
   const [editingCommentId, setEditingCommentId] = useState(null);
@@ -621,14 +638,18 @@ export default function TaskDetailDrawer({
     return <input type="text" value={infoDraft ?? ''} onChange={(event) => setInfoDraft(event.target.value)} />;
   }
 
-  function addComment(event) {
+  async function addComment(event) {
     event.preventDefault();
     const text = commentDraft.trim();
     if (!text && commentFiles.length === 0) return;
+    setUploading(true);
+    const stored = commentFiles.length ? await storeFiles(commentFiles, 'comment') : [];
+    setUploading(false);
+    if (!text && !stored.length) return;
     const comment = {
       id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       text,
-      attachments: commentFiles,
+      attachments: stored.map(({ id, name, extension, size }) => ({ id, name, extension, size })),
       author: 'You',
       authorId: CURRENT_USER.id,
       createdAt: new Date().toISOString(),
@@ -738,14 +759,47 @@ export default function TaskDetailDrawer({
     onCloneTask(clone);
   }
 
-  function uploadAttachments(event) {
-    const files = Array.from(event.target.files || []);
-    if (files.length) patchIssue({ attachments: [...attachments, ...files] }, 'Attachments added', files.map((file) => file.name).join(', '));
-    event.target.value = '';
+  /** Uploads files to this work item; returns metadata of the stored files. */
+  async function storeFiles(files, source) {
+    const problems = files.map(validateUploadFile).filter(Boolean);
+    const stored = [];
+    for (const file of files.filter((item) => !validateUploadFile(item))) {
+      try {
+        const result = await api.uploadAttachment(issue.id, file, source);
+        replaceWorkItem(result.workItem);
+        stored.push(result.attachment);
+      } catch (error) {
+        problems.push(`${file.name}: ${error.message}`);
+      }
+    }
+    setFileError(problems.join(' '));
+    return stored;
   }
 
-  function removeAttachment(index) {
-    patchIssue({ attachments: attachments.filter((_, itemIndex) => itemIndex !== index) }, 'Attachment removed');
+  async function uploadAttachments(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    setUploading(true);
+    const stored = await storeFiles(files, 'work_item');
+    setUploading(false);
+    if (stored.length) patchIssue({}, 'Attachments added', stored.map((file) => file.name).join(', '));
+  }
+
+  async function removeAttachment(file, index) {
+    const name = typeof file === 'string' ? file : file?.name || 'file';
+    if (file?.id) {
+      if (!window.confirm(`Delete ${name}? It will also be removed from Documents.`)) return;
+      try {
+        const result = await api.deleteAttachment(file.id);
+        replaceWorkItem(result.workItem);
+        patchIssue({}, 'Attachment removed', name);
+      } catch (error) {
+        setFileError(error.message);
+      }
+      return;
+    }
+    patchIssue({ attachments: attachments.filter((_, itemIndex) => itemIndex !== index) }, 'Attachment removed', name);
   }
 
   const isEpicOrFeature = ['Epic', 'Feature'].includes(type);
@@ -815,7 +869,7 @@ export default function TaskDetailDrawer({
               <p>{comment.text}</p>
             )}
 
-            {commentAttachments.length > 0 && <div className="td-comment-file-list">{commentAttachments.map((file, index) => <span key={`${file.name || file}-${index}`}>{file.name || String(file)}</span>)}</div>}
+            {commentAttachments.length > 0 && <div className="td-comment-file-list">{commentAttachments.map((file, index) => <span key={`${file?.id || file?.name || file}-${index}`}><FileName file={file} /></span>)}</div>}
 
             {editingCommentId !== commentId && (
               <div className="td-comment-actions">
@@ -930,9 +984,18 @@ export default function TaskDetailDrawer({
             <section className="td-section td-attachments-section">
               <div className="td-section-heading">
                 <h2><Icon name="paperclip" size={16} /> Attachments</h2>
-                <label className="td-outline-upload"><Icon name="upload" size={13} /> Upload<input type="file" multiple onChange={uploadAttachments} /></label>
+                <label className="td-outline-upload"><Icon name="upload" size={13} /> {uploading ? 'Uploading…' : 'Upload'}<input type="file" multiple accept={FILE_ACCEPT} disabled={uploading} onChange={uploadAttachments} /></label>
               </div>
-              {attachments.length ? <div className="td-attachment-list">{attachments.map((file, index) => <div className="td-attachment-item" key={`${file.name || file}-${index}`}><Icon name="file" size={17} /><span title={file.name || String(file)}>{file.name || String(file)}</span><button type="button" onClick={() => removeAttachment(index)} title="Remove attachment"><Icon name="trash" size={13} /></button></div>)}</div> : <EmptyPanel />}
+              {fileError && <p className="td-file-error" role="alert">{fileError}</p>}
+              {attachments.length ? <div className="td-attachment-list">{attachments.map((file, index) => (
+                <div className="td-attachment-item" key={`${file?.id || file?.name || file}-${index}`}>
+                  <Icon name="file" size={17} />
+                  <span><FileName file={file} /></span>
+                  {file?.size ? <small className="td-file-size">{formatBytes(file.size)}</small> : null}
+                  {file?.id && <a className="td-plain-icon" href={api.attachmentUrl(file.id, 'download')} title={`Download ${file.name}`} aria-label={`Download ${file.name}`}><Icon name="download" size={13} /></a>}
+                  <button type="button" onClick={() => removeAttachment(file, index)} title="Remove attachment" aria-label={`Remove ${file?.name || 'attachment'}`}><Icon name="trash" size={13} /></button>
+                </div>
+              ))}</div> : <EmptyPanel />}
             </section>
 
             <section className="td-section td-child-section">
@@ -989,9 +1052,14 @@ export default function TaskDetailDrawer({
                       <button type="button" title="Bold" onClick={() => setCommentDraft((value) => `${value}**bold**`)}><strong>B</strong></button>
                       <button type="button" title="Italic" onClick={() => setCommentDraft((value) => `${value}_italic_`)}><em>I</em></button>
                       <button type="button" title="Mention" onClick={() => setCommentDraft((value) => `${value}@`)}>@</button>
-                      <label title="Attach file"><Icon name="paperclip" size={14} /><input type="file" multiple onChange={(event) => { setCommentFiles((current) => [...current, ...Array.from(event.target.files || [])]); event.target.value = ''; }} /></label>
+                      <label title="Attach file"><Icon name="paperclip" size={14} /><input type="file" multiple accept={FILE_ACCEPT} onChange={(event) => {
+                        // Copy the files before clearing the input: the state updater may run later.
+                        const picked = Array.from(event.target.files || []);
+                        event.target.value = '';
+                        setCommentFiles((current) => [...current, ...picked]);
+                      }} /></label>
                     </div>
-                    <button type="submit" className="td-primary-button" disabled={!commentDraft.trim() && commentFiles.length === 0}>Add comment</button>
+                    <button type="submit" className="td-primary-button" disabled={uploading || (!commentDraft.trim() && commentFiles.length === 0)}>{uploading && commentFiles.length ? 'Uploading…' : 'Add comment'}</button>
                   </div>
                   {commentFiles.length > 0 && <div className="td-comment-files">{commentFiles.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" onClick={() => setCommentFiles((current) => current.filter((_, i) => i !== index))}>×</button></span>)}</div>}
                 </form>
