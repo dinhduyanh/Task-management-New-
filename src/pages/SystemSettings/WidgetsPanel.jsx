@@ -6,7 +6,46 @@ import { api } from '../../services/api';
 import { ConfirmModal } from '../SpaceBacklog/SprintModals';
 import SettingsModal from './SettingsModal';
 
+// @me = the id of the user viewing the widget (filled in by the server).
+const MY_PROJECTS = "EXISTS (SELECT 1 FROM space_members m WHERE m.space_id = w.space_id AND m.user_id = @me)";
 const EXAMPLES = [
+  {
+    label: 'Assigned to me',
+    chartType: 'table',
+    description: 'Open work items assigned to the person viewing the dashboard.',
+    sql: `SELECT w.issue_key AS "Key", w.title AS "Title", w.status AS "Status",
+       w.priority AS "Priority", s.name AS "Project",
+       COALESCE(w.due_date, '') AS "Due date"
+FROM work_items w
+JOIN spaces s ON s.id = w.space_id
+WHERE w.assignee_id = @me
+  AND w.status NOT IN ('Done', 'Cancel')
+  AND ${MY_PROJECTS}
+ORDER BY CASE w.priority WHEN 'Highest' THEN 1 WHEN 'High' THEN 2 WHEN 'Medium' THEN 3
+         WHEN 'Low' THEN 4 ELSE 5 END,
+         w.due_date IS NULL, w.due_date`
+  },
+  {
+    label: 'My open tasks (count)',
+    chartType: 'number',
+    description: 'How many open work items are assigned to you.',
+    sql: `SELECT COUNT(*) AS my_open_tasks
+FROM work_items w
+WHERE w.assignee_id = @me
+  AND w.status NOT IN ('Done', 'Cancel')
+  AND ${MY_PROJECTS}`
+  },
+  {
+    label: 'My tasks by status',
+    chartType: 'pie',
+    description: 'Your assigned work items grouped by status.',
+    sql: `SELECT w.status, COUNT(*) AS total
+FROM work_items w
+WHERE w.assignee_id = @me
+  AND ${MY_PROJECTS}
+GROUP BY w.status
+ORDER BY total DESC`
+  },
   { label: 'Work items by status', chartType: 'bar', sql: 'SELECT status, COUNT(*) AS total\nFROM work_items\nGROUP BY status\nORDER BY total DESC' },
   { label: 'Work items per project', chartType: 'pie', sql: 'SELECT s.name AS project, COUNT(w.id) AS work_items\nFROM spaces s\nLEFT JOIN work_items w ON w.space_id = s.id\nGROUP BY s.id\nORDER BY work_items DESC' },
   { label: 'Open work items', chartType: 'number', sql: "SELECT COUNT(*) AS open_work_items\nFROM work_items\nWHERE status NOT IN ('Done', 'Cancel')" },
@@ -57,6 +96,9 @@ function WidgetFormModal({ widget = null, onClose, onSaved }) {
     setSql(example.sql);
     setChartType(example.chartType);
     if (!name.trim()) setName(example.label);
+    if (example.description && !description.trim()) setDescription(example.description);
+    // Widgets filtered by @me only show each viewer their own data, so they can be shared.
+    if (/@me\b/.test(example.sql)) setVisibility('everyone');
     setPreview(null);
   }
 
@@ -99,7 +141,9 @@ function WidgetFormModal({ widget = null, onClose, onSaved }) {
           <span><strong>Show on Dashboard</strong><small>Inactive widgets are kept but hidden.</small></span>
         </label>
         {visibility === 'everyone' && (
-          <p className="ss-warning ss-span-2"><Icon name="info" size={15} /> Query results are not limited to each viewer&apos;s projects: everyone will see whatever this query returns.</p>
+          <p className="ss-warning ss-span-2"><Icon name="info" size={15} /> {/@me\b/.test(sql)
+            ? 'This query uses @me, so each viewer sees their own rows.'
+            : 'Query results are not limited to each viewer’s projects: everyone will see whatever this query returns.'}</p>
         )}
         <div className="ss-field ss-span-2">
           <span className="ss-sql-label">
@@ -110,7 +154,7 @@ function WidgetFormModal({ widget = null, onClose, onSaved }) {
             </span>
           </span>
           <textarea className="ss-sql" rows={7} spellCheck={false} value={sql} onChange={(event) => { setSql(event.target.value); setPreview(null); }} aria-label="SQL query" placeholder="SELECT status, COUNT(*) AS total FROM work_items GROUP BY status" />
-          <small className="ss-hint">One read-only SELECT (or WITH … SELECT). The first column is the label; numeric columns become chart series. Up to 500 rows. Sign-in data (sessions, password hashes) cannot be queried.</small>
+          <small className="ss-hint">One read-only SELECT (or WITH … SELECT). The first column is the label; numeric columns become chart series. Up to 500 rows. Sign-in data (sessions, password hashes) cannot be queried. Use <code>@me</code> for the id of the person viewing the widget (e.g. <code>WHERE assignee_id = @me</code>).</small>
         </div>
         <div className="ss-span-2 ss-preview">
           <div className="ss-preview-head">

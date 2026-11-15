@@ -4,6 +4,8 @@
 //  - exactly one SELECT / WITH statement,
 //  - no access to sign-in secrets (session tokens, password hashes),
 //  - at most MAX_ROWS rows are returned.
+// The query may use the parameter @me: the id of the user who views the widget (bound by
+// SQLite, never pasted into the SQL), e.g. "WHERE assignee_id = @me".
 // A very slow query still blocks the server while it runs (SQLite has no query timeout here).
 import Database from 'better-sqlite3';
 import { databasePath } from './db.js';
@@ -11,6 +13,7 @@ import { databasePath } from './db.js';
 export const MAX_ROWS = 500;
 export const MAX_SQL_LENGTH = 5000;
 export const CHART_TYPES = ['table', 'number', 'bar', 'line', 'pie'];
+const ME_PARAMETER = /@me\b/;
 
 const SECRET_NAMES = /\b(auth_sessions|password_hash|token_hash)\b/i;
 const SECRET_COLUMNS = new Set(['password_hash', 'token_hash']);
@@ -45,15 +48,19 @@ export function validateWidgetSql(sql) {
   prepareWidgetSql(sql);
 }
 
-/** { columns, rows, truncated } with rows as arrays (secret columns removed). */
-export function runWidgetSql(sql) {
+/**
+ * { columns, rows, truncated } with rows as arrays (secret columns removed).
+ * `viewerId` fills the @me parameter.
+ */
+export function runWidgetSql(sql, { viewerId = null } = {}) {
   const statement = prepareWidgetSql(sql);
+  const parameters = ME_PARAMETER.test(String(sql)) ? [{ me: viewerId === null ? null : String(viewerId) }] : [];
   const allColumns = statement.columns().map((column) => column.name);
   const keep = allColumns.map((name) => !SECRET_COLUMNS.has(String(name).toLowerCase()));
   const rows = [];
   let truncated = false;
   try {
-    for (const row of statement.raw(true).iterate()) {
+    for (const row of statement.raw(true).iterate(...parameters)) {
       if (rows.length >= MAX_ROWS) { truncated = true; break; }
       rows.push(row.filter((_, index) => keep[index]).map((value) => {
         if (typeof value === 'bigint') return Number(value);

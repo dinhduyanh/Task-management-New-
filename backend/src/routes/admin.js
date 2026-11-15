@@ -305,7 +305,7 @@ router.delete('/widgets/:id', (req, res) => {
 // Runs SQL without saving it (the "Run query" button in the widget editor).
 router.post('/widgets/preview', (req, res) => {
   try {
-    res.json(runWidgetSql(req.body?.sql));
+    res.json(runWidgetSql(req.body?.sql, { viewerId: req.user.id }));
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
