@@ -14,7 +14,7 @@ router.get('/project-roles', (_req, res) => {
 });
 
 /** Active widgets the user may see. Regular users never receive the SQL text. */
-function visibleWidgets(user) {
+export function visibleWidgets(user) {
   const rows = isAdmin(user)
     ? db.prepare('SELECT * FROM dashboard_widgets WHERE is_active = 1 ORDER BY position, created_at').all()
     : db.prepare("SELECT * FROM dashboard_widgets WHERE is_active = 1 AND visibility = 'everyone' ORDER BY position, created_at").all();

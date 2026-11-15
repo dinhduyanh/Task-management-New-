@@ -253,7 +253,9 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
   const visibleUsers = others.filter(filter);
 
   const choose = (user) => {
-    onChange(user ? (user.id === CURRENT_USER.id ? { ...CURRENT_USER } : toUserRecord(userId(user), members, CURRENT_USER)) : null);
+    const record = user ? (user.id === CURRENT_USER.id ? { ...CURRENT_USER } : toUserRecord(userId(user), members, CURRENT_USER)) : null;
+    if (record) delete record.isCurrentUser; // a per-viewer flag, never stored
+    onChange(record);
     setOpen(false);
     setQuery('');
   };
@@ -261,7 +263,7 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
   return (
     <div className="td-user-select" ref={rootRef}>
       <button type="button" className={`td-user-select-trigger ${open ? 'open' : ''}`} onClick={() => { setOpen((current) => !current); setQuery(''); }} aria-expanded={open}>
-        {selectedUser ? <><span className={`td-avatar ${selectedUser.isCurrentUser ? 'current' : ''}`}>{selectedUser.initials || initials(userName(selectedUser))}</span><span>{selectedUser.isCurrentUser ? 'You' : userName(selectedUser)}</span></> : <span className="td-placeholder">{placeholder}</span>}
+        {selectedUser ? <><span className={`td-avatar ${userId(selectedUser) === CURRENT_USER.id ? 'current' : ''}`}>{selectedUser.initials || initials(userName(selectedUser))}</span><span>{userId(selectedUser) === CURRENT_USER.id ? 'You' : userName(selectedUser)}</span></> : <span className="td-placeholder">{placeholder}</span>}
         <Icon name="chevron" size={13} />
       </button>
       {open && (
@@ -393,6 +395,7 @@ export default function TaskDetailDrawer({
   onCloneTask = () => {},
   onCreateChild = () => {},
   onOpenIssue = () => {},
+  onMoveTask = null, // (issue) => open the "Move to project" picker
   fullPage = false
 }) {
   const [expanded, setExpanded] = useState(false);
@@ -951,6 +954,7 @@ export default function TaskDetailDrawer({
               <div className="td-action-buttons">
                 <button type="button" className="td-action-button" title={!allow.createChild ? NO_PERMISSION : allowedChildTypes.length ? `Create child: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'} disabled={!allowedChildTypes.length || !allow.createChild} onClick={() => onCreateChild(issue, allowedChildTypes)}><Icon name="plus" size={16} /></button>
                 <button type="button" className="td-action-button" title="Copy link" onClick={() => copyText(`${window.location.origin}${window.location.pathname}#${key}`, 'Link copied')}><Icon name="link" size={15} /></button>
+                {onMoveTask && <button type="button" className="td-action-button" title={allow.move ? 'Move to another project' : NO_PERMISSION} aria-label="Move to another project" disabled={!allow.move} onClick={() => onMoveTask(issue)}><Icon name="spaces" size={15} /></button>}
                 <button type="button" className="td-action-button" title={allow.clone ? 'Clone work item' : NO_PERMISSION} disabled={!allow.clone} onClick={handleClone}><Icon name="copy" size={15} /></button>
                 <button type="button" className="td-action-button danger" title={allow.remove ? 'Delete work item' : NO_PERMISSION} disabled={!allow.remove} onClick={() => setDeleteConfirmOpen(true)}><Icon name="trash" size={15} /></button>
                 {copied && <span className="td-copy-feedback">{copied}</span>}

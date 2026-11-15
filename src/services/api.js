@@ -80,6 +80,12 @@ export const api = {
     json('POST', payload)
   ),
 
+  /** payload: { userIds, roles } (adds several people with the same roles). */
+  addSpaceMembers: (id, payload) => request(
+    `/spaces/${encodeURIComponent(id)}/members/bulk`,
+    json('POST', payload)
+  ),
+
   removeSpaceMember: (id, userId) => request(
     `/spaces/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
     { method: 'DELETE' }
@@ -97,6 +103,13 @@ export const api = {
 
   // Dashboard widgets visible to the signed-in user
   getDashboardWidgets: () => request('/dashboard/widgets'),
+  // User dashboards (layouts of SQL widgets)
+  getDashboards: () => request('/dashboards'),
+  getDashboard: (id, { visit = true } = {}) => request(`/dashboards/${encodeURIComponent(id)}${visit ? '' : '?visit=0'}`),
+  createDashboard: (values) => request('/dashboards', json('POST', values)),
+  updateDashboard: (id, values) => request(`/dashboards/${encodeURIComponent(id)}`, json('PATCH', values)),
+  deleteDashboard: (id) => request(`/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  starDashboard: (id, starred) => request(`/dashboards/${encodeURIComponent(id)}/star`, json('PUT', { starred })),
   getDashboardWidgetData: (id) => request(`/dashboard/widgets/${encodeURIComponent(id)}/data`),
 
   // System administration (admins only)

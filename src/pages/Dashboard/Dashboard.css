@@ -194,3 +194,44 @@
 @media (max-width: 1280px) {
   .db-card.is-wide { grid-column: auto; }
 }
+
+/* Dashboard grid (3 columns; a card spans 1, 2 or 3) */
+.db-grid {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
+.db-card.size-1 { grid-column: span 1; }
+.db-card.size-2 { grid-column: span 2; }
+.db-card.size-3 { grid-column: span 3; }
+
+.db-card-title {
+  min-width: 0;
+}
+
+.db-unavailable {
+  display: grid;
+  min-height: 160px;
+  place-content: center;
+  justify-items: center;
+  gap: 6px;
+  border: 1px dashed var(--tf-bd-c1c7d0);
+  border-radius: 8px;
+  color: var(--tf-fg-6b778c);
+  font-size: 13px;
+  text-align: center;
+}
+
+.db-unavailable small {
+  color: var(--tf-fg-97a0af);
+  font-size: 11px;
+}
+
+@media (max-width: 1100px) {
+  .db-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .db-card.size-3 { grid-column: span 2; }
+}
+
+@media (max-width: 720px) {
+  .db-grid { grid-template-columns: minmax(0, 1fr); }
+  .db-card.size-1, .db-card.size-2, .db-card.size-3 { grid-column: auto; }
+}

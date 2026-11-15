@@ -346,18 +346,18 @@ function WorkItemsSettings() {
   );
 }
 
-export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {}, onAddMember = async () => '', onRemoveMember = async () => '' }) {
+export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {}, onAddMember = async () => '', onAddMembers = async () => '', onRemoveMember = async () => '' }) {
   const [activeTab, setActiveTab] = useState('Summary');
   const pageContent = useMemo(() => {
     switch (activeTab) {
-      case 'People': return <PeopleSettings space={space} onAddMember={onAddMember} onRemoveMember={onRemoveMember} />;
+      case 'People': return <PeopleSettings space={space} onAddMember={onAddMember} onAddMembers={onAddMembers} onRemoveMember={onRemoveMember} />;
       case 'Permissions': return <PermissionsSettings space={space} />;
       case 'Features': return <FeaturesSettings />;
       case 'Workflow': return <WorkflowSettings />;
       case 'Work Items': return <WorkItemsSettings />;
       default: return <SummarySettings key={space.id} space={space} onSave={onSave} />;
     }
-  }, [activeTab, onSave, onAddMember, onRemoveMember, space]);
+  }, [activeTab, onSave, onAddMember, onAddMembers, onRemoveMember, space]);
 
   return (
     <div className="space-settings-shell">

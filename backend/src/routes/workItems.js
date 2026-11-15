@@ -147,6 +147,7 @@ router.post('/', (req, res, next) => {
     const data = {
       ...body,
       cloneOf: undefined,
+      assignee: body.assignee && typeof body.assignee === 'object' ? { ...body.assignee, isCurrentUser: undefined } : (body.assignee ?? null),
       // The creator is always the signed-in user; comments and work logs start empty.
       creator, creatorId: creator.id,
       comments: [], workLogs: [],
@@ -277,20 +278,73 @@ router.delete('/bulk', (req, res) => {
   res.json({ deletedCount: result.changes });
 });
 
+// Moves work items to another project. Each item gets a key of the target project and
+// goes to the end of its backlog; sprint, team and release (project-specific) are cleared.
+// Sub-tasks move with their parent; other children left behind lose the parent link.
 router.post('/bulk-move', (req, res, next) => {
   try {
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    const requested = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String))] : [];
     const targetSpaceId = String(req.body?.targetSpaceId || '');
-    const targetSpace = db.prepare('SELECT id, code FROM spaces WHERE id = ?').get(targetSpaceId);
-    if (!ids.length || !targetSpace || !canAccessSpace(req.user, targetSpace.id)) return res.status(400).json({ error: 'Work Items and a valid target Project are required.' });
-    const rows = accessibleItems(req, ids);
+    const targetSpace = db.prepare('SELECT * FROM spaces WHERE id = ?').get(targetSpaceId);
+    if (!requested.length || !targetSpace || !canAccessSpace(req.user, targetSpace.id)) return res.status(400).json({ error: 'Work Items and a valid target Project are required.' });
+    const rows = accessibleItems(req, requested);
     if (!rows) return res.status(404).json({ error: 'Work item not found.' });
     if (rows.some((row) => !allowed(req, row.space_id, 'task.move', row))) return denied(res, 'task.move');
     if (!allowed(req, targetSpace.id, 'task.create')) return denied(res, 'task.create');
-    const update = db.prepare('UPDATE work_items SET space_id = ?, updated_at = ?, data_json = json_set(data_json, "$.spaceId", ?, "$.projectId", ?, "$.spaceCode", ?) WHERE id = ?');
+
+    // Add sub-tasks of the moved items (recursively) so they stay with their parent.
+    const moving = new Map(rows.filter((row) => row.space_id !== targetSpace.id).map((row) => [row.id, row]));
+    if (!moving.size) return res.status(400).json({ error: 'The selected work items are already in this project.' });
+    const queue = [...moving.keys()];
+    while (queue.length) {
+      const parentId = queue.shift();
+      for (const child of db.prepare("SELECT * FROM work_items WHERE parent_id = ? AND issue_type = 'Sub-task'").all(parentId)) {
+        if (moving.has(child.id)) continue;
+        moving.set(child.id, child);
+        queue.push(child.id);
+      }
+    }
+
     const now = nowIso();
-    db.transaction(() => ids.forEach((id) => update.run(targetSpaceId, now, targetSpaceId, targetSpaceId, targetSpace.code, id)))();
-    res.json({ movedCount: ids.length });
+    const actor = req.user.fullName || req.user.username;
+    const sources = new Map();
+    db.transaction(() => {
+      // Parents first, so their new place is known when children are written.
+      const ordered = [...moving.values()].sort((left, right) => (left.parent_id && moving.has(left.parent_id) ? 1 : 0) - (right.parent_id && moving.has(right.parent_id) ? 1 : 0));
+      for (const row of ordered) {
+        const data = parseJson(row.data_json, {});
+        const key = nextKey(targetSpace);
+        const parentId = row.parent_id && moving.has(row.parent_id) ? row.parent_id : null;
+        const from = db.prepare('SELECT name, code FROM spaces WHERE id = ?').get(row.space_id);
+        sources.set(row.space_id, from);
+        const history = Array.isArray(data.history) ? data.history : [];
+        const next = {
+          ...data,
+          spaceId: targetSpace.id, projectId: targetSpace.id, spaceCode: targetSpace.code,
+          key, code: key, previousKey: row.issue_key,
+          sprintId: null, rank: nextRank(targetSpace.id, null),
+          parentId, parent: null, team: null, teamId: null, release: null, releaseId: null,
+          updatedAt: now,
+          history: [...history, { id: createId('history'), action: 'Moved', detail: `${row.issue_key} → ${key} (${from?.name || 'project'} → ${targetSpace.name})`, actor, createdAt: now }]
+        };
+        db.prepare(`UPDATE work_items SET space_id = ?, issue_key = ?, parent_id = ?, team_id = NULL, release_id = NULL, updated_at = ?, data_json = ? WHERE id = ?`)
+          .run(targetSpace.id, key, parentId, now, JSON.stringify(next), row.id);
+        db.prepare('UPDATE work_item_files SET space_id = ? WHERE work_item_id = ?').run(targetSpace.id, row.id);
+        logActivity({ spaceId: targetSpace.id, workItemId: row.id, actorName: actor, description: `moved ${row.issue_key} here as ${key}` });
+        logActivity({ spaceId: row.space_id, actorName: actor, description: `moved ${row.issue_key} to ${targetSpace.name}` });
+      }
+      // Children that stay behind cannot keep a parent in another project.
+      const ids = [...moving.keys()];
+      const placeholders = ids.map(() => '?').join(',');
+      for (const child of db.prepare(`SELECT id, data_json FROM work_items WHERE parent_id IN (${placeholders}) AND id NOT IN (${placeholders})`).all(...ids, ...ids)) {
+        const data = parseJson(child.data_json, {});
+        db.prepare('UPDATE work_items SET parent_id = NULL, updated_at = ?, data_json = ? WHERE id = ?')
+          .run(now, JSON.stringify({ ...data, parentId: null, parent: null, updatedAt: now }), child.id);
+      }
+    })();
+
+    const items = [...moving.keys()].map((id) => presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(id)));
+    res.json({ movedCount: items.length, items, targetSpaceId: targetSpace.id });
   } catch (error) { next(error); }
 });
 

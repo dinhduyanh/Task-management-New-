@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
 import Icon from '../../components/common/Icon';
+import './SystemSettings.css';
 
 /** Form dialog used by the System Settings panels. Escape and the backdrop close it. */
 export default function SettingsModal({ title, children, footer, onClose, onSubmit, wide = false }) {

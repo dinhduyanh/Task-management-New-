@@ -4,9 +4,10 @@ import UserAvatar from '../../components/common/UserAvatar';
 import { useAppShell } from '../../context/appShellContext';
 import { api } from '../../services/api';
 import { useProjectPermissions } from '../../services/projectPermissions';
+import { ConfirmModal } from '../SpaceBacklog/SprintModals';
+import SettingsModal from '../SystemSettings/SettingsModal';
 
 const ADMIN_PROJECT = 'Admin Project';
-import { ConfirmModal } from '../SpaceBacklog/SprintModals';
 
 /** Project roles that can be given to members: never "All Member" (implicit); "Admin Project" only by project admins. */
 function useProjectRoles(isProjectAdmin) {
@@ -44,10 +45,12 @@ function RoleChecklist({ roles, value, onChange, disabled = false, idPrefix }) {
   );
 }
 
-function AddMemberForm({ space, roles, onAdd }) {
+/** "Add people": search and tick several users, choose one project role for all of them. */
+function AddPeopleModal({ space, roles, onAdd, onClose }) {
   const [users, setUsers] = useState(null);
-  const [userId, setUserId] = useState('');
-  const [selectedRoles, setSelectedRoles] = useState([]);
+  const [query, setQuery] = useState('');
+  const [selected, setSelected] = useState([]); // user ids
+  const [role, setRole] = useState(() => roles.find((item) => item.name === 'Developer')?.name || roles[0]?.name || '');
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
 
@@ -59,44 +62,89 @@ function AddMemberForm({ space, roles, onAdd }) {
     return () => { active = false; };
   }, []);
 
-  const memberIds = useMemo(() => new Set((space.members || []).map((member) => member.userId || member.id)), [space.members]);
-  const candidates = (users || []).filter((user) => !memberIds.has(user.id));
-  const defaultRole = roles.find((role) => role.name === 'Developer')?.name || roles[0]?.name;
+  const memberIds = useMemo(() => new Set((space.members || []).map((member) => String(member.userId || member.id))), [space.members]);
+  const candidates = (users || []).filter((user) => !memberIds.has(String(user.id)));
+  const needle = query.trim().toLowerCase();
+  const matches = candidates.filter((user) => !needle || `${user.fullName} ${user.username} ${user.email}`.toLowerCase().includes(needle));
+  const byId = new Map(candidates.map((user) => [user.id, user]));
+  const toggle = (id) => setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
+  const allMatchesSelected = matches.length > 0 && matches.every((user) => selected.includes(user.id));
 
-  async function submit(event) {
-    event.preventDefault();
-    if (!userId) return setError('Choose a person to add.');
-    const chosen = selectedRoles.length ? selectedRoles : [defaultRole].filter(Boolean);
-    if (!chosen.length) return setError('Choose at least one project role.');
+  async function submit() {
+    if (!selected.length) return setError('Choose at least one person.');
+    if (!role) return setError('Choose a project role.');
     setSaving(true);
     setError('');
-    const message = await onAdd({ userId, roles: chosen });
+    const message = await onAdd({ userIds: selected, roles: [role] });
     setSaving(false);
     if (message) return setError(message);
-    setUserId('');
-    setSelectedRoles([]);
+    onClose(selected.length);
   }
 
   return (
-    <form className="sp-add" onSubmit={submit}>
-      <div className="sp-add-row">
-        <label className="sp-field">
-          <span>Person</span>
-          <select value={userId} onChange={(event) => { setUserId(event.target.value); setError(''); }} disabled={users === null}>
-            <option value="">{users === null ? 'Loading people…' : candidates.length ? 'Choose a person' : 'Everyone is already a member'}</option>
-            {candidates.map((user) => <option key={user.id} value={user.id}>{user.fullName || user.username} ({user.username})</option>)}
-          </select>
-        </label>
-        <button type="submit" className="sp-button is-primary" disabled={saving || !userId}>
-          <Icon name="plus" size={14} /> {saving ? 'Adding…' : 'Add member'}
+    <SettingsModal
+      title="Add people"
+      onClose={() => onClose(0)}
+      onSubmit={submit}
+      footer={<>
+        {error && <span className="ss-form-error" role="alert">{error}</span>}
+        <button type="button" className="ss-button" onClick={() => onClose(0)}>Cancel</button>
+        <button type="submit" className="ss-button is-primary" disabled={saving || !selected.length || !role}>
+          {saving ? 'Adding…' : selected.length ? `Add ${selected.length} ${selected.length === 1 ? 'person' : 'people'}` : 'Add'}
         </button>
+      </>}
+    >
+      <div className="sp-people-form">
+        <div className="sp-field">
+          <span>People <b className="sp-required">*</b></span>
+          {selected.length > 0 && (
+            <div className="sp-chips" aria-label="Selected people">
+              {selected.map((id) => (
+                <span className="sp-chip" key={id}>
+                  <UserAvatar user={byId.get(id)} size={20} />
+                  {byId.get(id)?.fullName || id}
+                  <button type="button" onClick={() => toggle(id)} aria-label={`Remove ${byId.get(id)?.fullName || 'person'}`}><Icon name="close" size={11} /></button>
+                </span>
+              ))}
+            </div>
+          )}
+          <label className="sp-user-search">
+            <Icon name="search" size={14} />
+            <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, username or email" aria-label="Search people" />
+          </label>
+          <div className="sp-user-list" role="listbox" aria-multiselectable="true" aria-label="People who are not in the project yet">
+            {users === null && <div className="sp-user-empty">Loading people…</div>}
+            {users !== null && !candidates.length && <div className="sp-user-empty">Everyone is already a member of this project.</div>}
+            {users !== null && candidates.length > 0 && !matches.length && <div className="sp-user-empty">No people match “{query}”.</div>}
+            {matches.length > 1 && (
+              <label className="sp-user-option is-all">
+                <input type="checkbox" checked={allMatchesSelected} onChange={() => setSelected((current) => (allMatchesSelected
+                  ? current.filter((id) => !matches.some((user) => user.id === id))
+                  : [...new Set([...current, ...matches.map((user) => user.id)])]))} />
+                <span>Select all {needle ? 'matches' : 'people'} ({matches.length})</span>
+              </label>
+            )}
+            {matches.map((user) => (
+              <label key={user.id} className={`sp-user-option ${selected.includes(user.id) ? 'is-selected' : ''}`} role="option" aria-selected={selected.includes(user.id)}>
+                <input type="checkbox" checked={selected.includes(user.id)} onChange={() => toggle(user.id)} />
+                <UserAvatar user={user} size={28} />
+                <span className="sp-user-text">
+                  <strong>{user.fullName || user.username}</strong>
+                  <small>@{user.username}{user.email ? ` · ${user.email}` : ''}</small>
+                </span>
+              </label>
+            ))}
+          </div>
+        </div>
+        <label className="sp-field">
+          <span>Project role <b className="sp-required">*</b></span>
+          <select value={role} onChange={(event) => setRole(event.target.value)} aria-label="Project role">
+            {roles.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
+          </select>
+          <small className="sp-hint">{roles.find((item) => item.name === role)?.description || 'Every selected person gets this role. You can change roles per person later.'}</small>
+        </label>
       </div>
-      <div className="sp-field">
-        <span>Project roles {!selectedRoles.length && defaultRole && <small>(defaults to {defaultRole})</small>}</span>
-        <RoleChecklist roles={roles} value={selectedRoles} onChange={setSelectedRoles} idPrefix="sp-new-role" />
-      </div>
-      {error && <p className="sp-error" role="alert">{error}</p>}
-    </form>
+    </SettingsModal>
   );
 }
 
@@ -170,13 +218,15 @@ function MemberRow({ member, space, roles, canManage, isProjectAdmin, onAdd, onR
   );
 }
 
-export function PeopleSettings({ space, onAddMember, onRemoveMember }) {
+export function PeopleSettings({ space, onAddMember, onAddMembers, onRemoveMember }) {
   const members = Array.isArray(space.members) ? space.members : [];
   const { can, isProjectAdmin } = useProjectPermissions(space);
   const canManage = can('project.setting');
   const { roles, error: rolesError } = useProjectRoles(isProjectAdmin);
   const [confirm, setConfirm] = useState(null);
   const [notice, setNotice] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [added, setAdded] = useState(0);
 
   // Legacy members (created before accounts were linked) have no real user id.
   const linked = (member) => Boolean(member.userId || member.username || member.email);
@@ -185,19 +235,20 @@ export function PeopleSettings({ space, onAddMember, onRemoveMember }) {
     <section className="settings-secondary-content">
       <div className="settings-content-heading">
         <h1>People</h1>
-        <p>{canManage ? 'Add people to this project and choose their project roles. Only members can see the project.' : 'People who have access to this project. Only people with the Project Setting permission can change members.'}</p>
+        <p>{canManage ? 'People in this project and their project roles. Only members can see the project.' : 'People who have access to this project. Only people with the Project Setting permission can change members.'}</p>
       </div>
 
-      {canManage && (
-        <div className="settings-section-card sp-card">
-          <div className="settings-section-card-header"><strong>Add people</strong><span>Roles are managed by administrators</span></div>
-          {roles === null ? <div className="settings-empty-state">Loading roles…</div> : <AddMemberForm space={space} roles={roles} onAdd={onAddMember} />}
-          {rolesError && <p className="sp-error sp-pad" role="alert">{rolesError}</p>}
-        </div>
-      )}
-
       <div className="settings-section-card sp-card">
-        <div className="settings-section-card-header"><strong>Project members</strong><span>{members.length} member{members.length === 1 ? '' : 's'}</span></div>
+        <div className="settings-section-card-header">
+          <strong>Project members <span className="sp-count">{members.length}</span></strong>
+          {canManage && (
+            <button type="button" className="sp-button is-primary" onClick={() => setAddOpen(true)} disabled={roles === null}>
+              <Icon name="plus" size={14} /> Add people
+            </button>
+          )}
+        </div>
+        {added > 0 && <p className="sp-success sp-pad" role="status">{added} {added === 1 ? 'person was' : 'people were'} added to the project.</p>}
+        {rolesError && <p className="sp-error sp-pad" role="alert">{rolesError}</p>}
         {notice && <p className="sp-error sp-pad" role="alert">{notice}</p>}
         {members.length ? members.map((member, index) => (
           linked(member) ? (
@@ -222,6 +273,15 @@ export function PeopleSettings({ space, onAddMember, onRemoveMember }) {
           )
         )) : <div className="settings-empty-state">No members have been added to this project yet.</div>}
       </div>
+
+      {addOpen && roles && (
+        <AddPeopleModal
+          space={space}
+          roles={roles}
+          onAdd={onAddMembers}
+          onClose={(count) => { setAddOpen(false); if (count) setAdded(count); }}
+        />
+      )}
 
       {confirm && (
         <ConfirmModal

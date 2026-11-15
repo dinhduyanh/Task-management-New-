@@ -34,7 +34,7 @@ function SortHeading({ label, field, sort, onSort }) {
   return <button type="button" className={`slv-sort-heading ${active ? 'active' : ''}`} onClick={() => onSort(field)}><span>{label}</span><svg viewBox="0 0 12 14" width="12" height="14" aria-hidden="true"><path d="M6 1 3 4h6L6 1Z" fill={active && sort.direction === 'asc' ? '#0052CC' : '#A5ADBA'} /><path d="m6 13 3-3H3l3 3Z" fill={active && sort.direction === 'desc' ? '#0052CC' : '#A5ADBA'} /></svg></button>;
 }
 
-function PriorityCell({ value, onChange, disabled = false }) {
+export function PriorityCell({ value, onChange, disabled = false }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 176 });
   const rootRef = useRef(null);
@@ -116,7 +116,7 @@ function PriorityCell({ value, onChange, disabled = false }) {
   );
 }
 
-function StatusCell({ issue, allIssues = [], onChange, disabled = false }) {
+export function StatusCell({ issue, allIssues = [], onChange, disabled = false }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 220 });
   const rootRef = useRef(null);
@@ -230,7 +230,7 @@ function getUserId(user) {
 
 // Inline assignee selector. It remains available after assignment so the
 // user can reopen it and change or clear the assignee at any time.
-function AssigneeCell({ value, members, onAssign, disabled = false }) {
+export function AssigneeCell({ value, members, onAssign, disabled = false }) {
   const CURRENT_USER = useCurrentUserRecord();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
@@ -297,11 +297,11 @@ function AssigneeCell({ value, members, onAssign, disabled = false }) {
   function choose(user) {
     onAssign(user ? {
       id: getUserId(user),
-      name: getUserId(user) === CURRENT_USER.id ? 'You' : optionLabel(user),
-      fullName: getUserId(user) === CURRENT_USER.id ? 'You' : (user.fullName || optionLabel(user)),
+      // Store the real name: "You" is only how the signed-in user sees themself.
+      name: optionLabel(user),
+      fullName: user.fullName || optionLabel(user),
       email: user?.email || '',
-      initials: user?.initials || getInitials(optionLabel(user)),
-      isCurrentUser: getUserId(user) === CURRENT_USER.id
+      initials: getInitials(optionLabel(user))
     } : null);
     setOpen(false);
     setQuery('');
@@ -390,7 +390,7 @@ function AssigneeCell({ value, members, onAssign, disabled = false }) {
 }
 
 
-function EditableDateCell({ value, onChange, label, disabled = false }) {
+export function EditableDateCell({ value, onChange, label, disabled = false }) {
   const inputValue = toDateInputValue(value);
   if (disabled) return <span className="slv-inline-date is-readonly">{formatDateOnly(value)}</span>;
   return (
@@ -551,7 +551,11 @@ function SearchableUserField({ label, value, onChange, members, placeholder, req
 
 function resolveAssigneeRecord(userId, members = [], currentUser = null) {
   if (!userId) return null;
-  if (currentUser?.id && String(userId) === currentUser.id) return { ...currentUser };
+  if (currentUser?.id && String(userId) === currentUser.id) {
+    const record = { ...currentUser };
+    delete record.isCurrentUser; // a per-viewer flag, never stored
+    return record;
+  }
   const member = (Array.isArray(members) ? members : []).find((item) => getUserId(item) === String(userId));
   if (!member) return null;
   const name = optionLabel(member);
@@ -1178,14 +1182,27 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
     </div>
   );
 }
-function MoveModal({ spaces, currentSpace, onClose, onMove }) {
+/** Choose the project to move work items to (only projects where the user may create work items). */
+export function MoveModal({ spaces, currentSpace, count = 1, onClose, onMove }) {
   const [target, setTarget] = useState('');
-  const options = spaces.filter((space) => space.id !== currentSpace.id);
-  return <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="slv-modal slv-confirm-modal">
-      <div className="slv-modal-head"><h2>Move work items</h2><button type="button" onClick={onClose} aria-label="Close">×</button></div>
-      <div className="slv-modal-content">{options.length ? <label className="slv-field"><span>Destination Space</span><select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Select a Space</option>{options.map((item) => <option key={item.id} value={item.id}>{item.name || item.code}</option>)}</select></label> : <p className="slv-confirm-text">There are no other Spaces available.</p>}</div>
-      <div className="slv-modal-foot"><button type="button" className="slv-btn secondary" onClick={onClose}>Cancel</button><button type="button" className="slv-btn primary" disabled={!target} onClick={() => onMove(target)}>Move</button></div>
+  const [busy, setBusy] = useState(false);
+  const CURRENT_USER = useCurrentUserRecord();
+  const options = spaces.filter((space) => String(space.id) !== String(currentSpace?.id) && canInSpace(space, 'task.create', null, CURRENT_USER));
+  async function submit() {
+    setBusy(true);
+    await onMove(target);
+    setBusy(false);
+  }
+  return <div className="slv-modal-backdrop is-top" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="slv-modal slv-confirm-modal" role="dialog" aria-modal="true" aria-label="Move work items">
+      <div className="slv-modal-head"><h2>Move {count === 1 ? 'work item' : `${count} work items`}</h2><button type="button" onClick={onClose} aria-label="Close">×</button></div>
+      <div className="slv-modal-content">
+        {options.length ? <>
+          <label className="slv-field"><span>Destination project</span><select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Select a project</option>{options.map((item) => <option key={item.id} value={item.id}>{item.name || item.code}</option>)}</select></label>
+          <p className="slv-field-hint">Moved work items get a key of the destination project and go to its backlog. Sprint, team and release are cleared; sub-tasks move with their parent.</p>
+        </> : <p className="slv-confirm-text">There is no other project where you can create work items.</p>}
+      </div>
+      <div className="slv-modal-foot"><button type="button" className="slv-btn secondary" onClick={onClose}>Cancel</button><button type="button" className="slv-btn primary" disabled={!target || busy} onClick={submit}>{busy ? 'Moving…' : 'Move'}</button></div>
     </div>
   </div>;
 }
@@ -1298,9 +1315,10 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
     setSelected([]);
     setBulkStatus('');
   }
-  function moveSelected(targetId) {
+  async function moveSelected(targetId) {
     const target = spaces.find((item) => String(item.id) === String(targetId));
-    if (target) onMoveTasks(selectedInSpace, target);
+    const moved = target ? await onMoveTasks(selectedInSpace, target) : null;
+    if (moved && detailIssueId !== null && moved.some((item) => String(item.id) === String(detailIssueId))) setDetailIssueId(null);
     setSelected([]); setMoveOpen(false);
   }
   async function createIssue(payload) {
@@ -1410,11 +1428,12 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
           setCreateOpen(true);
         }}
         onOpenIssue={(issueId) => setDetailIssueId(issueId)}
+        onMoveTask={(issue) => { setSelected([issue.id]); setMoveOpen(true); }}
       />
     )}
     {createOpen && <IssueModal space={space} existingIssues={inSpace} initialIssueType={createDefaults.issueType} initialParentId={createDefaults.parentId} allowedIssueTypes={createDefaults.allowedIssueTypes} onClose={() => { setCreateOpen(false); setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); }} onCreate={createIssue} />}
     {startRequest && <StartTransitionModal issues={startRequest.issues} members={space.members} assigneeId={startAssigneeId} onAssigneeChange={setStartAssigneeId} onClose={closeStartRequest} onConfirm={confirmStartRequest} />}
-    {moveOpen && <MoveModal spaces={spaces} currentSpace={space} onClose={() => setMoveOpen(false)} onMove={moveSelected} />}
+    {moveOpen && <MoveModal spaces={spaces} currentSpace={space} count={selectedInSpace.length} onClose={() => setMoveOpen(false)} onMove={moveSelected} />}
     {deleteOpen && <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteOpen(false); }}><div className="slv-modal slv-confirm-modal"><div className="slv-modal-head"><h2>Delete work items?</h2><button type="button" onClick={() => setDeleteOpen(false)} aria-label="Close">×</button></div><div className="slv-modal-content"><p className="slv-confirm-text">Are you sure you want to delete {selectedInSpace.length} selected work item(s)?</p></div><div className="slv-modal-foot"><button type="button" className="slv-btn secondary" onClick={() => setDeleteOpen(false)}>Cancel</button><button type="button" className="slv-btn danger" onClick={() => { onDeleteTasks(selectedInSpace); setSelected([]); setDeleteOpen(false); }}>Delete</button></div></div></div>}
   </div>;
 }

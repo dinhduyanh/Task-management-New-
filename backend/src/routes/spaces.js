@@ -187,6 +187,37 @@ router.post('/:spaceId/members', (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// Adds several people at once with the same project roles. Body: { userIds: [], roles: [] }.
+router.post('/:spaceId/members/bulk', (req, res, next) => {
+  try {
+    const spaceId = req.params.spaceId;
+    if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
+    if (!can(req.user, spaceId, 'project.setting')) return denied(res, 'project.setting');
+    const actorIsProjectAdmin = memberContext(req.user, spaceId).isProjectAdmin;
+    const userIds = [...new Set((Array.isArray(req.body?.userIds) ? req.body.userIds : []).map(String))];
+    if (!userIds.length) return res.status(400).json({ error: 'Choose at least one person.' });
+    if (userIds.length > 200) return res.status(400).json({ error: 'Add at most 200 people at a time.' });
+    const { roles, error, status } = readRoles(req.body?.roles, actorIsProjectAdmin);
+    if (error) return res.status(status || 400).json({ error });
+    const users = [];
+    for (const userId of userIds) {
+      const user = db.prepare('SELECT id, username, email, full_name FROM users WHERE id = ? AND is_active = 1').get(userId);
+      if (!user) return res.status(400).json({ error: 'Only active users can be added.' });
+      if (db.prepare('SELECT 1 FROM space_members WHERE space_id = ? AND user_id = ?').get(spaceId, user.id)) {
+        return res.status(409).json({ error: `${user.full_name} is already a member of this project.` });
+      }
+      users.push(user);
+    }
+    const now = nowIso();
+    db.transaction(() => {
+      const insert = db.prepare('INSERT INTO space_members (space_id, user_id, member_json, created_at) VALUES (?, ?, ?, ?)');
+      users.forEach((user) => insert.run(spaceId, user.id, JSON.stringify(memberRecord(user, roles)), now));
+      logActivity({ spaceId, actorName: req.user.fullName || 'You', description: `added ${users.map((user) => user.full_name).join(', ')} as ${roles.join(', ')}` });
+    })();
+    res.status(201).json(spaceRowToObject(db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId)).members);
+  } catch (error) { next(error); }
+});
+
 router.delete('/:spaceId/members/:userId', (req, res) => {
   const { spaceId, userId } = req.params;
   if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });

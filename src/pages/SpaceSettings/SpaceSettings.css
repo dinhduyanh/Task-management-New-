@@ -602,3 +602,28 @@
 .sp-role-row-text { flex: 1; }
 .sp-role-count { color: var(--tf-fg-8290a5); font-size: 11px; white-space: nowrap; }
 @media (max-width: 640px) { .sp-member-edit { margin-left: 0; } }
+
+/* People: Add people modal */
+.sp-count { margin-left: 6px; padding: 1px 7px; border-radius: 10px; background: var(--tf-bg-f1f5fa); color: var(--tf-fg-596579); font-size: 11px; }
+.sp-success { margin: 0; color: var(--tf-fg-216e39); font-size: 12px; font-weight: 600; }
+.sp-people-form { display: grid; gap: 16px; }
+.sp-required { color: var(--tf-fg-de350b); }
+.sp-hint { color: var(--tf-fg-8290a5); font-size: 11px; font-weight: 400; }
+.sp-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.sp-chip { display: inline-flex; align-items: center; gap: 6px; padding: 2px 4px 2px 3px; border: 1px solid var(--tf-bd-b3d4ff); border-radius: 14px; background: var(--tf-bg-e9f2ff); color: var(--tf-fg-0747a6); font-size: 12px; font-weight: 500; }
+.sp-chip button { display: inline-grid; width: 18px; height: 18px; place-items: center; padding: 0; border: 0; border-radius: 50%; background: transparent; color: var(--tf-fg-0747a6); cursor: pointer; }
+.sp-chip button:hover { background: var(--tf-bg-cce0ff); }
+.sp-user-search { display: flex; height: 36px; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid var(--tf-bd-dfe1e6); border-radius: 4px; background: var(--tf-bg-ffffff); color: var(--tf-fg-6b778c); }
+.sp-user-search:focus-within { border-color: var(--tf-bd-4c9aff); box-shadow: 0 0 0 2px var(--tf-bd-deebff); }
+.sp-user-search input { width: 100%; min-width: 0; border: 0; outline: 0; background: transparent; color: var(--tf-fg-172b4d); font: inherit; font-size: 13px; font-weight: 400; }
+.sp-user-list { display: grid; max-height: 280px; overflow-y: auto; padding: 4px; border: 1px solid var(--tf-bd-dfe1e6); border-radius: 6px; background: var(--tf-bg-ffffff); }
+.sp-user-option { display: flex; align-items: center; gap: 10px; padding: 7px 8px; border-radius: 4px; cursor: pointer; font-weight: 400; }
+.sp-user-option:hover { background: var(--tf-bg-f4f5f7); }
+.sp-user-option.is-selected { background: var(--tf-bg-e9f2ff); }
+.sp-user-option.is-all { border-bottom: 1px solid var(--tf-bd-ebecf0); border-radius: 4px 4px 0 0; color: var(--tf-fg-42526e); font-size: 12px; font-weight: 600; }
+.sp-user-option input { width: 15px; height: 15px; margin: 0; accent-color: var(--tf-fg-0052cc); }
+.sp-user-text { display: grid; min-width: 0; gap: 1px; }
+.sp-user-text strong { color: var(--tf-fg-172b4d); font-size: 13px; font-weight: 600; }
+.sp-user-text small { overflow: hidden; color: var(--tf-fg-6b778c); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.sp-user-empty { padding: 16px 8px; color: var(--tf-fg-6b778c); font-size: 12px; text-align: center; }
+.settings-section-card-header .sp-button { height: 30px; }

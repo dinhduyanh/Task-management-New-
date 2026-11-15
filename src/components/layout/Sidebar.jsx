@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
+import { useAppShell } from '../../context/appShellContext';
+import { SIDEBAR_DASHBOARD_LIMIT, sidebarDashboards } from '../../services/dashboards';
 import { canInSpace } from '../../services/projectPermissions';
 import Icon from '../common/Icon';
 import './Sidebar.css';
@@ -6,6 +8,7 @@ import './Sidebar.css';
 export default function Sidebar({
   activeSection = 'My Tasks',
   activeSpaceId = null,
+  activeDashboardId = null,
   spaces = [],
   onCreateSpace = () => {},
   onNavigate = () => {},
@@ -13,6 +16,9 @@ export default function Sidebar({
   onDeleteSpace = () => {}
 }) {
   const [spacesExpanded, setSpacesExpanded] = useState(true);
+  const [dashboardsExpanded, setDashboardsExpanded] = useState(true);
+  const { dashboards } = useAppShell();
+  const shortcutDashboards = sidebarDashboards(dashboards);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [spaceToDelete, setSpaceToDelete] = useState(null);
   const menuAreaRef = useRef(null);
@@ -66,15 +72,70 @@ export default function Sidebar({
           <span>Documents</span>
         </button>
 
-        <button
-          type="button"
-          className={`nav-item nav-item-button ${activeSection === 'Dashboard' ? 'nav-item-active' : ''}`}
-          onClick={() => navigate('dashboard')}
-          aria-current={activeSection === 'Dashboard' ? 'page' : undefined}
-        >
-          <Icon name="dashboard" />
-          <span>Dashboard</span>
-        </button>
+        {/* Dashboards: up to 5 shortcuts (starred first, then recently opened). */}
+        <div className={`spaces-nav-row ${activeSection === 'Dashboard' && !activeDashboardId ? 'spaces-nav-row-active' : ''}`}>
+          <button
+            type="button"
+            className="spaces-main-toggle"
+            onClick={() => navigate('dashboards')}
+            aria-current={activeSection === 'Dashboard' && !activeDashboardId ? 'page' : undefined}
+            title="All dashboards"
+          >
+            <Icon name="dashboard" />
+            <span>Dashboard</span>
+          </button>
+          <div className="spaces-nav-actions">
+            <button
+              type="button"
+              className="spaces-add-button"
+              onClick={() => navigate('dashboardBuilder')}
+              aria-label="New dashboard"
+              title="New dashboard"
+            >
+              <Icon name="plus" size={15} />
+            </button>
+            <button
+              type="button"
+              className={`spaces-chevron-button ${dashboardsExpanded ? 'is-expanded' : ''}`}
+              onClick={() => setDashboardsExpanded((current) => !current)}
+              aria-label={dashboardsExpanded ? 'Collapse Dashboards' : 'Expand Dashboards'}
+              aria-expanded={dashboardsExpanded}
+            >
+              <Icon name="chevron" size={15} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardsExpanded && (
+          <div className="spaces-submenu sidebar-dashboards" aria-label="Dashboards">
+            {shortcutDashboards.map((dashboard) => (
+              <div className={`space-item-row ${activeDashboardId === dashboard.id ? 'space-item-row-active' : ''}`} key={dashboard.id}>
+                <button
+                  type="button"
+                  className={`space-item space-item-button ${activeDashboardId === dashboard.id ? 'space-item-active' : ''}`}
+                  title={dashboard.name}
+                  onClick={() => navigate('dashboard', { id: dashboard.id })}
+                  aria-current={activeDashboardId === dashboard.id ? 'page' : undefined}
+                >
+                  <span className="sidebar-dashboard-icon"><Icon name="chart" size={15} /></span>
+                  <span className="space-item-name">{dashboard.name}</span>
+                  {dashboard.starred && <span className="sidebar-dashboard-star" aria-label="Starred"><Icon name="starFilled" size={13} /></span>}
+                </button>
+              </div>
+            ))}
+            {!shortcutDashboards.length && (
+              <button type="button" className="sidebar-more-link" onClick={() => navigate('dashboardBuilder')}>
+                <Icon name="plus" size={13} /> Create a dashboard
+              </button>
+            )}
+            {dashboards.length > SIDEBAR_DASHBOARD_LIMIT && (
+              <button type="button" className="sidebar-more-link" onClick={() => navigate('dashboards')}>
+                <span>Show more dashboard</span>
+                <Icon name="chevronsRight" size={14} />
+              </button>
+            )}
+          </div>
+        )}
 
         <div className={`spaces-nav-row ${activeSection === 'Spaces' ? 'spaces-nav-row-active' : ''}`}>
           <button

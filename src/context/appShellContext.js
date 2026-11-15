@@ -13,7 +13,12 @@ export const AppShellContext = createContext({
   /** System role check for showing admin-only UI; the API enforces it independently. */
   isAdmin: false,
   /** Replaces a work item in the app state with the server's copy (e.g. after an upload). */
-  replaceWorkItem: () => {}
+  replaceWorkItem: () => {},
+  /** Dashboards the user can open, and helpers to keep that list in sync. */
+  dashboards: [],
+  reloadDashboards: () => {},
+  upsertDashboard: () => {},
+  removeDashboard: () => {}
 });
 
 export function useAppShell() {

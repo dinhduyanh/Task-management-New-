@@ -1379,3 +1379,8 @@
 .slv-inline-date.is-readonly {
   cursor: default;
 }
+
+/* Above the task detail drawer (Move opened from the drawer). */
+.slv-modal-backdrop.is-top {
+  z-index: 1100;
+}

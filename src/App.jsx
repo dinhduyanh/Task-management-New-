@@ -19,7 +19,9 @@ import Documents from './pages/Documents/Documents';
 import SystemSettings from './pages/SystemSettings/SystemSettings';
 import AccessDenied from './pages/SystemSettings/AccessDenied';
 import { canInSpace } from './services/projectPermissions';
-import Dashboard from './pages/Dashboard/Dashboard';
+import DashboardView from './pages/Dashboard/DashboardView';
+import DashboardsList from './pages/Dashboard/DashboardsList';
+import DashboardBuilder from './pages/Dashboard/DashboardBuilder';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
 import './App.css';
@@ -45,14 +47,17 @@ export default function App() {
   const [spaces, setSpaces] = useState([]);
   // Spaces and Work Items are loaded from the persistent SQLite Backend.
   const [tasks, setTasks] = useState([]);
+  // Dashboards the user can open (sidebar shortcuts and the All dashboards page).
+  const [dashboards, setDashboards] = useState([]);
   const [globalCreateOpen, setGlobalCreateOpen] = useState(false);
   const [backendError, setBackendError] = useState('');
 
   async function loadPersistentData() {
     try {
-      const [spaceRows, taskRows] = await Promise.all([api.getSpaces(), api.getWorkItems()]);
+      const [spaceRows, taskRows, dashboardRows] = await Promise.all([api.getSpaces(), api.getWorkItems(), api.getDashboards()]);
       setSpaces(Array.isArray(spaceRows) ? spaceRows : []);
       setTasks(Array.isArray(taskRows) ? taskRows : []);
+      setDashboards(Array.isArray(dashboardRows) ? dashboardRows : []);
       setBackendError('');
     } catch (error) {
       if (error?.status === 401) {
@@ -152,6 +157,7 @@ export default function App() {
     clearSession();
     setSpaces([]);
     setTasks([]);
+    setDashboards([]);
     setCurrentUser(null);
     setIsLoggedIn(false);
     setLoginNotice(notice);
@@ -204,6 +210,19 @@ export default function App() {
   }
 
   /** Adds a member or changes their project roles. Resolves to '' or an error message. */
+  /** Resolves to '' or an error message. */
+  async function handleAddSpaceMembersBulk(spaceId, { userIds, roles }) {
+    try {
+      const members = await api.addSpaceMembers(spaceId, { userIds, roles });
+      setSpaces((currentSpaces) => currentSpaces.map((space) =>
+        space.id === spaceId ? { ...space, members } : space
+      ));
+      return '';
+    } catch (error) {
+      return error.message || 'Unable to add people.';
+    }
+  }
+
   async function handleAddSpaceMembers(spaceId, { userId, roles }) {
     try {
       const members = await api.addSpaceMember(spaceId, { userId, roles });
@@ -334,19 +353,22 @@ export default function App() {
     }
   }
 
+  /** Moves work items to another project. Resolves to the moved items, or null on failure. */
   async function handleMoveTasks(itemsOrIds, targetSpace) {
     const taskIds = (Array.isArray(itemsOrIds) ? itemsOrIds : []).map((item) =>
       typeof item === 'object' && item !== null ? item.id : item
     ).filter(Boolean);
     try {
-      await api.moveWorkItems(taskIds, targetSpace.id);
-      const updatedAt = new Date().toISOString();
-      setTasks((currentTasks) => currentTasks.map((task) => taskIds.some((id) => String(id) === String(task.id))
-        ? { ...task, spaceId: targetSpace.id, projectId: targetSpace.id, spaceCode: targetSpace.code || '', projectCode: targetSpace.code || '', updatedAt }
-        : task));
+      const result = await api.moveWorkItems(taskIds, targetSpace.id);
+      const moved = new Map((result?.items || []).map((task) => [String(task.id), task]));
+      setTasks((currentTasks) => currentTasks.map((task) => moved.get(String(task.id)) || task));
       setBackendError('');
+      // Children left behind lose their parent link: refresh everything once.
+      loadPersistentData();
+      return result?.items || [];
     } catch (error) {
       setBackendError(error.message || 'Unable to move Work Items.');
+      return null;
     }
   }
 
@@ -366,6 +388,29 @@ export default function App() {
     navigate('spaceSettings', { id: space.id, name: space.name, tab: 'Summary' });
   }
 
+  async function reloadDashboards() {
+    try {
+      const rows = await api.getDashboards();
+      setDashboards(Array.isArray(rows) ? rows : []);
+    } catch {
+      // The sidebar keeps the previous list; pages show their own errors.
+    }
+  }
+
+  /** Puts the server's copy of a dashboard into the list (create, edit, star, visit). */
+  function upsertDashboard(dashboard) {
+    if (!dashboard?.id) return;
+    const summary = { ...dashboard };
+    delete summary.layout;
+    setDashboards((current) => (current.some((item) => item.id === summary.id)
+      ? current.map((item) => (item.id === summary.id ? { ...item, ...summary } : item))
+      : [...current, summary]));
+  }
+
+  function removeDashboard(id) {
+    setDashboards((current) => current.filter((item) => item.id !== id));
+  }
+
   function replaceWorkItem(updated) {
     if (!updated?.id) return;
     setTasks((currentTasks) => currentTasks.map((task) => String(task.id) === String(updated.id) ? updated : task));
@@ -378,7 +423,11 @@ export default function App() {
     navigate,
     signOut: handleSignOut,
     isAdmin,
-    replaceWorkItem
+    replaceWorkItem,
+    dashboards,
+    reloadDashboards,
+    upsertDashboard,
+    removeDashboard
   };
 
   if (!isLoggedIn) return <Login onLogin={handleLogin} notice={loginNotice} />;
@@ -418,7 +467,15 @@ export default function App() {
       />
     );
   } else if (currentRoute.page === 'myTasks') {
-    pageContent = <MyTasks {...sharedNavigationProps} />;
+    pageContent = (
+      <MyTasks
+        {...sharedNavigationProps}
+        onUpdateTask={handleUpdateTask}
+        onCreateTask={handleCreateTask}
+        onDeleteTasks={handleDeleteTasks}
+        onMoveTasks={handleMoveTasks}
+      />
+    );
   } else if (currentRoute.page === 'space') {
     const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
     pageContent = <SpacesSummary {...sharedNavigationProps} space={selectedSpace} />;
@@ -466,6 +523,7 @@ export default function App() {
           onBack={() => navigate('space', { id: selectedSpace.id, name: selectedSpace.name })}
           onSave={(updates) => handleUpdateSpace(selectedSpace.id, updates)}
           onAddMember={(payload) => handleAddSpaceMembers(selectedSpace.id, payload)}
+          onAddMembers={(payload) => handleAddSpaceMembersBulk(selectedSpace.id, payload)}
           onRemoveMember={(userId) => handleRemoveSpaceMember(selectedSpace.id, userId)}
         />
       );
@@ -483,8 +541,20 @@ export default function App() {
     ) : (
       <AccessDenied {...sharedNavigationProps} onBack={() => setNavigationStack([initialRoute])} />
     );
+  } else if (currentRoute.page === 'dashboards' || (currentRoute.page === 'dashboard' && !currentRoute.data?.id)) {
+    pageContent = <DashboardsList {...sharedNavigationProps} />;
   } else if (currentRoute.page === 'dashboard') {
-    pageContent = <Dashboard {...sharedNavigationProps} isAdmin={isAdmin} />;
+    pageContent = <DashboardView key={currentRoute.data.id} {...sharedNavigationProps} dashboardId={currentRoute.data.id} onBack={goBack} />;
+  } else if (currentRoute.page === 'dashboardBuilder') {
+    pageContent = (
+      <DashboardBuilder
+        key={currentRoute.data?.id || 'new'}
+        {...sharedNavigationProps}
+        dashboardId={currentRoute.data?.id || null}
+        onCancel={goBack}
+        onSaved={(saved) => setNavigationStack((stack) => [...stack.slice(0, -1), { page: 'dashboard', data: { id: saved.id } }])}
+      />
+    );
   } else if (currentRoute.page === 'documents') {
     pageContent = <Documents {...sharedNavigationProps} />;
   } else if (currentRoute.page === 'spaceTab' && currentRoute.data?.tab === 'Teams') {

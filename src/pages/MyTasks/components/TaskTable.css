@@ -244,3 +244,84 @@
   color: var(--tf-fg-98a2b3);
   font-size: 11px;
 }
+
+/* Interactive rows (shared cells from the project List view) */
+.task-table td { white-space: nowrap; }
+.mt-title {
+  max-width: 340px;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tf-fg-172b4d);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mt-title:hover { color: var(--tf-fg-0052cc); text-decoration: underline; }
+.mt-project {
+  display: inline-block;
+  max-width: 160px;
+  overflow: hidden;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--tf-bg-f4f5f7);
+  color: var(--tf-fg-42526e);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.mt-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--tf-bd-dfe1e6);
+  background: var(--tf-bg-e9f2ff);
+  color: var(--tf-fg-172b4d);
+  font-size: 13px;
+}
+.mt-bulk button {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--tf-bd-c1c7d0);
+  border-radius: 4px;
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-172b4d);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.mt-bulk button.danger { color: var(--tf-fg-bf2600); }
+.mt-bulk-hint { color: var(--tf-fg-5e6c84); font-size: 12px; }
+.mt-scope {
+  display: inline-flex;
+  margin: 0 0 12px;
+  padding: 3px;
+  border: 1px solid var(--tf-bd-dfe1e6);
+  border-radius: 8px;
+  background: var(--tf-bg-ffffff);
+  gap: 2px;
+}
+.mt-scope button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tf-fg-42526e);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mt-scope button[aria-pressed="true"] { background: var(--tf-bg-e9f2ff); color: var(--tf-fg-0052cc); }
+.mt-scope button span { margin-left: 6px; color: var(--tf-fg-6b778c); font-size: 11px; font-weight: 600; }

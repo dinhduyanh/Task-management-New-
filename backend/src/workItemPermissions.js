@@ -109,6 +109,11 @@ export function reviewItemUpdate(req, row, body) {
   const need = new Set();
   const fail = (permission) => ({ status: 403, permission, error: `You do not have the "${permissionLabel(permission)}" permission for this work item.` });
 
+  // Per-viewer UI flags must never be stored on people.
+  if (updates.assignee && typeof updates.assignee === 'object') {
+    updates.assignee = { ...updates.assignee };
+    delete updates.assignee.isCurrentUser;
+  }
   for (const field of Object.keys(updates)) {
     if (IGNORED_FIELDS.has(field)) continue;
     if (field === 'comments') {

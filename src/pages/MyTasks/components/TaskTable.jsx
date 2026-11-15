@@ -1,144 +1,124 @@
 import { useMemo, useState } from 'react';
 import Icon from '../../../components/common/Icon';
-import PriorityIcon from '../../../components/common/PriorityIcon';
-import {
-  getAssigneeName,
-  getTaskCode,
-  getTaskTitle,
-  getTaskType
-} from '../filterFields';
+import Pagination from '../../../components/common/Pagination';
+import { useAppShell } from '../../../context/appShellContext';
+import { canInSpace, spaceOfItem } from '../../../services/projectPermissions';
+import { AssigneeCell, EditableDateCell, PriorityCell, StatusCell } from '../../SpacesList/SpacesList';
+import { dateValue, formatDateTime, iconForType, isInSpace, issueKey, issueSummary, issueType } from '../../SpacesList/issueHelpers';
 import './TaskTable.css';
 
-function initialsOf(name) {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  if (parts.length === 0) return '';
-  const letters = parts.length > 1 ? parts[0][0] + parts[parts.length - 1][0] : parts[0].slice(0, 2);
-  return letters.toUpperCase();
-}
-
-function formatDate(value) {
-  if (!value) return '—';
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return String(value);
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
-}
-
-function PriorityBadge({ priority }) {
-  return (
-    <span className="priority-value">
-      <PriorityIcon priority={priority} size={16} />
-      <span>{priority || 'Medium'}</span>
-    </span>
-  );
-}
-
-function StatusBadge({ status }) {
-  if (!status) return <span className="status-badge">—</span>;
-  const statusClass = String(status).toLowerCase().replaceAll(' ', '-');
-  return <span className={`status-badge status-${statusClass}`}>{status}</span>;
-}
-
-export default function TaskTable({ tasks }) {
+/**
+ * My Tasks table: every cell edits the work item in place, like the List view of a
+ * project. Each row follows the permissions of the project it belongs to.
+ */
+export default function TaskTable({
+  tasks,
+  allTasks = [],
+  spaces = [],
+  title = 'All Tasks',
+  subtitle = '',
+  onOpenTask = () => {},
+  onUpdateTask = () => {},
+  onChangeStatus = () => {},
+  onMoveSelected = null,
+  onDeleteSelected = null
+}) {
+  const { user } = useAppShell();
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
 
-  const visibleTaskIds = useMemo(() => tasks.map((task) => task.id), [tasks]);
+  const pageCount = Math.max(1, Math.ceil(tasks.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageRows = tasks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const visibleTaskIds = useMemo(() => pageRows.map((task) => task.id), [pageRows]);
   const selectedVisibleCount = visibleTaskIds.filter((id) => selectedTaskIds.includes(id)).length;
   const allVisibleSelected = visibleTaskIds.length > 0 && selectedVisibleCount === visibleTaskIds.length;
+  const selectedTasks = tasks.filter((task) => selectedTaskIds.includes(task.id));
+  const can = (key, task) => canInSpace(spaceOfItem(spaces, task), key, task, user);
+  const sameProject = selectedTasks.length > 0 && selectedTasks.every((task) => String(task.spaceId) === String(selectedTasks[0].spaceId));
 
   const handleSelectOne = (taskId) => {
-    setSelectedTaskIds((current) => (
-      current.includes(taskId)
-        ? current.filter((id) => id !== taskId)
-        : [...current, taskId]
-    ));
+    setSelectedTaskIds((current) => (current.includes(taskId) ? current.filter((id) => id !== taskId) : [...current, taskId]));
   };
-
   const handleSelectAll = () => {
-    if (allVisibleSelected) {
-      setSelectedTaskIds((current) => current.filter((id) => !visibleTaskIds.includes(id)));
-      return;
-    }
-
-    setSelectedTaskIds((current) => [...new Set([...current, ...visibleTaskIds])]);
+    if (allVisibleSelected) setSelectedTaskIds((current) => current.filter((id) => !visibleTaskIds.includes(id)));
+    else setSelectedTaskIds((current) => [...new Set([...current, ...visibleTaskIds])]);
   };
 
   return (
     <section className="table-card" aria-label="Task list">
       <div className="table-card-header">
         <div>
-          <h2>All Tasks</h2>
-          <p>View and manage your assigned tasks.</p>
+          <h2>{title}</h2>
+          {subtitle && <p>{subtitle}</p>}
         </div>
-        <span className="task-count">{tasks.length} tasks</span>
+        <span className="task-count">{tasks.length} task{tasks.length === 1 ? '' : 's'}</span>
       </div>
+
+      {selectedTasks.length > 0 && (
+        <div className="mt-bulk" role="region" aria-label="Selected tasks">
+          <strong>{selectedTasks.length} selected</strong>
+          {onMoveSelected && sameProject && selectedTasks.every((task) => can('task.move', task)) && (
+            <button type="button" onClick={() => onMoveSelected(selectedTasks, () => setSelectedTaskIds([]))}><Icon name="spaces" size={14} /> Move to project</button>
+          )}
+          {onDeleteSelected && selectedTasks.every((task) => can('task.delete', task)) && (
+            <button type="button" className="danger" onClick={() => onDeleteSelected(selectedTasks, () => setSelectedTaskIds([]))}><Icon name="trash" size={14} /> Delete</button>
+          )}
+          {!sameProject && <span className="mt-bulk-hint">Select tasks of one project to move them.</span>}
+          <button type="button" onClick={() => setSelectedTaskIds([])}>Clear selection</button>
+        </div>
+      )}
 
       <div className="table-scroll">
         <table className="task-table">
           <thead>
             <tr>
               <th className="checkbox-column">
-                <input
-                  type="checkbox"
-                  checked={allVisibleSelected}
-                  onChange={handleSelectAll}
-                  aria-label="Select all visible tasks"
-                />
+                <input type="checkbox" checked={allVisibleSelected} onChange={handleSelectAll} aria-label="Select all visible tasks" disabled={!pageRows.length} />
               </th>
               <th className="work-column">Work</th>
+              <th>Project</th>
               <th>Assignee</th>
               <th>Priority</th>
               <th>Status</th>
               <th>Create Date</th>
+              <th>Start Date</th>
               <th>Due Date</th>
             </tr>
           </thead>
 
           <tbody>
-            {tasks.length > 0 ? tasks.map((task) => {
-              const code = getTaskCode(task);
-              const title = getTaskTitle(task) || 'Untitled work item';
-              const type = getTaskType(task).toLowerCase();
-              const assignee = getAssigneeName(task);
+            {pageRows.length > 0 ? pageRows.map((task) => {
+              const space = spaceOfItem(spaces, task);
+              const type = issueType(task);
+              const spaceTasks = space ? allTasks.filter((item) => isInSpace(item, space)) : [];
               return (
                 <tr key={task.id} className={selectedTaskIds.includes(task.id) ? 'selected-row' : ''}>
                   <td className="checkbox-column">
-                    <input
-                      type="checkbox"
-                      checked={selectedTaskIds.includes(task.id)}
-                      onChange={() => handleSelectOne(task.id)}
-                      aria-label={`Select ${title}`}
-                    />
+                    <input type="checkbox" checked={selectedTaskIds.includes(task.id)} onChange={() => handleSelectOne(task.id)} aria-label={`Select ${issueKey(task)}`} />
                   </td>
                   <td>
-                    <div className="work-cell">
-                      <span className={`work-type-icon ${type === 'bug' ? 'bug' : 'task'}`}>
-                        <Icon name={type === 'bug' ? 'bug' : 'tasks'} size={15} />
-                      </span>
-                      {code && <span className="task-code">{code}</span>}
-                      <span className="task-name">{title}</span>
+                    <div className="work-cell slv-work-cell">
+                      <span className={`slv-type-icon type-${type.toLowerCase().replace(/[^a-z]+/g, '-')}`} title={type}><Icon name={iconForType(type)} size={15} /></span>
+                      <button type="button" className="slv-key" onClick={() => onOpenTask(task)} title={`Open ${issueKey(task)} details`}>{issueKey(task)}</button>
+                      <button type="button" className="task-name mt-title" onClick={() => onOpenTask(task)} title={issueSummary(task)}>{issueSummary(task)}</button>
                     </div>
                   </td>
+                  <td><span className="mt-project" title={space?.name || ''}>{space?.name || task.spaceCode || '—'}</span></td>
                   <td>
-                    <div className="assignee-cell">
-                      {assignee ? (
-                        <>
-                          <span className="assignee-avatar">{initialsOf(assignee)}</span>
-                          <span>{assignee}</span>
-                        </>
-                      ) : (
-                        <span>Unassigned</span>
-                      )}
-                    </div>
+                    <AssigneeCell value={task.assignee} members={space?.members || []} disabled={!can('task.assign', task)} onAssign={(member) => onUpdateTask(task.id, { assignee: member })} />
                   </td>
-                  <td><PriorityBadge priority={task.priority} /></td>
-                  <td><StatusBadge status={task.status} /></td>
-                  <td className="date-cell">{formatDate(task.createdAt || task.created)}</td>
-                  <td className="date-cell">{formatDate(task.dueDate || task.due)}</td>
+                  <td><PriorityCell value={task.priority} disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { priority: value })} /></td>
+                  <td><StatusCell issue={task} allIssues={spaceTasks} disabled={!can('task.move', task)} onChange={(value) => onChangeStatus(task, value)} /></td>
+                  <td className="date-cell">{formatDateTime(dateValue(task, 'createdAt'))}</td>
+                  <td className="date-cell slv-date-cell"><EditableDateCell value={dateValue(task, 'startDate')} label="Start Date" disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { startDate: value })} /></td>
+                  <td className="date-cell slv-date-cell"><EditableDateCell value={dateValue(task, 'dueDate')} label="Due Date" disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { dueDate: value })} /></td>
                 </tr>
               );
             }) : (
               <tr>
-                <td colSpan="7" className="empty-state">
+                <td colSpan="9" className="empty-state">
                   <Icon name="file" size={30} />
                   <strong>No tasks found</strong>
                   <span>Try changing your search or filters.</span>
@@ -148,11 +128,15 @@ export default function TaskTable({ tasks }) {
           </tbody>
         </table>
       </div>
-
-      <div className="table-footer">
-        <span>{selectedVisibleCount} selected</span>
-        <span>Showing {tasks.length} tasks</span>
-      </div>
+      <Pagination
+        page={currentPage}
+        pageSize={pageSize}
+        total={tasks.length}
+        pageSizes={[10, 20, 50]}
+        label="tasks"
+        onPageChange={setPage}
+        onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+      />
     </section>
   );
 }

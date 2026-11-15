@@ -237,3 +237,34 @@ CREATE TABLE IF NOT EXISTS dashboard_widgets (
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
 );
+
+-- Dashboards built by users from the SQL widgets (see routes/dashboards.js).
+-- layout_json: [{ "widgetId": "...", "size": 1 | 2 | 3 }] in display order on a 3-column grid.
+CREATE TABLE IF NOT EXISTS dashboards (
+  id TEXT PRIMARY KEY,
+  code TEXT NOT NULL UNIQUE COLLATE NOCASE,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  status TEXT NOT NULL DEFAULT 'active',      -- active | inactive
+  visibility TEXT NOT NULL DEFAULT 'private', -- private (owner only) | public (everyone)
+  owner_id TEXT,
+  layout_json TEXT NOT NULL DEFAULT '[]',
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS dashboard_favorites (
+  user_id TEXT NOT NULL,
+  dashboard_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, dashboard_id),
+  FOREIGN KEY (dashboard_id) REFERENCES dashboards(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS dashboard_visits (
+  user_id TEXT NOT NULL,
+  dashboard_id TEXT NOT NULL,
+  visited_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, dashboard_id),
+  FOREIGN KEY (dashboard_id) REFERENCES dashboards(id) ON DELETE CASCADE
+);
