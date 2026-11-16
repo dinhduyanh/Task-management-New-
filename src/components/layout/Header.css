@@ -286,7 +286,8 @@
 }
 
 @media (max-width: 450px) {
-  .ai-header-button {
+  /* The AI assistant stays reachable on phones; the notifications placeholder makes room. */
+  .notification-button {
     display: none;
   }
 

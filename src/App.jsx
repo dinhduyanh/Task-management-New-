@@ -19,6 +19,7 @@ import Documents from './pages/Documents/Documents';
 import SystemSettings from './pages/SystemSettings/SystemSettings';
 import AccessDenied from './pages/SystemSettings/AccessDenied';
 import { canInSpace } from './services/projectPermissions';
+import AIAssistant from './components/ai/AIAssistant';
 import DashboardView from './pages/Dashboard/DashboardView';
 import DashboardsList from './pages/Dashboard/DashboardsList';
 import DashboardBuilder from './pages/Dashboard/DashboardBuilder';
@@ -49,6 +50,8 @@ export default function App() {
   const [tasks, setTasks] = useState([]);
   // Dashboards the user can open (sidebar shortcuts and the All dashboards page).
   const [dashboards, setDashboards] = useState([]);
+  // AI Project Assistant drawer: { spaceId, taskIds } while open.
+  const [assistant, setAssistant] = useState(null);
   const [globalCreateOpen, setGlobalCreateOpen] = useState(false);
   const [backendError, setBackendError] = useState('');
 
@@ -158,6 +161,7 @@ export default function App() {
     setSpaces([]);
     setTasks([]);
     setDashboards([]);
+    setAssistant(null);
     setCurrentUser(null);
     setIsLoggedIn(false);
     setLoginNotice(notice);
@@ -388,6 +392,12 @@ export default function App() {
     navigate('spaceSettings', { id: space.id, name: space.name, tab: 'Summary' });
   }
 
+  /** Opens the AI assistant for a project (default: the project on screen) and optional work items. */
+  function openAssistant({ spaceId = null, taskIds = [] } = {}) {
+    const routeSpaceId = String(currentRoute.page).startsWith('space') ? currentRoute.data?.id : null;
+    setAssistant({ spaceId: spaceId || routeSpaceId || null, taskIds: Array.isArray(taskIds) ? taskIds.map(String) : [], openedAt: Date.now() });
+  }
+
   async function reloadDashboards() {
     try {
       const rows = await api.getDashboards();
@@ -427,7 +437,9 @@ export default function App() {
     dashboards,
     reloadDashboards,
     upsertDashboard,
-    removeDashboard
+    removeDashboard,
+    openAssistant,
+    createTask: handleCreateTask
   };
 
   if (!isLoggedIn) return <Login onLogin={handleLogin} notice={loginNotice} />;
@@ -666,6 +678,16 @@ export default function App() {
         </div>
       )}
       {pageContent}
+      {assistant && (
+        <AIAssistant
+          key={assistant.openedAt}
+          initialSpaceId={assistant.spaceId}
+          initialTaskIds={assistant.taskIds}
+          spaces={spaces}
+          tasks={tasks}
+          onClose={() => setAssistant(null)}
+        />
+      )}
       {globalCreateOpen && (
         <IssueModal
           allowProjectSelection

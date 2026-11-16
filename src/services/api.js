@@ -103,6 +103,12 @@ export const api = {
 
   // Dashboard widgets visible to the signed-in user
   getDashboardWidgets: () => request('/dashboard/widgets'),
+  // AI Project Assistant
+  aiStatus: () => request('/ai/status'),
+  aiChat: (payload) => request('/ai/chat', json('POST', payload)),
+  aiSuggestTask: (payload) => request('/ai/suggest-task', json('POST', payload)),
+  aiApplyPriority: (changes) => request('/ai/apply-priority', json('POST', { changes })),
+
   // User dashboards (layouts of SQL widgets)
   getDashboards: () => request('/dashboards'),
   getDashboard: (id, { visit = true } = {}) => request(`/dashboards/${encodeURIComponent(id)}${visit ? '' : '?visit=0'}`),

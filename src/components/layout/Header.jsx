@@ -26,7 +26,7 @@ function getSpaceName(task, spaces) {
 export default function Header({
   spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}
 }) {
-  const { isAdmin, navigate } = useAppShell();
+  const { isAdmin, navigate, openAssistant } = useAppShell();
   const [globalSearch, setGlobalSearch] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const searchWrapRef = useRef(null);
@@ -131,7 +131,7 @@ export default function Header({
           <Icon name="plus" size={16} /><span>Create</span>
         </button>
         <div className="header-spacer" />
-        <button type="button" className="header-icon-button ai-header-button" aria-label="AI Assistant" title="AI Assistant">
+        <button type="button" className="header-icon-button ai-header-button" aria-label="AI Project Assistant" title="AI Project Assistant" onClick={() => openAssistant()}>
           <Icon name="sparkles" size={19} />
         </button>
         <button type="button" className="header-icon-button notification-button" aria-label="Notifications" title="Notifications">

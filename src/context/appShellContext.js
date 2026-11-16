@@ -18,7 +18,11 @@ export const AppShellContext = createContext({
   dashboards: [],
   reloadDashboards: () => {},
   upsertDashboard: () => {},
-  removeDashboard: () => {}
+  removeDashboard: () => {},
+  /** Opens the AI Project Assistant: openAssistant({ spaceId, taskIds }) (defaults to the current project). */
+  openAssistant: () => {},
+  /** Creates a work item (same as the Create dialog); resolves to the item or null. */
+  createTask: async () => null
 });
 
 export function useAppShell() {

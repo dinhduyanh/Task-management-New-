@@ -411,7 +411,7 @@ export default function TaskDetailDrawer({
   const [commentFiles, setCommentFiles] = useState([]);
   const [uploading, setUploading] = useState(false);
   const [fileError, setFileError] = useState('');
-  const { replaceWorkItem, user: signedInUser } = useAppShell();
+  const { replaceWorkItem, user: signedInUser, openAssistant } = useAppShell();
   const CURRENT_USER = currentUserRecord(signedInUser);
   const { can } = useProjectPermissions(space);
   // What the signed-in user may do with this work item (the API enforces the same rules).
@@ -953,6 +953,7 @@ export default function TaskDetailDrawer({
               <div className="td-heading-status"><StatusMenu issue={issue} allIssues={allIssues} onSelect={handleStatusChange} disabled={!allow.move} /></div>
               <div className="td-action-buttons">
                 <button type="button" className="td-action-button" title={!allow.createChild ? NO_PERMISSION : allowedChildTypes.length ? `Create child: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'} disabled={!allowedChildTypes.length || !allow.createChild} onClick={() => onCreateChild(issue, allowedChildTypes)}><Icon name="plus" size={16} /></button>
+ <button type="button" className="td-action-button td-ai-button" title="Ask the AI Project Assistant about this work item" aria-label="AI Project Assistant" onClick={() => openAssistant({ spaceId: issue.spaceId ?? space.id, taskIds: [issue.id] })}><Icon name="sparkles" size={15} /></button>
                 <button type="button" className="td-action-button" title="Copy link" onClick={() => copyText(`${window.location.origin}${window.location.pathname}#${key}`, 'Link copied')}><Icon name="link" size={15} /></button>
                 {onMoveTask && <button type="button" className="td-action-button" title={allow.move ? 'Move to another project' : NO_PERMISSION} aria-label="Move to another project" disabled={!allow.move} onClick={() => onMoveTask(issue)}><Icon name="spaces" size={15} /></button>}
                 <button type="button" className="td-action-button" title={allow.clone ? 'Clone work item' : NO_PERMISSION} disabled={!allow.clone} onClick={handleClone}><Icon name="copy" size={15} /></button>

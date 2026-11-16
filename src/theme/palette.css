@@ -16,6 +16,7 @@
   --tf-bd-4386e8: #4386e8;
   --tf-bd-4c9aff: #4c9aff;
   --tf-bd-57d9a3: #57d9a3;
+  --tf-bd-6554c0: #6554c0;
   --tf-bd-6b778c: #6b778c;
   --tf-bd-75a8e8: #75a8e8;
   --tf-bd-79e2f2: #79e2f2;
@@ -35,6 +36,7 @@
   --tf-bd-b3d4ff: #b3d4ff;
   --tf-bd-b8cbed: #b8cbed;
   --tf-bd-bf2600: #bf2600;
+  --tf-bd-c0b6f2: #c0b6f2;
   --tf-bd-c1c7d0: #c1c7d0;
   --tf-bd-c8d5e8: #c8d5e8;
   --tf-bd-c9373f: #c9373f;
@@ -73,8 +75,10 @@
   --tf-bd-ffab00: #ffab00;
   --tf-bd-ffbdad: #ffbdad;
   --tf-bd-ffc400: #ffc400;
+  --tf-bd-ffe380: #ffe380;
   --tf-bd-ffffff: #ffffff;
   --tf-bg-0052cc: #0052cc;
+  --tf-bg-0065ff: #0065ff;
   --tf-bg-00a3bf: #00a3bf;
   --tf-bg-00a6a6: #00a6a6;
   --tf-bg-0645a5: #0645a5;
@@ -88,6 +92,7 @@
   --tf-bg-4c9aff: #4c9aff;
   --tf-bg-579dff: #579dff;
   --tf-bg-6554c0: #6554c0;
+  --tf-bg-6b778c: #6b778c;
   --tf-bg-7ab800: #7ab800;
   --tf-bg-8590a2: #8590a2;
   --tf-bg-a92d35: #a92d35;
@@ -139,6 +144,7 @@
   --tf-bg-f3e8ff: #f3e8ff;
   --tf-bg-f3f0ff: #f3f0ff;
   --tf-bg-f3f6fb: #f3f6fb;
+  --tf-bg-f3fcf7: #f3fcf7;
   --tf-bg-f4f5f7: #f4f5f7;
   --tf-bg-f4f7fb: #f4f7fb;
   --tf-bg-f4f8ff: #f4f8ff;
@@ -153,6 +159,7 @@
   --tf-bg-f7faff: #f7faff;
   --tf-bg-f8fafc: #f8fafc;
   --tf-bg-f8faff: #f8faff;
+  --tf-bg-faf9ff: #faf9ff;
   --tf-bg-fafbfc: #fafbfc;
   --tf-bg-fafbfd: #fafbfd;
   --tf-bg-fbfdff: #fbfdff;
@@ -286,6 +293,7 @@
   --tf-bd-4386e8: #4386e8;
   --tf-bd-4c9aff: #4c9aff;
   --tf-bd-57d9a3: #57d9a3;
+  --tf-bd-6554c0: #6554c0;
   --tf-bd-6b778c: #6b778c;
   --tf-bd-75a8e8: #75a8e8;
   --tf-bd-79e2f2: #79e2f2;
@@ -305,6 +313,7 @@
   --tf-bd-b3d4ff: #234169;
   --tf-bd-b8cbed: #33435f;
   --tf-bd-bf2600: #bf2600;
+  --tf-bd-c0b6f2: #382f62;
   --tf-bd-c1c7d0: #494d54;
   --tf-bd-c8d5e8: #384455;
   --tf-bd-c9373f: #c9373f;
@@ -343,8 +352,10 @@
   --tf-bd-ffab00: #ffab00;
   --tf-bd-ffbdad: #6b3224;
   --tf-bd-ffc400: #ffc400;
+  --tf-bd-ffe380: #7c6a29;
   --tf-bd-ffffff: #2b313b;
   --tf-bg-0052cc: #0052cc;
+  --tf-bg-0065ff: #0065ff;
   --tf-bg-00a3bf: #00a3bf;
   --tf-bg-00a6a6: #00a6a6;
   --tf-bg-0645a5: #0645a5;
@@ -358,6 +369,7 @@
   --tf-bg-4c9aff: #4c9aff;
   --tf-bg-579dff: #579dff;
   --tf-bg-6554c0: #6554c0;
+  --tf-bg-6b778c: #6b778c;
   --tf-bg-7ab800: #7ab800;
   --tf-bg-8590a2: #5b6577;
   --tf-bg-a92d35: #a92d35;
@@ -409,6 +421,7 @@
   --tf-bg-f3e8ff: #221332;
   --tf-bg-f3f0ff: #17122f;
   --tf-bg-f3f6fb: #191f28;
+  --tf-bg-f3fcf7: #17291f;
   --tf-bg-f4f5f7: #1f2024;
   --tf-bg-f4f7fb: #191f27;
   --tf-bg-f4f8ff: #111b2d;
@@ -423,6 +436,7 @@
   --tf-bg-f7faff: #111b2c;
   --tf-bg-f8fafc: #191f24;
   --tf-bg-f8faff: #10182b;
+  --tf-bg-faf9ff: #15102b;
   --tf-bg-fafbfc: #1b1e22;
   --tf-bg-fafbfd: #181c24;
   --tf-bg-fbfdff: #101d2a;
