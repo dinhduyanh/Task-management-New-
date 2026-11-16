@@ -114,6 +114,7 @@
   --tf-bg-dfe1e6: #dfe1e6;
   --tf-bg-e04444: #e04444;
   --tf-bg-e2b203: #e2b203;
+  --tf-bg-e3fafc: #e3fafc;
   --tf-bg-e3fcef: #e3fcef;
   --tf-bg-e4edfb: #e4edfb;
   --tf-bg-e56910: #e56910;
@@ -134,6 +135,7 @@
   --tf-bg-ed4b5b: #ed4b5b;
   --tf-bg-edf4ff: #edf4ff;
   --tf-bg-edf5ff: #edf5ff;
+  --tf-bg-eef0ff: #eef0ff;
   --tf-bg-eef1f5: #eef1f5;
   --tf-bg-eef4fc: #eef4fc;
   --tf-bg-eef4ff: #eef4ff;
@@ -173,6 +175,7 @@
   --tf-bg-ffebe6: #ffebe6;
   --tf-bg-ffebeb: #ffebeb;
   --tf-bg-ffebed: #ffebed;
+  --tf-bg-ffeceb: #ffeceb;
   --tf-bg-fff0b3: #fff0b3;
   --tf-bg-fff0d6: #fff0d6;
   --tf-bg-fff0dc: #fff0dc;
@@ -191,16 +194,19 @@
   --tf-fg-006644: #006644;
   --tf-fg-006b7a: #006b7a;
   --tf-fg-006b7f: #006b7f;
+  --tf-fg-00838f: #00838f;
   --tf-fg-00875a: #00875a;
   --tf-fg-008da6: #008da6;
   --tf-fg-00a3bf: #00a3bf;
   --tf-fg-00a6a6: #00a6a6;
   --tf-fg-0747a6: #0747a6;
   --tf-fg-0755c9: #0755c9;
+  --tf-fg-0c66e4: #0c66e4;
   --tf-fg-101828: #101828;
   --tf-fg-172033: #172033;
   --tf-fg-172b4d: #172b4d;
   --tf-fg-198754: #198754;
+  --tf-fg-1f845a: #1f845a;
   --tf-fg-202b3c: #202b3c;
   --tf-fg-216e39: #216e39;
   --tf-fg-216e4e: #216e4e;
@@ -225,6 +231,7 @@
   --tf-fg-4381d4: #4381d4;
   --tf-fg-44546f: #44546f;
   --tf-fg-475467: #475467;
+  --tf-fg-4c5bd4: #4c5bd4;
   --tf-fg-4c9aff: #4c9aff;
   --tf-fg-5243aa: #5243aa;
   --tf-fg-536176: #536176;
@@ -240,6 +247,7 @@
   --tf-fg-657184: #657184;
   --tf-fg-667085: #667085;
   --tf-fg-6b778c: #6b778c;
+  --tf-fg-6e5dc6: #6e5dc6;
   --tf-fg-7a869a: #7a869a;
   --tf-fg-7ab800: #7ab800;
   --tf-fg-7b8798: #7b8798;
@@ -261,7 +269,6 @@
   --tf-fg-97a6ba: #97a6ba;
   --tf-fg-97a7c0: #97a7c0;
   --tf-fg-98a2b3: #98a2b3;
-  --tf-fg-9aa5b4: #9aa5b4;
   --tf-fg-9aa6b7: #9aa6b7;
   --tf-fg-9ba8bd: #9ba8bd;
   --tf-fg-a0aaba: #a0aaba;
@@ -272,9 +279,11 @@
   --tf-fg-b3d4ff: #b3d4ff;
   --tf-fg-bf2600: #bf2600;
   --tf-fg-c1c7d0: #c1c7d0;
+  --tf-fg-c25100: #c25100;
   --tf-fg-c3cbd6: #c3cbd6;
   --tf-fg-c5ccd6: #c5ccd6;
   --tf-fg-c62828: #c62828;
+  --tf-fg-c9372c: #c9372c;
   --tf-fg-c9373f: #c9373f;
   --tf-fg-cf3e48: #cf3e48;
   --tf-fg-cf4e59: #cf4e59;
@@ -399,6 +408,7 @@
   --tf-bg-dfe1e6: #292b2e;
   --tf-bg-e04444: #e04444;
   --tf-bg-e2b203: #e2b203;
+  --tf-bg-e3fafc: #173032;
   --tf-bg-e3fcef: #173224;
   --tf-bg-e4edfb: #182231;
   --tf-bg-e56910: #e56910;
@@ -419,6 +429,7 @@
   --tf-bg-ed4b5b: #ed4b5b;
   --tf-bg-edf4ff: #121e30;
   --tf-bg-edf5ff: #121f30;
+  --tf-bg-eef0ff: #12152f;
   --tf-bg-eef1f5: #1f2328;
   --tf-bg-eef4fc: #17202c;
   --tf-bg-eef4ff: #121c2f;
@@ -458,6 +469,7 @@
   --tf-bg-ffebe6: #331913;
   --tf-bg-ffebeb: #311212;
   --tf-bg-ffebed: #311215;
+  --tf-bg-ffeceb: #311412;
   --tf-bg-fff0b3: #473e1b;
   --tf-bg-fff0d6: #392c16;
   --tf-bg-fff0dc: #372815;
@@ -476,16 +488,19 @@
   --tf-fg-006644: #9effdf;
   --tf-fg-006b7a: #92f2ff;
   --tf-fg-006b7f: #8fedff;
+  --tf-fg-00838f: #86f5ff;
   --tf-fg-00875a: #8affd8;
   --tf-fg-008da6: #78ebff;
   --tf-fg-00a3bf: #60e8ff;
   --tf-fg-00a6a6: #78ffff;
   --tf-fg-0747a6: #79adf9;
   --tf-fg-0755c9: #609ef9;
+  --tf-fg-0c66e4: #5a9bf6;
   --tf-fg-101828: #ced7eb;
   --tf-fg-172033: #c8d2e6;
   --tf-fg-172b4d: #b5c8e9;
   --tf-fg-198754: #90eac0;
+  --tf-fg-1f845a: #93e6c3;
   --tf-fg-202b3c: #c4cfdf;
   --tf-fg-216e39: #a2e3b6;
   --tf-fg-216e4e: #a2e3c8;
@@ -510,6 +525,7 @@
   --tf-fg-4381d4: #689adc;
   --tf-fg-44546f: #9eacc4;
   --tf-fg-475467: #acb7c6;
+  --tf-fg-4c5bd4: #6774db;
   --tf-fg-4c9aff: #4c9aff;
   --tf-fg-5243aa: #8e83ce;
   --tf-fg-536176: #a0abbc;
@@ -525,6 +541,7 @@
   --tf-fg-657184: #9ea6b4;
   --tf-fg-667085: #9da5b4;
   --tf-fg-6b778c: #9ba4b3;
+  --tf-fg-6e5dc6: #8273ce;
   --tf-fg-7a869a: #969faf;
   --tf-fg-7ab800: #caff62;
   --tf-fg-7b8798: #97a1ae;
@@ -546,7 +563,6 @@
   --tf-fg-97a6ba: #97a6ba;
   --tf-fg-97a7c0: #97a7c0;
   --tf-fg-98a2b3: #98a2b3;
-  --tf-fg-9aa5b4: #9aa5b4;
   --tf-fg-9aa6b7: #9aa6b7;
   --tf-fg-9ba8bd: #9ba8bd;
   --tf-fg-a0aaba: #a0aaba;
@@ -557,9 +573,11 @@
   --tf-fg-b3d4ff: #b3d4ff;
   --tf-fg-bf2600: #ff7f60;
   --tf-fg-c1c7d0: #c1c7d0;
+  --tf-fg-c25100: #ffa25f;
   --tf-fg-c3cbd6: #c3cbd6;
   --tf-fg-c5ccd6: #c5ccd6;
   --tf-fg-c62828: #e26f6f;
+  --tf-fg-c9372c: #df776f;
   --tf-fg-c9373f: #d97278;
   --tf-fg-cf3e48: #db6d74;
   --tf-fg-cf4e59: #d76c75;

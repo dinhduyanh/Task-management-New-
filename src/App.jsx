@@ -11,6 +11,7 @@ import CreateSpace from './pages/CreateSpace/CreateSpace';
 import SpacesSummary from './pages/SpacesSummary/SpacesSummary';
 import SpacesList, { IssueModal } from './pages/SpacesList/SpacesList';
 import SpaceSettings from './pages/SpaceSettings/SpaceSettings';
+import { isFeatureVisible } from './pages/SpacesList/projectNavigation';
 import SpaceBoard from './pages/SpaceBoard/SpaceBoard';
 import SpaceTimeline from './pages/SpaceTimeline/SpaceTimeline';
 import SpaceBacklog from './pages/SpaceBacklog/SpaceBacklog';
@@ -225,6 +226,17 @@ export default function App() {
   }
 
   /** Adds a member or changes their project roles. Resolves to '' or an error message. */
+  /** Shows / hides project features (tabs). Resolves to '' or an error message. */
+  async function handleSetSpaceFeatures(spaceId, features) {
+    try {
+      const saved = await api.setSpaceFeatures(spaceId, features);
+      setSpaces((currentSpaces) => currentSpaces.map((space) => (space.id === saved.id ? saved : space)));
+      return '';
+    } catch (error) {
+      return error.message || 'Unable to save the project features.';
+    }
+  }
+
   /** Stars / unstars a project for the sidebar. Resolves to '' or an error message. */
   async function handlePinSpace(spaceId, pinned) {
     try {
@@ -483,7 +495,13 @@ export default function App() {
 
   let pageContent;
 
-  if (currentRoute.page === 'profile') {
+  // A project tab switched off in Project Settings > Features falls back to the project Summary.
+  const routeTab = currentRoute.page === 'spaceList' ? 'List' : currentRoute.page === 'spaceTab' ? currentRoute.data?.tab : null;
+  const routeSpace = routeTab ? spaces.find((space) => space.id === currentRoute.data?.id) : null;
+
+  if (routeSpace && !isFeatureVisible(routeSpace, routeTab)) {
+    pageContent = <SpacesSummary {...sharedNavigationProps} space={routeSpace} />;
+  } else if (currentRoute.page === 'profile') {
     pageContent = (
       <UserProfile
         {...sharedNavigationProps}
@@ -564,6 +582,7 @@ export default function App() {
           onAddMember={(payload) => handleAddSpaceMembers(selectedSpace.id, payload)}
           onAddMembers={(payload) => handleAddSpaceMembersBulk(selectedSpace.id, payload)}
           onRemoveMember={(userId) => handleRemoveSpaceMember(selectedSpace.id, userId)}
+          onSetFeatures={(features) => handleSetSpaceFeatures(selectedSpace.id, features)}
         />
       );
     }

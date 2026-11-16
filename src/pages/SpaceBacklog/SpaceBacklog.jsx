@@ -8,7 +8,7 @@ import TaskDetailDrawer from '../SpacesList/TaskDetailDrawer';
 import { IssueModal, StartTransitionModal } from '../SpacesList/SpacesList';
 import IssueToolbar from '../SpacesList/IssueToolbar';
 import ProjectHeader from '../SpacesList/ProjectHeader';
-import { navigateProjectTab } from '../SpacesList/projectNavigation';
+import { isFeatureVisible, navigateProjectTab } from '../SpacesList/projectNavigation';
 import useIssueFilters from '../SpacesList/useIssueFilters';
 import { assigneeName, isInSpace, issueKey } from '../SpacesList/issueHelpers';
 import { getChildIssues } from '../SpacesList/workflows';
@@ -496,7 +496,7 @@ export default function SpaceBacklog({
           )}
           {sprint?.status === 'active' && (
             <>
-              <button type="button" className="bl-button" onClick={() => navigateProjectTab(onNavigate, space, 'Active Sprints')}>Open board</button>
+              {isFeatureVisible(space, 'Active Sprints') && <button type="button" className="bl-button" onClick={() => navigateProjectTab(onNavigate, space, 'Active Sprints')}>Open board</button>}
               {maySprintUpdate && <button type="button" className="bl-button is-primary" onClick={() => setCompleteSprint(sprint)}>Complete sprint</button>}
             </>
           )}

@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import { visibleProjectTabs } from '../SpacesList/projectNavigation';
 import './SpacesSummary.css';
 
 const STATUS_DEFINITIONS = [
@@ -163,15 +164,7 @@ function StatCard({ icon, label, value, tone }) {
 }
 
 function SpaceTabs({ space, activeTab, onNavigate }) {
-  const tabs = [
-    { label: 'Summary', icon: 'dashboard' },
-    { label: 'Timeline', icon: 'calendar' },
-    { label: 'Board', icon: 'tasks' },
-    { label: 'List', icon: 'file' },
-    { label: 'Backlog', icon: 'spaces' },
-    { label: 'Active Sprints', icon: 'check' },
-    { label: 'Teams', icon: 'user' }
-  ];
+  const tabs = visibleProjectTabs(space).map((feature) => ({ label: feature.key, icon: feature.icon }));
 
   function handleTabClick(tab) {
     if (tab === 'Summary') {

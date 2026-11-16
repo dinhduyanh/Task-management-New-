@@ -4,6 +4,9 @@ import Icon from '../../components/common/Icon';
 import { CalendarPopover } from '../../components/common/DatePicker';
 import { PeopleSettings } from './SpacePeople';
 import PermissionsSettings from './SpacePermissions';
+import Toast from '../../components/common/Toast';
+import { canInSpace } from '../../services/projectPermissions';
+import { PROJECT_FEATURES, isFeatureVisible } from '../SpacesList/projectNavigation';
 import './SpaceSettings.css';
 
 const SETTINGS_ITEMS = [
@@ -292,22 +295,77 @@ function SummarySettings({ space, onSave }) {
   );
 }
 
-function FeaturesSettings() {
-  const features = [
-    ['Summary', 'Project overview and key metrics.'],
-    ['Timeline', 'View project work across a timeline.'],
-    ['Board', 'Manage work items on a visual board.'],
-    ['List', 'View and manage work items in a list.'],
-    ['Backlog', 'Prioritize and organize upcoming work.'],
-    ['Active Sprints', 'Plan and track active sprints.'],
-    ['Teams', 'View project teams and members.']
-  ];
+function FeaturesSettings({ space = {}, onSetFeatures = async () => '' }) {
+  const canEdit = canInSpace(space, 'project.setting');
+  // Optimistic ticks while a change is being saved: { [featureKey]: enabled }.
+  const [pending, setPending] = useState({});
+  const [toast, setToast] = useState(null);
+  const shown = (feature) => (feature.key in pending ? pending[feature.key] : isFeatureVisible(space, feature.key));
+  const visibleCount = PROJECT_FEATURES.filter(shown).length;
+
+  async function toggle(feature, enabled) {
+    if (!canEdit || feature.locked) return;
+    setPending((current) => ({ ...current, [feature.key]: enabled }));
+    const message = await onSetFeatures({ [feature.key]: enabled });
+    setPending((current) => {
+      const next = { ...current };
+      delete next[feature.key];
+      return next;
+    });
+    setToast(message
+      ? { type: 'error', message }
+      : { type: 'success', message: enabled ? `${feature.key} is shown in this project.` : `${feature.key} is hidden from this project.` });
+  }
+
   return (
     <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Features</h1><p>Features available in this project.</p></div>
-      <div className="settings-section-card">
-        {features.map(([name, description], index) => <div className="settings-feature-row" key={name}><span className="settings-feature-number">{String(index + 1).padStart(2, '0')}</span><div><strong>{name}</strong><p>{description}</p></div><span className="settings-feature-state">Available</span></div>)}
+      <div className="settings-content-heading">
+        <h1>Features</h1>
+        <p>Choose which features appear in this project&apos;s tab bar. Unticked features are hidden for everyone in the project.</p>
       </div>
+      <div className="settings-section-card">
+        <div className="settings-section-card-header">
+          <strong>Project features</strong>
+          <span>{visibleCount} of {PROJECT_FEATURES.length} shown</span>
+        </div>
+        <ul className="settings-feature-list">
+          {PROJECT_FEATURES.map((feature) => {
+            const checked = shown(feature);
+            const disabled = !canEdit || feature.locked || feature.key in pending;
+            const id = `feature-${feature.key.replace(/\s+/g, '-').toLowerCase()}`;
+            return (
+              <li key={feature.key} className={`settings-feature-row ${checked ? '' : 'is-hidden'} ${disabled ? '' : 'is-editable'}`}>
+                <label htmlFor={id} className="settings-feature-main">
+                  <span className={`settings-feature-icon tone-${feature.tone}`} aria-hidden="true"><Icon name={feature.icon} size={18} /></span>
+                  <span className="settings-feature-text">
+                    <strong>{feature.key}</strong>
+                    <span>{feature.description}</span>
+                  </span>
+                </label>
+                <span className={`settings-feature-state ${feature.locked ? 'is-locked' : checked ? 'is-on' : 'is-off'}`}>
+                  {feature.locked ? <><Icon name="lock" size={11} /> Always on</> : checked ? 'Visible' : 'Hidden'}
+                </span>
+                <input
+                  id={id}
+                  type="checkbox"
+                  className="settings-feature-check"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={(event) => toggle(feature, event.target.checked)}
+                  aria-label={`Show ${feature.key} in this project`}
+                  title={feature.locked ? 'Summary is the project home and is always shown.' : !canEdit ? 'You need the Project Setting permission to change features.' : checked ? `Hide ${feature.key}` : `Show ${feature.key}`}
+                />
+              </li>
+            );
+          })}
+        </ul>
+        <p className="settings-note">
+          {canEdit
+            ? 'Hidden features disappear from the project tab bar; their data is kept and comes back when you tick them again.'
+            : 'Only members with the Project Setting permission can show or hide features.'}
+        </p>
+      </div>
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </section>
   );
 }
@@ -341,18 +399,18 @@ function WorkItemsSettings() {
   );
 }
 
-export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {}, onAddMember = async () => '', onAddMembers = async () => '', onRemoveMember = async () => '' }) {
+export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {}, onAddMember = async () => '', onAddMembers = async () => '', onRemoveMember = async () => '', onSetFeatures = async () => '' }) {
   const [activeTab, setActiveTab] = useState('Summary');
   const pageContent = useMemo(() => {
     switch (activeTab) {
       case 'People': return <PeopleSettings space={space} onAddMember={onAddMember} onAddMembers={onAddMembers} onRemoveMember={onRemoveMember} />;
       case 'Permissions': return <PermissionsSettings space={space} />;
-      case 'Features': return <FeaturesSettings />;
+      case 'Features': return <FeaturesSettings space={space} onSetFeatures={onSetFeatures} />;
       case 'Workflow': return <WorkflowSettings />;
       case 'Work Items': return <WorkItemsSettings />;
       default: return <SummarySettings key={space.id} space={space} onSave={onSave} />;
     }
-  }, [activeTab, onSave, onAddMember, onAddMembers, onRemoveMember, space]);
+  }, [activeTab, onSave, onAddMember, onAddMembers, onRemoveMember, onSetFeatures, space]);
 
   return (
     <div className="space-settings-shell">

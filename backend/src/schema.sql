@@ -277,3 +277,13 @@ CREATE TABLE IF NOT EXISTS space_pins (
   PRIMARY KEY (user_id, space_id),
   FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
 );
+
+-- Per-project feature visibility (project tabs). A row with enabled = 0 hides that tab.
+CREATE TABLE IF NOT EXISTS space_features (
+  space_id TEXT NOT NULL,
+  feature_key TEXT NOT NULL,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  updated_at TEXT NOT NULL,
+  PRIMARY KEY (space_id, feature_key),
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);

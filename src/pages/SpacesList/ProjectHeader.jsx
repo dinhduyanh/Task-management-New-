@@ -1,5 +1,5 @@
 import Icon from '../../components/common/Icon';
-import { PROJECT_TABS, navigateProjectTab } from './projectNavigation';
+import { navigateProjectTab, visibleProjectTabs } from './projectNavigation';
 
 /** Breadcrumb, page title and the project tab bar shared by List, Board and Timeline. */
 export default function ProjectHeader({ space = {}, title, activeTab, onNavigate = () => {} }) {
@@ -11,7 +11,7 @@ export default function ProjectHeader({ space = {}, title, activeTab, onNavigate
         <h1>{title || spaceName}</h1>
       </div>
       <nav className="slv-tabs" aria-label="Project navigation">
-        {PROJECT_TABS.map(([label, icon]) => (
+        {visibleProjectTabs(space).map(({ key: label, icon }) => (
           <button
             key={label}
             type="button"

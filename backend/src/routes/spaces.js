@@ -8,6 +8,15 @@ import {
 
 const router = Router();
 export const MAX_PINNED_SPACES = 5;
+/** Project tabs that can be switched off in Project Settings > Features (Summary always stays). */
+export const TOGGLEABLE_FEATURES = ['Timeline', 'Board', 'List', 'Backlog', 'Active Sprints', 'Teams'];
+
+function hiddenFeatures(spaceId) {
+  return db.prepare('SELECT feature_key FROM space_features WHERE space_id = ? AND enabled = 0').all(spaceId)
+    .map((row) => row.feature_key)
+    .filter((key) => TOGGLEABLE_FEATURES.includes(key))
+    .sort((a, b) => TOGGLEABLE_FEATURES.indexOf(a) - TOGGLEABLE_FEATURES.indexOf(b));
+}
 
 /** The project lead: the owner (or, for older projects, the stored owner / creator name). */
 function leadOf(row, data) {
@@ -35,6 +44,7 @@ function spaceForUser(row, user) {
     involved,
     pinned: Boolean(pin),
     pinnedAt: pin?.created_at || null,
+    hiddenFeatures: hiddenFeatures(row.id),
     permissions: {
       manage: canManageSpace(user, row.id),
       admin: context.isProjectAdmin,
@@ -152,6 +162,7 @@ router.patch('/:spaceId', (req, res, next) => {
     delete safeUpdates.ownerId; // ownership is not changed through settings
     delete safeUpdates.owner;
     delete safeUpdates.permissions;
+    delete safeUpdates.hiddenFeatures; // feature visibility has its own endpoint (PUT /:spaceId/features)
     const nextData = { ...previousData, ...safeUpdates, updatedAt: nowIso() };
     const code = String(nextData.code || current.code).trim().toUpperCase();
     const name = String(nextData.name || current.name).trim();
@@ -172,6 +183,33 @@ router.patch('/:spaceId', (req, res, next) => {
     })();
 
     res.json(spaceForUser(db.prepare('SELECT * FROM spaces WHERE id = ?').get(current.id), req.user));
+  } catch (error) { next(error); }
+});
+
+// Shows or hides project features (tabs). Body: { features: { Timeline: false, Board: true, ... } }.
+router.put('/:spaceId/features', (req, res, next) => {
+  try {
+    const { spaceId } = req.params;
+    if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
+    if (!can(req.user, spaceId, 'project.setting')) return denied(res, 'project.setting');
+    const features = req.body?.features;
+    if (!features || typeof features !== 'object' || Array.isArray(features) || !Object.keys(features).length) {
+      return res.status(400).json({ error: 'Send the features to change, e.g. { "features": { "Timeline": false } }.' });
+    }
+    for (const [key, enabled] of Object.entries(features)) {
+      if (key === 'Summary') return res.status(400).json({ error: 'Summary is always shown.' });
+      if (!TOGGLEABLE_FEATURES.includes(key)) return res.status(400).json({ error: `Unknown feature: ${key}.` });
+      if (typeof enabled !== 'boolean') return res.status(400).json({ error: `${key}: enabled must be true or false.` });
+    }
+    const now = nowIso();
+    db.transaction(() => {
+      const upsert = db.prepare(`INSERT INTO space_features (space_id, feature_key, enabled, updated_at) VALUES (?, ?, ?, ?)
+        ON CONFLICT(space_id, feature_key) DO UPDATE SET enabled = excluded.enabled, updated_at = excluded.updated_at`);
+      for (const [key, enabled] of Object.entries(features)) upsert.run(spaceId, key, enabled ? 1 : 0, now);
+      const summary = Object.entries(features).map(([key, enabled]) => `${enabled ? 'showed' : 'hid'} ${key}`).join(', ');
+      logActivity({ spaceId, actorName: req.user.fullName || 'You', description: `${summary} in project features` });
+    })();
+    res.json(spaceForUser(db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId), req.user));
   } catch (error) { next(error); }
 });
 
