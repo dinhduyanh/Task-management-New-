@@ -21,6 +21,9 @@ export const AppShellContext = createContext({
   removeDashboard: () => {},
   /** Opens the AI Project Assistant: openAssistant({ spaceId, taskIds }) (defaults to the current project). */
   openAssistant: () => {},
+  /** Sidebar collapsed to icons; toggleSidebar(force?) switches it. */
+  sidebarCollapsed: false,
+  toggleSidebar: () => {},
   /** Creates a work item (same as the Create dialog); resolves to the item or null. */
   createTask: async () => null,
   /** Opens a work item's details (navigates to its project). */

@@ -1,6 +1,6 @@
 /* Nexus-inspired List View for TASKFLOW */
 .spaces-list-shell{min-height:100vh;background:var(--tf-bg-f4f5f7);color:var(--tf-fg-172b4d)}
-.spaces-list-main{min-height:calc(100vh - 64px);margin-left:236px;padding:20px 14px 28px;min-width:0}
+.spaces-list-main{min-height:calc(100vh - 64px);margin-left:var(--tf-sidebar-w);padding:20px 14px 28px;min-width:0;transition:margin-left var(--tf-sidebar-speed)}
 .slv-project-heading{padding:0 3px 12px}
 .slv-breadcrumb{display:flex;gap:9px;align-items:center;margin-bottom:7px;color:var(--tf-fg-6b778c);font-size:12px}
 .slv-breadcrumb strong{color:var(--tf-fg-344563);font-weight:600}
@@ -101,8 +101,8 @@
 .slv-btn{min-height:33px;padding:0 14px;border-radius:4px;font:inherit;font-size:12px;font-weight:600;cursor:pointer}.slv-btn:disabled{opacity:.55;cursor:not-allowed}
 .slv-btn.secondary{border:1px solid var(--tf-bd-c1c7d0);background:var(--tf-bg-ffffff);color:var(--tf-fg-42526e)}.slv-btn.primary{border:1px solid var(--tf-bd-0052cc);background:var(--tf-bg-0052cc);color:var(--tf-fg-ffffff)}.slv-btn.primary:hover:not(:disabled){background:var(--tf-bg-0747a6)}.slv-btn.danger{border:1px solid var(--tf-bd-bf2600);background:var(--tf-bg-bf2600);color:var(--tf-fg-ffffff)}
 .slv-confirm-modal{width:min(440px,100%)}.slv-confirm-text{margin:0;color:var(--tf-fg-42526e);font-size:12px;line-height:1.6}
-@media(max-width:1100px){.spaces-list-main{margin-left:210px;padding-left:12px;padding-right:12px}.slv-search{width:190px}}
-@media(max-width:760px){.spaces-list-main{margin-left:65px;padding:16px 8px 24px}.slv-tabs{margin-left:-8px;margin-right:-8px;padding:0 8px}.slv-toolbar{gap:6px}.slv-search{width:100%}.slv-footer{grid-template-columns:auto 1fr auto}.slv-field-grid{grid-template-columns:1fr}}
+@media(max-width:1100px){.spaces-list-main{padding-left:12px;padding-right:12px}.slv-search{width:190px}}
+@media(max-width:760px){.spaces-list-main{padding:16px 8px 24px}.slv-tabs{margin-left:-8px;margin-right:-8px;padding:0 8px}.slv-toolbar{gap:6px}.slv-search{width:100%}.slv-footer{grid-template-columns:auto 1fr auto}.slv-field-grid{grid-template-columns:1fr}}
 .slv-quick-assign-wrap{position:relative;display:inline-flex}
 .slv-quick-assign-button{width:22px;height:22px;display:inline-flex;align-items:center;justify-content:center;border:1px solid var(--tf-bd-dfe1e6);border-radius:50%;background:var(--tf-bg-ffffff);color:var(--tf-fg-6b778c);cursor:pointer}
 .slv-quick-assign-button:hover:not(:disabled){border-color:var(--tf-bd-4c9aff);color:var(--tf-fg-0052cc);background:var(--tf-bg-f7faff)}
@@ -1383,4 +1383,44 @@
 /* Above the task detail drawer (Move opened from the drawer). */
 .slv-modal-backdrop.is-top {
   z-index: 1100;
+}
+
+/* Inline date cells open the shared calendar. */
+.slv-inline-date-wrap {
+  display: inline-flex;
+  width: 100%;
+}
+button.slv-inline-date {
+  background: transparent;
+  font-family: inherit;
+  text-align: left;
+}
+.slv-inline-date.is-open {
+  border-color: var(--tf-bd-4c9aff);
+  background: var(--tf-bg-ffffff);
+}
+.slv-inline-date.is-open > svg,
+.slv-inline-date:focus-visible > svg {
+  opacity: 1;
+}
+.slv-date-filter .dp-compact {
+  width: 136px;
+}
+.slv-date-filter .dp-field {
+  border-color: transparent;
+  background: transparent;
+}
+.slv-date-filter .dp-field:hover,
+.slv-date-filter .dp-field.is-open {
+  border-color: var(--tf-bd-c1c7d0);
+}
+/* The calendar icon overlays the date (shown on hover) so narrow columns keep the full date. */
+button.slv-inline-date > svg {
+  position: absolute;
+  right: 6px;
+}
+button.slv-inline-date:hover,
+button.slv-inline-date.is-open,
+button.slv-inline-date:focus-visible {
+  padding-right: 24px;
 }

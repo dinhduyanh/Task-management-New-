@@ -815,3 +815,16 @@
   cursor: default;
   opacity: 1;
 }
+
+/* Sprint dates use the shared date picker (a div, so it is styled like the labels). */
+.bl-date-field {
+  display: grid;
+  gap: 6px;
+  color: var(--tf-fg-42526e);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.bl-date-field b {
+  color: var(--tf-fg-de350b);
+}

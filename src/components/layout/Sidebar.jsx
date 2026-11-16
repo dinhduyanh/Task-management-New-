@@ -17,7 +17,7 @@ export default function Sidebar({
 }) {
   const [spacesExpanded, setSpacesExpanded] = useState(true);
   const [dashboardsExpanded, setDashboardsExpanded] = useState(true);
-  const { dashboards } = useAppShell();
+  const { dashboards, sidebarCollapsed, toggleSidebar } = useAppShell();
   const shortcutDashboards = sidebarDashboards(dashboards);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [spaceToDelete, setSpaceToDelete] = useState(null);
@@ -49,7 +49,6 @@ export default function Sidebar({
 
   return (
     <aside className={`sidebar ${spaceToDelete ? 'sidebar-with-dialog' : ''}`}>
-      <div className="sidebar-section-label">WORKSPACE</div>
 
       <nav className="sidebar-nav" aria-label="Main navigation">
         <button
@@ -57,9 +56,10 @@ export default function Sidebar({
           className={`nav-item nav-item-button ${activeSection === 'My Tasks' ? 'nav-item-active' : ''}`}
           onClick={() => navigate('myTasks')}
           aria-current={activeSection === 'My Tasks' ? 'page' : undefined}
+          data-tip="My Tasks"
         >
           <Icon name="tasks" />
-          <span>My Tasks</span>
+          <span className="nav-label">My Tasks</span>
         </button>
 
         <button
@@ -67,10 +67,13 @@ export default function Sidebar({
           className={`nav-item nav-item-button ${activeSection === 'Documents' ? 'nav-item-active' : ''}`}
           onClick={() => navigate('documents')}
           aria-current={activeSection === 'Documents' ? 'page' : undefined}
+          data-tip="Documents"
         >
           <Icon name="file" />
-          <span>Documents</span>
+          <span className="nav-label">Documents</span>
         </button>
+
+        <div className="sidebar-divider" role="separator" />
 
         {/* Dashboards: up to 5 shortcuts (starred first, then recently opened). */}
         <div className={`spaces-nav-row ${activeSection === 'Dashboard' && !activeDashboardId ? 'spaces-nav-row-active' : ''}`}>
@@ -80,9 +83,10 @@ export default function Sidebar({
             onClick={() => navigate('dashboards')}
             aria-current={activeSection === 'Dashboard' && !activeDashboardId ? 'page' : undefined}
             title="All dashboards"
+            data-tip="Dashboard"
           >
             <Icon name="dashboard" />
-            <span>Dashboard</span>
+            <span className="nav-label">Dashboard</span>
           </button>
           <div className="spaces-nav-actions">
             <button
@@ -106,7 +110,7 @@ export default function Sidebar({
           </div>
         </div>
 
-        {dashboardsExpanded && (
+        {dashboardsExpanded && !sidebarCollapsed && (
           <div className="spaces-submenu sidebar-dashboards" aria-label="Dashboards">
             {shortcutDashboards.map((dashboard) => (
               <div className={`space-item-row ${activeDashboardId === dashboard.id ? 'space-item-row-active' : ''}`} key={dashboard.id}>
@@ -141,11 +145,16 @@ export default function Sidebar({
           <button
             type="button"
             className="spaces-main-toggle"
-            onClick={() => setSpacesExpanded((current) => !current)}
-            aria-expanded={spacesExpanded}
+            onClick={() => {
+              // Collapsed sidebar: open it on the project list instead of toggling a hidden list.
+              if (sidebarCollapsed) { toggleSidebar(false); setSpacesExpanded(true); return; }
+              setSpacesExpanded((current) => !current);
+            }}
+            aria-expanded={spacesExpanded && !sidebarCollapsed}
+            data-tip="Spaces"
           >
             <Icon name="spaces" />
-            <span>Spaces</span>
+            <span className="nav-label">Spaces</span>
           </button>
 
           <div className="spaces-nav-actions">
@@ -170,7 +179,7 @@ export default function Sidebar({
           </div>
         </div>
 
-        {spacesExpanded && (
+        {spacesExpanded && !sidebarCollapsed && (
           <div className="spaces-submenu" ref={menuAreaRef}>
             {spaces.length > 0 ? spaces.map((space) => (
               <div className={`space-item-row ${activeSpaceId === space.id ? 'space-item-row-active' : ''}`} key={space.id}>
@@ -242,21 +251,24 @@ export default function Sidebar({
           </div>
         )}
 
+        <div className="sidebar-divider" role="separator" />
+
         <button
           type="button"
           className={`nav-item nav-item-button ${activeSection === 'Filter' ? 'nav-item-active' : ''}`}
           onClick={() => navigate('filter')}
           aria-current={activeSection === 'Filter' ? 'page' : undefined}
+          data-tip="Filter"
         >
           <Icon name="filter" />
-          <span>Filter</span>
+          <span className="nav-label">Filter</span>
         </button>
       </nav>
 
       <div className="sidebar-bottom">
-        <div className="workspace-profile">
+        <div className="workspace-profile" data-tip="TASKFLOW · Personal workspace">
           <div className="workspace-avatar">T</div>
-          <div>
+          <div className="workspace-text">
             <strong>TASKFLOW</strong>
             <span>Personal workspace</span>
           </div>

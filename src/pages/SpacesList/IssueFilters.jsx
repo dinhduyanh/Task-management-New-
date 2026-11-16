@@ -1,3 +1,4 @@
+import DatePicker from '../../components/common/DatePicker';
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/common/Icon';
 import PriorityIcon from '../../components/common/PriorityIcon';
@@ -72,7 +73,7 @@ export function MoreFilters({ selected, onChange }) {
 /** Date-range and priority controls for the fields picked in "More filters". */
 export function ExtraFilterControls({ moreFields, dateRanges, onDateRangesChange, priorities, onPrioritiesChange, onRemoveField }) {
   return <>
-    {moreFields.filter((field) => field !== 'Priority').map((field) => <div className="slv-date-filter" key={field}><span>{field}</span><input type="date" value={dateRanges[field]?.from || ''} aria-label={`${field} from`} onChange={(event) => onDateRangesChange({ ...dateRanges, [field]: { ...dateRanges[field], from: event.target.value } })} /><span>to</span><input type="date" value={dateRanges[field]?.to || ''} aria-label={`${field} to`} onChange={(event) => onDateRangesChange({ ...dateRanges, [field]: { ...dateRanges[field], to: event.target.value } })} /><button type="button" onClick={() => onRemoveField(field)} aria-label={`Remove ${field}`}>×</button></div>)}
+    {moreFields.filter((field) => field !== 'Priority').map((field) => <div className="slv-date-filter" key={field}><span>{field}</span><DatePicker className="dp-compact" value={dateRanges[field]?.from || ''} max={dateRanges[field]?.to || undefined} ariaLabel={`${field} from`} placeholder="From" onChange={(from) => onDateRangesChange({ ...dateRanges, [field]: { ...dateRanges[field], from } })} /><span>to</span><DatePicker className="dp-compact" value={dateRanges[field]?.to || ''} min={dateRanges[field]?.from || undefined} ariaLabel={`${field} to`} placeholder="To" onChange={(to) => onDateRangesChange({ ...dateRanges, [field]: { ...dateRanges[field], to } })} /><button type="button" onClick={() => onRemoveField(field)} aria-label={`Remove ${field}`}>×</button></div>)}
     {moreFields.includes('Priority') && <div className="slv-priority-filter"><MultiFilter label="Priority" options={PRIORITIES} selected={priorities} onChange={onPrioritiesChange} showPriorityIcons /><button type="button" onClick={() => onRemoveField('Priority')} aria-label="Remove priority filter">×</button></div>}
   </>;
 }

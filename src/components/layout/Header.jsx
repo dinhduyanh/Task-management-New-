@@ -26,7 +26,7 @@ function getSpaceName(task, spaces) {
 export default function Header({
   spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}
 }) {
-  const { isAdmin, navigate, openAssistant } = useAppShell();
+  const { isAdmin, navigate, openAssistant, sidebarCollapsed, toggleSidebar } = useAppShell();
   const [globalSearch, setGlobalSearch] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const searchWrapRef = useRef(null);
@@ -74,8 +74,15 @@ export default function Header({
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <button type="button" className="header-icon-button menu-button" aria-label="Menu">
-          <Icon name="menu" size={19} />
+        <button
+          type="button"
+          className="header-icon-button menu-button"
+          onClick={() => toggleSidebar()}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+        >
+          <Icon name={sidebarCollapsed ? 'sidebarOpen' : 'sidebarClose'} size={19} />
         </button>
         <div className="brand-logo">TASK<span>FLOW</span></div>
       </div>

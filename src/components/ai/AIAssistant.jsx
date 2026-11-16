@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import Icon from '../common/Icon';
 import PriorityIcon from '../common/PriorityIcon';
+import DatePicker from '../common/DatePicker';
 import { useAppShell } from '../../context/appShellContext';
 import { api } from '../../services/api';
 import { canInSpace } from '../../services/projectPermissions';
@@ -299,7 +300,7 @@ function SuggestionCard({ suggestion, space, onCreate }) {
         <label className="ai-field"><span>Priority</span>
           <select value={values.priority} onChange={set('priority')} disabled={Boolean(state.created)}>{PRIORITIES.map((priority) => <option key={priority}>{priority}</option>)}</select>
         </label>
-        <label className="ai-field"><span>Due date</span><input type="date" value={values.dueDate} onChange={set('dueDate')} disabled={Boolean(state.created)} /></label>
+        <div className="ai-field"><span>Due date</span><DatePicker className="ai-date" value={values.dueDate} onChange={(dueDate) => setValues((current) => ({ ...current, dueDate }))} disabled={Boolean(state.created)} ariaLabel="Due date" /></div>
         <label className="ai-field ai-span-2"><span>Mô tả</span><textarea rows={3} value={values.description} onChange={set('description')} disabled={Boolean(state.created)} /></label>
       </div>
       {suggestion.reasons?.length > 0 && (

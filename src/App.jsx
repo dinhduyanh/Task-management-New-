@@ -19,6 +19,7 @@ import Documents from './pages/Documents/Documents';
 import SystemSettings from './pages/SystemSettings/SystemSettings';
 import AccessDenied from './pages/SystemSettings/AccessDenied';
 import { canInSpace } from './services/projectPermissions';
+import { applySidebarCollapsed, getInitialSidebarCollapsed } from './theme/sidebar';
 import AIAssistant from './components/ai/AIAssistant';
 import DashboardView from './pages/Dashboard/DashboardView';
 import DashboardsList from './pages/Dashboard/DashboardsList';
@@ -52,6 +53,7 @@ export default function App() {
   const [dashboards, setDashboards] = useState([]);
   // AI Project Assistant drawer: { spaceId, taskIds } while open.
   const [assistant, setAssistant] = useState(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
   const [globalCreateOpen, setGlobalCreateOpen] = useState(false);
   const [backendError, setBackendError] = useState('');
 
@@ -81,6 +83,10 @@ export default function App() {
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
+
+  useEffect(() => {
+    applySidebarCollapsed(sidebarCollapsed);
+  }, [sidebarCollapsed]);
 
   // Refresh the signed-in user from the server. A 401 means the session cookie
   // expired or was revoked, so fall back to the Sign In page.
@@ -439,6 +445,8 @@ export default function App() {
     upsertDashboard,
     removeDashboard,
     openAssistant,
+    sidebarCollapsed,
+    toggleSidebar: (force) => setSidebarCollapsed((current) => (typeof force === 'boolean' ? force : !current)),
     createTask: handleCreateTask,
     openTask: handleOpenTaskFromGlobalSearch
   };

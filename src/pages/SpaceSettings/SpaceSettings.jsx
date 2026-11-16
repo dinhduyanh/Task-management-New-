@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Icon from '../../components/common/Icon';
+import { CalendarPopover } from '../../components/common/DatePicker';
 import { PeopleSettings } from './SpacePeople';
 import PermissionsSettings from './SpacePermissions';
 import './SpaceSettings.css';
@@ -53,20 +54,15 @@ function formatDate(value) {
 }
 
 function SettingsDateField({ id, label, value, onChange, required = false, error }) {
-  const dateRef = useRef(null);
-  function openPicker() {
-    const input = dateRef.current;
-    if (!input) return;
-    if (typeof input.showPicker === 'function') input.showPicker();
-    else { input.focus(); input.click(); }
-  }
+  const [controlEl, setControlEl] = useState(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   return (
     <div className="settings-form-field">
       <label className="settings-field-label" htmlFor={`${id}-text`}>
         {label}{required && <span className="settings-required"> *</span>}
       </label>
-      <div className={`settings-date-control ${error ? 'has-error' : ''}`}>
+      <div ref={setControlEl} className={`settings-date-control ${error ? 'has-error' : ''}`}>
         <input
           id={`${id}-text`}
           type="text"
@@ -87,18 +83,17 @@ function SettingsDateField({ id, label, value, onChange, required = false, error
         {value && (
           <button type="button" className="settings-date-clear" onClick={() => onChange('')} aria-label={`Clear ${label}`}>×</button>
         )}
-        <button type="button" className="settings-date-picker-button" onClick={openPicker} aria-label={`Choose ${label}`}>
+        <button type="button" className="settings-date-picker-button" onClick={() => setCalendarOpen((open) => !open)} aria-label={`Choose ${label}`} aria-haspopup="dialog" aria-expanded={calendarOpen}>
           <Icon name="calendar" size={16} />
         </button>
-        <input
-          ref={dateRef}
-          className="settings-native-date"
-          type="date"
-          value={toIsoDate(value)}
-          onChange={(event) => onChange(fromIsoDate(event.target.value))}
-          tabIndex={-1}
-          aria-hidden="true"
-        />
+        {calendarOpen && (
+          <CalendarPopover
+            anchorEl={controlEl}
+            value={toIsoDate(value)}
+            onSelect={(iso) => onChange(fromIsoDate(iso))}
+            onClose={() => setCalendarOpen(false)}
+          />
+        )}
       </div>
       {error && <span className="settings-field-error">{error}</span>}
     </div>

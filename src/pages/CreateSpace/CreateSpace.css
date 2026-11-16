@@ -1,8 +1,9 @@
 .create-space-main {
   min-width: 0;
   min-height: calc(100vh - 64px);
-  margin-left: 236px;
+  margin-left: var(--tf-sidebar-w);
   padding: 25px 32px 42px;
+  transition: margin-left var(--tf-sidebar-speed);
   background: var(--tf-bg-f7f9fc);
 }
 
@@ -353,11 +354,11 @@
 }
 
 @media (max-width: 1100px) {
-  .create-space-main { margin-left: 210px; padding: 25px 20px 35px; }
+  .create-space-main { padding: 25px 20px 35px; }
 }
 
 @media (max-width: 760px) {
-  .create-space-main { margin-left: 65px; padding: 20px 12px 30px; }
+  .create-space-main { padding: 20px 12px 30px; }
   .create-space-card-heading,
   .create-space-form-body { padding-right: 18px; padding-left: 18px; }
   .create-space-card-footer { padding-right: 18px; padding-left: 18px; }

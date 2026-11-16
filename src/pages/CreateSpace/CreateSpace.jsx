@@ -1,7 +1,8 @@
-import { useRef, useState } from 'react';
+import { useState } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import { CalendarPopover } from '../../components/common/DatePicker';
 import './CreateSpace.css';
 
 function formatDateInput(value) {
@@ -47,20 +48,9 @@ function fromIsoDate(value) {
   return `${day}-${month}-${year}`;
 }
 
-function DateField({ id, label, value, onChange, required = false, error }) {
-  const nativeDateRef = useRef(null);
-
-  function openCalendar() {
-    const picker = nativeDateRef.current;
-    if (!picker) return;
-
-    if (typeof picker.showPicker === 'function') {
-      picker.showPicker();
-    } else {
-      picker.focus();
-      picker.click();
-    }
-  }
+function DateField({ id, label, value, onChange, required = false, error, min }) {
+  const [controlEl, setControlEl] = useState(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   return (
     <div className="space-form-field">
@@ -68,7 +58,7 @@ function DateField({ id, label, value, onChange, required = false, error }) {
         {label}{required && <span className="required-star"> *</span>}
       </label>
 
-      <div className={`space-date-control ${error ? 'has-error' : ''}`}>
+      <div ref={setControlEl} className={`space-date-control ${error ? 'has-error' : ''}`}>
         <input
           id={`${id}-text`}
           type="text"
@@ -97,22 +87,24 @@ function DateField({ id, label, value, onChange, required = false, error }) {
         <button
           type="button"
           className="space-date-calendar-button"
-          onClick={openCalendar}
+          onClick={() => setCalendarOpen((open) => !open)}
+          aria-haspopup="dialog"
+          aria-expanded={calendarOpen}
           aria-label={`Choose ${label}`}
           title="Choose date"
         >
           <Icon name="calendar" size={17} />
         </button>
 
-        <input
-          ref={nativeDateRef}
-          className="space-native-date-input"
-          type="date"
-          value={toIsoDate(value)}
-          onChange={(event) => onChange(fromIsoDate(event.target.value))}
-          tabIndex={-1}
-          aria-hidden="true"
-        />
+        {calendarOpen && (
+          <CalendarPopover
+            anchorEl={controlEl}
+            value={toIsoDate(value)}
+            min={min ? toIsoDate(min) || undefined : undefined}
+            onSelect={(iso) => onChange(fromIsoDate(iso))}
+            onClose={() => setCalendarOpen(false)}
+          />
+        )}
       </div>
 
       {error && <span className="space-field-error">{error}</span>}
@@ -328,6 +320,7 @@ export default function CreateSpace({
                         id="space-end-date"
                         label="End Date"
                         value={endDate}
+                        min={startDate}
                         onChange={(value) => {
                           setEndDate(value);
                           clearError('endDate');

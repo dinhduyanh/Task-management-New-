@@ -434,7 +434,7 @@
 /* Full-page Task Detail view used by Global Search.
    Keep the application Header and Sidebar visible; replace the main workspace area. */
 .td-overlay-full-page {
-  inset: 64px 0 0 236px;
+  inset: 64px 0 0 var(--tf-sidebar-w);
   z-index: 19;
   display: flex;
   justify-content: stretch;

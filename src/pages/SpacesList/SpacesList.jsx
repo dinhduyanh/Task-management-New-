@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import DatePicker from '../../components/common/DatePicker';
 import PriorityIcon from '../../components/common/PriorityIcon';
 import { getInitialStatus, getIssueStatus, getTransitionOptions, validateIssueTransition } from './workflows';
 import TaskDetailDrawer from './TaskDetailDrawer';
@@ -394,16 +395,19 @@ export function EditableDateCell({ value, onChange, label, disabled = false }) {
   const inputValue = toDateInputValue(value);
   if (disabled) return <span className="slv-inline-date is-readonly">{formatDateOnly(value)}</span>;
   return (
-    <label className="slv-inline-date" title={`Choose ${label}`}>
-      <span>{formatDateOnly(value)}</span>
-      <Icon name="calendar" size={13} />
-      <input
-        type="date"
-        value={inputValue}
-        onChange={(event) => onChange(event.target.value || null)}
-        aria-label={`Choose ${label}`}
-      />
-    </label>
+    <DatePicker
+      value={inputValue}
+      onChange={(next) => onChange(next || null)}
+      ariaLabel={label}
+      renderTrigger={({ ref, open, toggle }) => (
+        <span ref={ref} className="slv-inline-date-wrap">
+          <button type="button" className={`slv-inline-date ${open ? 'is-open' : ''}`} onClick={toggle} title={`Choose ${label}`} aria-label={`Choose ${label}`} aria-haspopup="dialog" aria-expanded={open}>
+            <span>{formatDateOnly(value)}</span>
+            <Icon name="calendar" size={13} />
+          </button>
+        </span>
+      )}
+    />
   );
 }
 
@@ -1101,14 +1105,14 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
                           ))}
                         </select>
                       </label>
-                      <label className="slv-field">
+                      <div className="slv-field">
                         <span>Start Date</span>
-                        <input type="date" value={form.startDate} onChange={(event) => setField('startDate', event.target.value)} />
-                      </label>
-                      <label className="slv-field">
+                        <DatePicker value={form.startDate} max={form.dueDate || undefined} onChange={(value) => setField('startDate', value)} ariaLabel="Start Date" />
+                      </div>
+                      <div className="slv-field">
                         <span>Due Date</span>
-                        <input type="date" value={form.dueDate} onChange={(event) => setField('dueDate', event.target.value)} />
-                      </label>
+                        <DatePicker value={form.dueDate} min={form.startDate || undefined} onChange={(value) => setField('dueDate', value)} ariaLabel="Due Date" />
+                      </div>
                     </section>
 
                     {mayLink && <section className="slv-create-section">

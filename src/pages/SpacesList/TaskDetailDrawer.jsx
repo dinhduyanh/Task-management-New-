@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/common/Icon';
+import DatePicker from '../../components/common/DatePicker';
 import PriorityIcon from '../../components/common/PriorityIcon';
 import {
   getInitialStatus,
@@ -661,7 +662,7 @@ export default function TaskDetailDrawer({
     }
 
     if (keyName === 'labels') return <input type="text" value={infoDraft} onChange={(event) => setInfoDraft(event.target.value)} placeholder="Enter labels separated by commas" />;
-    if (keyName === 'startDate' || keyName === 'dueDate') return <input type="date" value={infoDraft || ''} onChange={(event) => setInfoDraft(event.target.value)} />;
+    if (keyName === 'startDate' || keyName === 'dueDate') return <DatePicker value={infoDraft || ''} onChange={setInfoDraft} ariaLabel={field.label} min={keyName === 'dueDate' ? issue.startDate || undefined : undefined} max={keyName === 'startDate' ? issue.dueDate || undefined : undefined} />;
     return <input type="text" value={infoDraft ?? ''} onChange={(event) => setInfoDraft(event.target.value)} />;
   }
 

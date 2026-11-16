@@ -4,6 +4,7 @@ import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
 import Toast from '../../components/common/Toast';
 import Pagination from '../../components/common/Pagination';
+import DatePicker from '../../components/common/DatePicker';
 import UserAvatar from '../../components/common/UserAvatar';
 import { useAppShell } from '../../context/appShellContext';
 import { api } from '../../services/api';
@@ -238,9 +239,9 @@ export default function Documents({
           </label>
           {dateRange === 'custom' && (
             <div className="slv-date-filter">
-              <input type="date" value={customRange.from} aria-label="Added from" onChange={(event) => { setCustomRange((current) => ({ ...current, from: event.target.value })); setPage(1); }} />
+              <DatePicker className="dp-compact" value={customRange.from} max={customRange.to || undefined} ariaLabel="Added from" placeholder="From" onChange={(from) => { setCustomRange((current) => ({ ...current, from })); setPage(1); }} />
               <span>to</span>
-              <input type="date" value={customRange.to} aria-label="Added to" onChange={(event) => { setCustomRange((current) => ({ ...current, to: event.target.value })); setPage(1); }} />
+              <DatePicker className="dp-compact" value={customRange.to} min={customRange.from || undefined} ariaLabel="Added to" placeholder="To" onChange={(to) => { setCustomRange((current) => ({ ...current, to })); setPage(1); }} />
             </div>
           )}
           <MultiFilter label="Project" options={options.projects} selected={projects} onChange={reset(setProjects)} width={220} />

@@ -1,3 +1,4 @@
+import DatePicker from '../../components/common/DatePicker';
 import { useState } from 'react';
 import { todayIso } from './backlogModel';
 
@@ -110,14 +111,14 @@ export function SprintFormModal({ sprint, mode = 'edit', itemCount = 0, onClose,
           </select>
         </label>
         <div className="bl-form-row">
-          <label>
+          <div className="bl-date-field">
             <span>Start date{starting && <b aria-hidden="true"> *</b>}</span>
-            <input type="date" value={startDate} onChange={(event) => changeStart(event.target.value)} />
-          </label>
-          <label>
+            <DatePicker value={startDate} onChange={changeStart} ariaLabel="Start date" />
+          </div>
+          <div className="bl-date-field">
             <span>End date{starting && <b aria-hidden="true"> *</b>}</span>
-            <input type="date" value={endDate} min={startDate || undefined} onChange={(event) => { setEndDate(event.target.value); setDuration('custom'); }} />
-          </label>
+            <DatePicker value={endDate} min={startDate || undefined} onChange={(value) => { setEndDate(value); setDuration('custom'); }} ariaLabel="End date" />
+          </div>
         </div>
         <label>
           <span>Sprint goal</span>
