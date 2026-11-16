@@ -7,6 +7,16 @@ import {
 } from '../projectPermissions.js';
 
 const router = Router();
+export const MAX_PINNED_SPACES = 5;
+
+/** The project lead: the owner (or, for older projects, the stored owner / creator name). */
+function leadOf(row, data) {
+  const owner = row.owner_id ? db.prepare('SELECT id, full_name, username FROM users WHERE id = ?').get(row.owner_id) : null;
+  if (owner) return { id: owner.id, name: owner.full_name || owner.username };
+  const stored = data.owner && typeof data.owner === 'object' ? data.owner : null;
+  if (stored?.name) return { id: stored.id || null, name: stored.name };
+  return data.createdBy ? { id: null, name: String(data.createdBy) } : null;
+}
 
 /**
  * Space as returned to a user, with what that user may do in it:
@@ -17,8 +27,14 @@ const router = Router();
 function spaceForUser(row, user) {
   const space = spaceRowToObject(row);
   const context = memberContext(user, row.id);
+  const pin = db.prepare('SELECT created_at FROM space_pins WHERE user_id = ? AND space_id = ?').get(user.id, row.id);
+  const involved = row.owner_id === user.id || Boolean(db.prepare('SELECT 1 FROM space_members WHERE space_id = ? AND user_id = ?').get(row.id, user.id));
   return {
     ...space,
+    lead: leadOf(row, parseJson(row.data_json, {})),
+    involved,
+    pinned: Boolean(pin),
+    pinnedAt: pin?.created_at || null,
     permissions: {
       manage: canManageSpace(user, row.id),
       admin: context.isProjectAdmin,
@@ -226,9 +242,30 @@ router.delete('/:spaceId/members/:userId', (req, res) => {
   const owner = db.prepare('SELECT owner_id FROM spaces WHERE id = ?').get(spaceId)?.owner_id;
   if (owner && owner === userId) return res.status(400).json({ error: 'The project owner cannot be removed.' });
   const result = db.prepare('DELETE FROM space_members WHERE space_id = ? AND user_id = ?').run(spaceId, userId);
+  if (result.changes) db.prepare('DELETE FROM space_pins WHERE space_id = ? AND user_id = ?').run(spaceId, userId);
   if (!result.changes) return res.status(404).json({ error: 'Member not found.' });
   logActivity({ spaceId, actorName: req.user.fullName || 'You', description: 'removed a member' });
   res.json(spaceRowToObject(db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId)).members);
+});
+
+// ---- Saved projects (sidebar Spaces) ------------------------------------------------
+// Body: { pinned: boolean }. A user saves at most MAX_PINNED_SPACES projects.
+router.put('/:spaceId/pin', (req, res) => {
+  const { spaceId } = req.params;
+  if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
+  if (req.body?.pinned) {
+    const already = db.prepare('SELECT 1 FROM space_pins WHERE user_id = ? AND space_id = ?').get(req.user.id, spaceId);
+    // Pins of projects the user can no longer open (removed from them) do not count.
+    const count = db.prepare('SELECT space_id FROM space_pins WHERE user_id = ?').all(req.user.id)
+      .filter((pin) => canAccessSpace(req.user, pin.space_id)).length;
+    if (!already && count >= MAX_PINNED_SPACES) {
+      return res.status(409).json({ error: `You can save up to ${MAX_PINNED_SPACES} projects. Unstar a saved project first.` });
+    }
+    db.prepare('INSERT OR IGNORE INTO space_pins (user_id, space_id, created_at) VALUES (?, ?, ?)').run(req.user.id, spaceId, nowIso());
+  } else {
+    db.prepare('DELETE FROM space_pins WHERE user_id = ? AND space_id = ?').run(req.user.id, spaceId);
+  }
+  res.json(spaceForUser(db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId), req.user));
 });
 
 // ---- Project permissions ----------------------------------------------------------

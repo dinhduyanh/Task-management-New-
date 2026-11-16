@@ -5,6 +5,21 @@ import { canInSpace } from '../../services/projectPermissions';
 import Icon from '../common/Icon';
 import './Sidebar.css';
 
+const SIDEBAR_SPACE_LIMIT = 5;
+
+/**
+ * Projects shown under Spaces: the ones the user starred (oldest star first); without stars,
+ * the first projects the user is involved in. The open project is always listed.
+ */
+function sidebarSpaceList(spaces, activeSpaceId) {
+  const pinned = spaces.filter((space) => space.pinned).sort((a, b) => String(a.pinnedAt || '').localeCompare(String(b.pinnedAt || '')));
+  const involved = spaces.filter((space) => space.involved !== false);
+  const list = (pinned.length ? pinned : involved).slice(0, SIDEBAR_SPACE_LIMIT);
+  const active = activeSpaceId && spaces.find((space) => space.id === activeSpaceId);
+  if (active && !list.includes(active)) list.push(active);
+  return list;
+}
+
 export default function Sidebar({
   activeSection = 'My Tasks',
   activeSpaceId = null,
@@ -19,6 +34,7 @@ export default function Sidebar({
   const [dashboardsExpanded, setDashboardsExpanded] = useState(true);
   const { dashboards, sidebarCollapsed, toggleSidebar } = useAppShell();
   const shortcutDashboards = sidebarDashboards(dashboards);
+  const sidebarSpaces = sidebarSpaceList(spaces, activeSpaceId);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [spaceToDelete, setSpaceToDelete] = useState(null);
   const menuAreaRef = useRef(null);
@@ -60,6 +76,17 @@ export default function Sidebar({
         >
           <Icon name="tasks" />
           <span className="nav-label">My Tasks</span>
+        </button>
+
+        <button
+          type="button"
+          className={`nav-item nav-item-button ${activeSection === 'Space Involved' ? 'nav-item-active' : ''}`}
+          onClick={() => navigate('spaceInvolved')}
+          aria-current={activeSection === 'Space Involved' ? 'page' : undefined}
+          data-tip="Space Involved"
+        >
+          <Icon name="users" />
+          <span className="nav-label">Space Involved</span>
         </button>
 
         <button
@@ -181,7 +208,7 @@ export default function Sidebar({
 
         {spacesExpanded && !sidebarCollapsed && (
           <div className="spaces-submenu" ref={menuAreaRef}>
-            {spaces.length > 0 ? spaces.map((space) => (
+            {sidebarSpaces.length > 0 ? sidebarSpaces.map((space) => (
               <div className={`space-item-row ${activeSpaceId === space.id ? 'space-item-row-active' : ''}`} key={space.id}>
                 <button
                   type="button"
@@ -247,6 +274,12 @@ export default function Sidebar({
               </div>
             )) : (
               <div className="spaces-empty">No spaces yet</div>
+            )}
+            {spaces.length > sidebarSpaces.length && (
+              <button type="button" className="sidebar-more-link" onClick={() => navigate('spaceInvolved')}>
+                <span>Show more spaces</span>
+                <Icon name="chevronsRight" size={14} />
+              </button>
             )}
           </div>
         )}

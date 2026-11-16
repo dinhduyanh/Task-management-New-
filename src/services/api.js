@@ -80,6 +80,9 @@ export const api = {
     json('POST', payload)
   ),
 
+  /** Saves (pinned: true) or removes a project from the sidebar Spaces list (max 5). */
+  pinSpace: (id, pinned) => request(`/spaces/${encodeURIComponent(id)}/pin`, json('PUT', { pinned })),
+
   /** payload: { userIds, roles } (adds several people with the same roles). */
   addSpaceMembers: (id, payload) => request(
     `/spaces/${encodeURIComponent(id)}/members/bulk`,

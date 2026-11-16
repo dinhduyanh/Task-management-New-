@@ -268,3 +268,12 @@ CREATE TABLE IF NOT EXISTS dashboard_visits (
   PRIMARY KEY (user_id, dashboard_id),
   FOREIGN KEY (dashboard_id) REFERENCES dashboards(id) ON DELETE CASCADE
 );
+
+-- Projects a user saved ("starred") to the Spaces section of the sidebar (at most 5 each).
+CREATE TABLE IF NOT EXISTS space_pins (
+  user_id TEXT NOT NULL,
+  space_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (user_id, space_id),
+  FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
+);

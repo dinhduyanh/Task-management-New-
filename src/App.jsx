@@ -5,6 +5,7 @@ import { userProfileService } from './services/userProfileService';
 import { AppShellContext } from './context/appShellContext';
 import { applyTheme, getInitialTheme } from './theme/theme';
 import Login from './pages/Login/Login';
+import SpaceInvolved from './pages/SpaceInvolved/SpaceInvolved';
 import MyTasks from './pages/MyTasks/MyTasks';
 import CreateSpace from './pages/CreateSpace/CreateSpace';
 import SpacesSummary from './pages/SpacesSummary/SpacesSummary';
@@ -220,6 +221,17 @@ export default function App() {
   }
 
   /** Adds a member or changes their project roles. Resolves to '' or an error message. */
+  /** Stars / unstars a project for the sidebar. Resolves to '' or an error message. */
+  async function handlePinSpace(spaceId, pinned) {
+    try {
+      const saved = await api.pinSpace(spaceId, pinned);
+      setSpaces((currentSpaces) => currentSpaces.map((space) => (space.id === saved.id ? saved : space)));
+      return '';
+    } catch (error) {
+      return error.message || 'Unable to save the project.';
+    }
+  }
+
   /** Resolves to '' or an error message. */
   async function handleAddSpaceMembersBulk(spaceId, { userIds, roles }) {
     try {
@@ -487,6 +499,8 @@ export default function App() {
         onSave={handleSaveSpace}
       />
     );
+  } else if (currentRoute.page === 'spaceInvolved') {
+    pageContent = <SpaceInvolved {...sharedNavigationProps} onPinSpace={handlePinSpace} />;
   } else if (currentRoute.page === 'myTasks') {
     pageContent = (
       <MyTasks
