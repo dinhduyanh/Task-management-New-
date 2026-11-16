@@ -488,3 +488,17 @@ html.tf-sidebar-collapsed .sidebar-nav { overflow: visible; }
 
 /* "Show more dashboard »": the arrow sits at the right edge. */
 .sidebar-more-link > svg:last-child:not(:first-child) { margin-left: auto; }
+
+/* Starred (pinned) projects: listed first under Spaces with a star after the name. */
+.sidebar-space-star {
+  display: inline-flex;
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding-left: 6px;
+  color: var(--tf-fg-ff991f);
+}
+
+.space-more-spacer {
+  flex: 0 0 25px;
+  margin-right: 3px;
+}

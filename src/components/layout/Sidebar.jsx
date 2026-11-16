@@ -1,26 +1,47 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useAppShell } from '../../context/appShellContext';
+import { SidebarSlotContext } from '../../context/sidebarSlot';
 import { SIDEBAR_DASHBOARD_LIMIT, sidebarDashboards } from '../../services/dashboards';
 import { canInSpace } from '../../services/projectPermissions';
 import Icon from '../common/Icon';
 import './Sidebar.css';
 
-const SIDEBAR_SPACE_LIMIT = 5;
+const SIDEBAR_SPACE_LIMIT = 8;
 
 /**
- * Projects shown under Spaces: the ones the user starred (oldest star first); without stars,
- * the first projects the user is involved in. The open project is always listed.
+ * Projects shown under Spaces: starred projects first (in the order they were starred), then the
+ * other projects the user is involved in, up to SIDEBAR_SPACE_LIMIT. The open project is always listed.
  */
 function sidebarSpaceList(spaces, activeSpaceId) {
   const pinned = spaces.filter((space) => space.pinned).sort((a, b) => String(a.pinnedAt || '').localeCompare(String(b.pinnedAt || '')));
-  const involved = spaces.filter((space) => space.involved !== false);
-  const list = (pinned.length ? pinned : involved).slice(0, SIDEBAR_SPACE_LIMIT);
+  const others = spaces.filter((space) => !space.pinned && space.involved !== false);
+  const list = [...pinned, ...others.slice(0, Math.max(0, SIDEBAR_SPACE_LIMIT - pinned.length))];
   const active = activeSpaceId && spaces.find((space) => space.id === activeSpaceId);
   if (active && !list.includes(active)) list.push(active);
   return list;
 }
 
-export default function Sidebar({
+/**
+ * Placed by each page. Inside the app it renders nothing and only reports the active item to the
+ * persistent <SidebarPanel> rendered by App; without the app shell it renders the panel itself.
+ */
+export default function Sidebar(props) {
+  const setSlot = useContext(SidebarSlotContext);
+  const { activeSection = 'My Tasks', activeSpaceId = null, activeDashboardId = null } = props;
+
+  useLayoutEffect(() => {
+    if (setSlot) setSlot({ activeSection, activeSpaceId, activeDashboardId });
+  }, [setSlot, activeSection, activeSpaceId, activeDashboardId]);
+
+  useLayoutEffect(() => {
+    if (!setSlot) return undefined;
+    return () => setSlot(null);
+  }, [setSlot]);
+
+  return setSlot ? null : <SidebarPanel {...props} />;
+}
+
+export function SidebarPanel({
   activeSection = 'My Tasks',
   activeSpaceId = null,
   activeDashboardId = null,
@@ -224,6 +245,7 @@ export default function Sidebar({
                     </span>
                   )}
                   <span className="space-item-name">{space.name}</span>
+                  {space.pinned && <span className="sidebar-space-star" aria-label="Starred" title="Starred"><Icon name="starFilled" size={13} /></span>}
                 </button>
 
                 {(canInSpace(space, 'project.setting') || space.permissions?.manage) && <button
@@ -237,6 +259,8 @@ export default function Sidebar({
                 >
                   <Icon name="moreVertical" size={16} />
                 </button>}
+                {/* Keeps names and stars aligned on rows without the options button. */}
+                {!(canInSpace(space, 'project.setting') || space.permissions?.manage) && <span className="space-more-spacer" aria-hidden="true" />}
 
                 {openMenuId === space.id && (
                   <div className="space-context-menu" role="menu">

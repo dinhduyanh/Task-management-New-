@@ -32,8 +32,11 @@ function SortHeader({ field, sort, onSort, children }) {
   const active = sort.field === field;
   return (
     <button type="button" className={`si-sort ${active ? 'is-active' : ''}`} onClick={() => onSort(field)} aria-label={`Sort by ${children}`}>
-      {children}
-      <span aria-hidden="true">{active ? (sort.direction === 'asc' ? '↑' : '↓') : '↕'}</span>
+      <span>{children}</span>
+      <svg className="si-sort-icon" width="8" height="12" viewBox="0 0 8 12" aria-hidden="true">
+        <path d="M4 1 7 4.5H1Z" className={active && sort.direction === 'asc' ? 'is-on' : ''} />
+        <path d="M4 11 1 7.5h6Z" className={active && sort.direction === 'desc' ? 'is-on' : ''} />
+      </svg>
     </button>
   );
 }
@@ -146,28 +149,37 @@ export default function SpaceInvolved({
         <section className="si-card">
           <div className="si-scroll">
             <table className="si-table">
+              <colgroup>
+                <col />
+                <col className="si-col-lead" />
+                <col className="si-col-date" />
+                <col className="si-col-date" />
+                <col className="si-col-actions" />
+              </colgroup>
               <thead>
                 <tr>
-                  <th className="si-name-col"><SortHeader field="name" sort={sort} onSort={toggleSort}>[Code] Name</SortHeader></th>
+                  <th><SortHeader field="name" sort={sort} onSort={toggleSort}>[Code] Name</SortHeader></th>
                   <th><SortHeader field="lead" sort={sort} onSort={toggleSort}>Project lead</SortHeader></th>
-                  <th className="si-date-col"><SortHeader field="startDate" sort={sort} onSort={toggleSort}>Start Date</SortHeader></th>
-                  <th className="si-date-col"><SortHeader field="endDate" sort={sort} onSort={toggleSort}>End Date</SortHeader></th>
+                  <th><SortHeader field="startDate" sort={sort} onSort={toggleSort}>Start Date</SortHeader></th>
+                  <th><SortHeader field="endDate" sort={sort} onSort={toggleSort}>End Date</SortHeader></th>
                   <th className="si-actions">Actions</th>
                 </tr>
               </thead>
               <tbody>
                 {rows.map((space) => (
                   <tr key={space.id} className={space.pinned ? 'is-pinned' : ''}>
-                    <td className="si-name-col">
+                    <td>
+                      <div className="si-name-cell">
                       <button type="button" className="si-project" onClick={() => onNavigate('space', { id: space.id, name: space.name })}>
                         {space.icon ? <img className="si-avatar" src={space.icon} alt="" /> : <span className="si-avatar" aria-hidden="true">{(space.name || space.code || 'P').charAt(0).toUpperCase()}</span>}
                         <span className="si-project-text"><span className="si-code">[{space.code}]</span> {space.name}</span>
                       </button>
                       {!space.involved && <span className="si-badge" title="You are not a member (visible as administrator)">Admin access</span>}
+                      </div>
                     </td>
-                    <td>{space.lead?.name ? <span className="si-lead"><span className="si-lead-avatar">{space.lead.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span>{space.lead.name}</span> : <span className="si-muted">—</span>}</td>
-                    <td className="si-date-col">{displayDate(space.startDate) || <span className="si-muted">—</span>}</td>
-                    <td className="si-date-col">{displayDate(space.endDate) || <span className="si-muted">—</span>}</td>
+                    <td>{space.lead?.name ? <span className="si-lead"><span className="si-lead-avatar" aria-hidden="true">{space.lead.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span><span className="si-lead-name">{space.lead.name}</span></span> : <span className="si-muted">—</span>}</td>
+                    <td>{displayDate(space.startDate) || <span className="si-muted">—</span>}</td>
+                    <td>{displayDate(space.endDate) || <span className="si-muted">—</span>}</td>
                     <td className="si-actions">
                       <button
                         type="button"

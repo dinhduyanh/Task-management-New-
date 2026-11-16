@@ -20,6 +20,8 @@ import Documents from './pages/Documents/Documents';
 import SystemSettings from './pages/SystemSettings/SystemSettings';
 import AccessDenied from './pages/SystemSettings/AccessDenied';
 import { canInSpace } from './services/projectPermissions';
+import { SidebarSlotContext } from './context/sidebarSlot';
+import { SidebarPanel } from './components/layout/Sidebar';
 import { applySidebarCollapsed, getInitialSidebarCollapsed } from './theme/sidebar';
 import AIAssistant from './components/ai/AIAssistant';
 import DashboardView from './pages/Dashboard/DashboardView';
@@ -55,6 +57,8 @@ export default function App() {
   // AI Project Assistant drawer: { spaceId, taskIds } while open.
   const [assistant, setAssistant] = useState(null);
   const [sidebarCollapsed, setSidebarCollapsed] = useState(getInitialSidebarCollapsed);
+  // Active item reported by the current page; the sidebar itself stays mounted across pages.
+  const [sidebarSlot, setSidebarSlot] = useState(null);
   const [globalCreateOpen, setGlobalCreateOpen] = useState(false);
   const [backendError, setBackendError] = useState('');
 
@@ -700,7 +704,19 @@ export default function App() {
           <button type="button" onClick={loadPersistentData} style={{ marginLeft: 12, border: 0, background: 'transparent', color: '#0052CC', fontWeight: 700, cursor: 'pointer' }}>Retry</button>
         </div>
       )}
-      {pageContent}
+      <SidebarSlotContext.Provider value={setSidebarSlot}>
+        {sidebarSlot && (
+          <SidebarPanel
+            {...sidebarSlot}
+            spaces={spaces}
+            onNavigate={navigate}
+            onCreateSpace={sharedNavigationProps.onCreateSpace}
+            onOpenSpaceSettings={handleOpenSpaceSettings}
+            onDeleteSpace={handleDeleteSpace}
+          />
+        )}
+        {pageContent}
+      </SidebarSlotContext.Provider>
       {assistant && (
         <AIAssistant
           key={assistant.openedAt}
