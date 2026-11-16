@@ -29,12 +29,14 @@ const RULES = {
   critical: [
     /\bcrash(es|ed)?\b/, /\bsập\b/, /\bdown(time)?\b/, /\boutage\b/, /\bincident\b/, /không (truy cập|vào) được/,
     /mất dữ liệu/, /\bdata loss\b/, /bảo mật/, /\bsecurity\b/, /lỗ hổng/, /\bvulnerab/, /\bhack/, /rò rỉ/, /\bleak/,
-    /\bblocker\b/, /chặn (toàn bộ|tất cả|cả nhóm|nhiều người)/, /toàn (bộ )?hệ thống/, /khẩn cấp/, /\burgent\b/, /\bp0\b/, /\bsev ?1\b/
+    /\bblocker\b/, /chặn (toàn bộ|tất cả|cả nhóm|nhiều người)/, /toàn (bộ )?hệ thống/, /khẩn cấp/, /\burgent\b/, /\bp0\b/, /\bsev ?[01]\b/,
+    /\b(http|lỗi|error|status) ?50[0-4]\b/, /\b50[0-4] (error|internal)/, /\bdeadlock\b/, /\bmemory leak\b/, /\bhotfix\b/, /\brollback\b/, /\bcorrupt/, /không ai (dùng|vào|truy cập) được/
   ],
   major: [
     /lỗi nghiêm trọng/, /\bmajor\b/, /\bcritical\b/, /không hoạt động/, /không thể/, /\bcannot\b/, /\bcan't\b/, /\bfail(s|ed|ure)?\b/,
     /thanh toán/, /\bpayment/, /đăng nhập/, /\blogin\b/, /\bcheckout\b/, /cốt lõi/, /\bcore\b/, /doanh thu/, /\brevenue\b/,
-    /chặn tiến độ/, /\bblocking\b/, /(?<!không )quan trọng/, /(?<!not )\bimportant\b/
+    /chặn tiến độ/, /\bblocking\b/, /(?<!không )quan trọng/, /(?<!not )\bimportant\b/,
+    /\btimeout\b/, /\bregression\b/, /\bp1\b/, /\bsev ?2\b/, /chậm nghiêm trọng/, /\bbroken\b/
   ],
   customer: [/\bvip\b/, /\bsla\b/, /khách hàng (lớn|quan trọng|vip)/, /hợp đồng/, /\bcontract\b/, /\bkey (customer|account)\b/],
   production: [/\bproduction\b/, /\bprod\b/, /\blive\b/, /môi trường thật/, /người dùng thật/, /\bkhách hàng\b/, /\bcustomers?\b/],
@@ -44,11 +46,36 @@ const RULES = {
   enhancement: [/cải tiến/, /\benhance/, /\bimprove/, /tối ưu/, /\boptimi[sz]/, /\brefactor/, /nâng cấp/]
 };
 
-function matches(text, group) {
-  return RULES[group].filter((pattern) => pattern.test(text)).map((pattern) => {
-    const found = text.match(pattern);
-    return found ? found[0] : '';
+// The same signals typed without Vietnamese accents ("khong dang nhap duoc"). Only phrases
+// that stay unambiguous without accents are listed (e.g. not "sap", which is both
+// "sập" = crash and "sắp" = soon). Matched against accent-free text.
+const ASCII_RULES = {
+  critical: [/khong (truy cap|vao) duoc/, /mat du lieu/, /bao mat/, /lo hong/, /ro ri/, /khan cap/, /toan (bo )?he thong/,
+    /\bbi sap\b/, /(he thong|web(site)?|app|server|trang) (bi )?sap\b/, /chan (toan bo|tat ca|ca nhom|nhieu nguoi)/, /\bloi 50[0-4]\b/, /khong ai (dung|vao|truy cap) duoc/],
+  major: [/loi nghiem trong/, /khong hoat dong/, /khong the\b/, /thanh toan/, /dang nhap/, /cot loi/, /doanh thu/, /chan tien do/, /(?<!khong )quan trong/, /cham nghiem trong/],
+  customer: [/khach hang (lon|quan trong|vip)/, /hop dong/],
+  production: [/moi truong that/, /nguoi dung that/, /\bkhach hang\b/],
+  nonProduction: [/moi truong (test|dev|thu)/],
+  minor: [/giao dien/, /chinh ta/, /can le/, /hien thi (sai|lech)/, /khong (quan trong|gap)/],
+  idea: [/y tuong/, /co the hoan/, /toi uu (phu|them)/],
+  enhancement: [/cai tien/, /toi uu/, /nang cap/]
+};
+
+/** Lower-case text without Vietnamese accents ("Đăng nhập" -> "dang nhap"). */
+export function foldAccents(value) {
+  return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd');
+}
+
+function matches(text, group, folded = foldAccents(text)) {
+  const found = [];
+  const collect = (patterns, source) => patterns.forEach((pattern) => {
+    const hit = source.match(pattern);
+    if (hit && !found.some((item) => foldAccents(item) === foldAccents(hit[0]))) found.push(hit[0]);
   });
+  collect(RULES[group], text);
+  collect(ASCII_RULES[group] || [], folded);
+  // Keep the longest of overlapping matches ("he thong bi sap", not also "bi sap").
+  return found.filter((item) => !found.some((other) => other !== item && foldAccents(other).includes(foldAccents(item))));
 }
 
 /** End of the due day (local time) for date-only values, or the exact timestamp. */
@@ -98,6 +125,8 @@ export function evaluateTask(task, { now = Date.now(), blocks = [], blockedBy = 
     return { priority: current, level: LEVEL[current], current, change: false, skipped: 'done', time: { due: task.dueDate || null, start: task.startDate || null, remainingMs: null, effortMs: null, state: 'done' }, reasons: [{ pillar: 'time', text: `Đã ở trạng thái ${status}: không cần đánh giá lại.` }] };
   }
   const text = [task.title, task.description, ...(Array.isArray(task.labels) ? task.labels : [])].filter(Boolean).join(' \n ').toLowerCase();
+  const folded = foldAccents(text);
+  const signals = (group) => matches(text, group, folded);
   const reasons = [];
   const type = task.issueType || 'Task';
 
@@ -106,11 +135,11 @@ export function evaluateTask(task, { now = Date.now(), blocks = [], blockedBy = 
   reasons.push({ pillar: 'nature', text: `Loại ${type}: mức khởi điểm ${priorityName(level)}.` });
 
   // ---- Pillar 1: impact
-  const critical = matches(text, 'critical');
-  const major = matches(text, 'major');
-  const minor = matches(text, 'minor');
-  const idea = matches(text, 'idea');
-  const enhancement = matches(text, 'enhancement');
+  const critical = signals('critical');
+  const major = signals('major');
+  const minor = signals('minor');
+  const idea = signals('idea');
+  const enhancement = signals('enhancement');
   let severe = false;
   if (critical.length) {
     level = 5;
@@ -143,14 +172,14 @@ export function evaluateTask(task, { now = Date.now(), blocks = [], blockedBy = 
   }
 
   // Context of pillar 2: environment and customer
-  if (type === 'Bug' && matches(text, 'production').length && level < 5) {
+  if (type === 'Bug' && signals('production').length && level < 5) {
     level += 1;
     reasons.push({ pillar: 'nature', text: 'Lỗi trên môi trường Production/người dùng thật: nâng 1 bậc.' });
-  } else if (matches(text, 'nonProduction').length && !critical.length && level > 1) {
+  } else if (signals('nonProduction').length && !critical.length && level > 1) {
     level -= 1;
     reasons.push({ pillar: 'nature', text: 'Chỉ ảnh hưởng môi trường Test/Dev: hạ 1 bậc.' });
   }
-  if (matches(text, 'customer').length && level < 4) {
+  if (signals('customer').length && level < 4) {
     level = 4;
     severe = true;
     reasons.push({ pillar: 'nature', text: 'Liên quan khách hàng VIP/SLA/hợp đồng: ít nhất High.' });

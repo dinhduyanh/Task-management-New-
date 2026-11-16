@@ -3,7 +3,7 @@
 // Vietnamese. An LLM (see llm.js) may rewrite the explanation; numbers and priority
 // proposals always come from here.
 import { db, parseJson } from '../db.js';
-import { DONE_STATUSES, LEVEL, dependencyMap, evaluateTask, normalizePriority } from './priorityEngine.js';
+import { DONE_STATUSES, LEVEL, dependencyMap, evaluateTask, foldAccents, normalizePriority } from './priorityEngine.js';
 
 const ISSUE_TYPES = ['Epic', 'Feature', 'Story', 'Task', 'Bug', 'Improvement'];
 const DAY = 24 * 3600 * 1000;
@@ -170,37 +170,107 @@ export function statsFrom(items, evaluations) {
 }
 
 // ---- intent ----------------------------------------------------------------------
+// Matched on accent-free text, so "ke hoach" works as well as "kế hoạch".
+const INTENT_RULES = [
+  ['suggest', /(tao|de xuat|goi y|soan|viet)( (mot|1))? (task|cong viec|viec|issue|ticket)\b|suggest.{0,10}task|create.{0,10}task|tu mo ta/],
+  ['help', /(ban|tro ly|ai) (co the|lam duoc|giup duoc)|lam duoc (nhung )?gi|huong dan( su dung)?|\bhelp\b|tro giup|cach dung/],
+  ['plan', /ke hoach|\bplan\b|lo trinh|thu tu (lam|thuc hien)|roadmap|sap xep cong viec|nen lam (gi|viec nao|cai nao) truoc/],
+  ['risks', /rui ro|\brisks?\b|canh bao|tre han|qua han|overdue|nguy co|cham tien do/],
+  ['workload', /qua tai|phan bo|khoi luong|workload|ai dang (lam|giu|phu trach)|theo (nguoi|thanh vien)|moi nguoi|nhan su|capacity/],
+  ['review', /priority|uu tien|danh gia|ra soat|review|triage|muc do/]
+];
+const MINE_RULE = /(cua|danh cho|giao cho) (toi|minh|em)\b|toi (can|phai|nen) lam|\bmy (tasks?|work)\b|assigned to me/;
+
 export function detectIntent(message) {
-  const text = String(message || '').toLowerCase();
-  if (/(tạo|đề xuất|gợi ý|soạn).{0,20}(task|công việc|việc|issue|ticket)|suggest.{0,10}task|create.{0,10}task|từ mô tả/.test(text)) return 'suggest';
-  if (/kế hoạch|lập kế hoạch|\bplan\b|lộ trình|thứ tự (làm|thực hiện)|roadmap|sắp xếp công việc/.test(text)) return 'plan';
-  if (/rủi ro|\brisk|cảnh báo|trễ hạn|quá hạn|overdue/.test(text)) return 'risks';
-  if (/priority|ưu tiên|đánh giá|rà soát|review|triage|mức độ/.test(text)) return 'review';
-  return 'overview';
+  const text = foldAccents(message);
+  const match = INTENT_RULES.find(([, pattern]) => pattern.test(text));
+  if (match) return match[0];
+  return MINE_RULE.test(text) ? 'mine' : 'overview';
+}
+
+/** "việc của tôi …": limit the analysis to work assigned to the signed-in user. */
+export function mentionsMine(message) {
+  return MINE_RULE.test(foldAccents(message));
+}
+
+/** Work item keys written in the message (e.g. "SHOP-12"), upper-cased. */
+export function mentionedKeys(message) {
+  return [...new Set((String(message || '').match(/\b[A-Za-z][A-Za-z0-9]{0,9}-\d{1,6}\b/g) || []).map((key) => key.toUpperCase()))];
 }
 
 /** "cập nhật / áp dụng / apply ... priority" in the message = apply the proposals directly. */
 export function wantsApply(message) {
-  const text = String(message || '').toLowerCase();
-  return /(cập nhật|áp dụng|apply|update|sửa|đổi|thay đổi).{0,40}(priority|ưu tiên)/.test(text)
-    && !/(đừng|không được|không cần|do not|don't)\s+(cập nhật|áp dụng|apply|update)/.test(text);
+  const text = foldAccents(message);
+  return /(cap nhat|ap dung|apply|update|sua|doi|thay doi).{0,40}(priority|uu tien)/.test(text)
+    && !/(dung|khong duoc|khong can|do not|don't|dont)\s+(cap nhat|ap dung|apply|update)/.test(text);
+}
+
+// ---- workload, my work, single work item --------------------------------------------
+/** Open work per assignee: counts, urgent work, overdue, due within a week; flags overload. */
+export function workloadFrom(evaluations, now = Date.now()) {
+  const open = evaluations.filter(({ item }) => !DONE_STATUSES.has(item.status));
+  const people = new Map();
+  for (const { item, evaluation } of open) {
+    const id = item.assigneeId || 'unassigned';
+    if (!people.has(id)) people.set(id, { assigneeId: item.assigneeId || null, name: item.assignee || (item.assigneeId ? 'Không rõ tên' : 'Chưa giao'), open: 0, urgent: 0, overdue: 0, dueThisWeek: 0, keys: [] });
+    const person = people.get(id);
+    person.open += 1;
+    if (evaluation.level >= 4) person.urgent += 1;
+    if (evaluation.time.state === 'overdue') person.overdue += 1;
+    const due = item.dueDate ? new Date(`${item.dueDate}T23:59:59`).getTime() : null;
+    if (due && due >= now && due - now <= 7 * DAY) person.dueThisWeek += 1;
+    person.keys.push(item.key);
+  }
+  const assigned = [...people.values()].filter((person) => person.assigneeId);
+  const average = assigned.length ? assigned.reduce((sum, person) => sum + person.open, 0) / assigned.length : 0;
+  return [...people.values()]
+    .map((person) => ({
+      ...person,
+      overloaded: Boolean(person.assigneeId) && (person.open >= Math.max(3, Math.ceil(average * 1.5)) || person.urgent >= 3 || person.overdue >= 2)
+    }))
+    .sort((a, b) => (Number(!a.assigneeId) - Number(!b.assigneeId)) || (b.urgent - a.urgent) || (b.open - a.open));
+}
+
+// ---- follow-up suggestions -------------------------------------------------------------
+const FOLLOW_UPS = {
+  review: ['plan', 'risks', 'workload'],
+  plan: ['risks', 'review', 'mine'],
+  risks: ['plan', 'review', 'workload'],
+  workload: ['risks', 'plan', 'review'],
+  mine: ['plan', 'risks', 'review'],
+  task: ['review', 'plan', 'risks'],
+  suggest: ['suggest', 'review'],
+  overview: ['review', 'plan', 'risks', 'mine'],
+  help: ['review', 'plan', 'risks', 'workload']
+};
+const FOLLOW_UP_LABELS = {
+  review: 'Đánh giá Priority',
+  plan: 'Lập kế hoạch',
+  risks: 'Cảnh báo rủi ro',
+  workload: 'Phân bổ công việc',
+  mine: 'Việc của tôi',
+  suggest: 'Đề xuất task khác'
+};
+export function followUpsFor(intent) {
+  return (FOLLOW_UPS[intent] || FOLLOW_UPS.overview).map((id) => ({ intent: id, label: FOLLOW_UP_LABELS[id] }));
 }
 
 // ---- task suggestion ---------------------------------------------------------------
+// Matched on accent-free text ("loi dang nhap" and "lỗi đăng nhập" both mean a Bug).
 const TYPE_RULES = [
-  ['Bug', /lỗi|\bbug\b|crash|sập|\berror\b|không hoạt động|không (thể|được)|\bfail|hỏng|\bbroken\b|sự cố|incident/],
-  ['Story', /là (một )?người dùng|as an? (user|customer|admin)|user story|tôi muốn .* để/],
-  ['Epic', /\bepic\b|dự án lớn|nhiều giai đoạn|toàn bộ module/],
-  ['Improvement', /cải tiến|tối ưu|\boptimi[sz]|\bimprove|nâng cấp|\brefactor|ý tưởng|\bidea\b/],
-  ['Feature', /tính năng mới|chức năng mới|\bnew feature\b|\bfeature\b|thêm (chức năng|tính năng|màn hình|trang)/]
+  ['Bug', /\bloi\b(?! (ich|nhac|chao|gioi thieu|noi|khuyen|moi))|\bbug\b|crash|\bbi sap\b|(he thong|web(site)?|app|server|trang) (bi )?sap\b|\berror\b|khong hoat dong|khong (the|duoc)\b|\bfail|\bbroken\b|su co|incident/],
+  ['Story', /la (mot )?nguoi dung|as an? (user|customer|admin)|user story|toi muon .* de/],
+  ['Epic', /\bepic\b|du an lon|nhieu giai doan|toan bo module/],
+  ['Improvement', /cai tien|toi uu|\boptimi[sz]|\bimprove|nang cap|\brefactor|y tuong|\bidea\b/],
+  ['Feature', /tinh nang moi|chuc nang moi|\bnew feature\b|\bfeature\b|them (chuc nang|tinh nang|man hinh|trang)/]
 ];
 
 function pad(number) { return String(number).padStart(2, '0'); }
 function isoDay(date) { return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`; }
 
-/** Due date mentioned in free text: "hôm nay", "ngày mai", "tuần sau", "20/11", "2026-11-20". */
+/** Due date in free text: "hôm nay", "ngày mai", "tuần sau", "cuối tuần", "cuối tháng", "20/11", "2026-11-20". */
 export function parseDueDate(text, now = Date.now()) {
-  const lower = String(text || '').toLowerCase();
+  const lower = foldAccents(text);
   const today = new Date(now);
   const plus = (days) => { const date = new Date(today); date.setDate(date.getDate() + days); return isoDay(date); };
   const isoMatch = lower.match(/\b(20\d{2})-(\d{1,2})-(\d{1,2})\b/);
@@ -215,10 +285,12 @@ export function parseDueDate(text, now = Date.now()) {
       return `${year}-${pad(month)}-${pad(day)}`;
     }
   }
-  if (/hôm nay|\btoday\b|trong ngày|\basap\b|ngay lập tức/.test(lower)) return plus(0);
-  if (/ngày mai|\btomorrow\b/.test(lower)) return plus(1);
-  if (/tuần (sau|tới)|next week/.test(lower)) return plus(7);
-  const inDays = lower.match(/trong (\d{1,2}) ngày|in (\d{1,2}) days/);
+  if (/hom nay|\btoday\b|trong ngay|\basap\b|ngay lap tuc/.test(lower)) return plus(0);
+  if (/ngay mai|\btomorrow\b/.test(lower)) return plus(1);
+  if (/cuoi tuan|end of (the )?week|weekend/.test(lower)) return plus((7 - today.getDay()) % 7 || 7);
+  if (/cuoi thang|end of (the )?month/.test(lower)) return isoDay(new Date(today.getFullYear(), today.getMonth() + 1, 0));
+  if (/tuan (sau|toi)|next week/.test(lower)) return plus(7);
+  const inDays = lower.match(/trong (\d{1,2}) ngay|in (\d{1,2}) days/);
   if (inDays) return plus(Number(inDays[1] || inDays[2]));
   return null;
 }
@@ -226,12 +298,11 @@ export function parseDueDate(text, now = Date.now()) {
 /** Turns a raw description into { title, description, issueType, priority, dueDate, reasons }. */
 export function suggestTask(rawDescription, now = Date.now()) {
   const raw = String(rawDescription || '').trim().replace(/\s+/g, ' ');
-  const lower = raw.toLowerCase();
-  const issueType = (TYPE_RULES.find(([, pattern]) => pattern.test(lower)) || ['Task'])[0];
+  const issueType = (TYPE_RULES.find(([, pattern]) => pattern.test(foldAccents(raw))) || ['Task'])[0];
   // Title: the first sentence without request phrases, up to 80 characters.
   let title = raw
-    .replace(/^(hãy|vui lòng|làm ơn|please)\s+/i, '')
-    .replace(/^(tạo|đề xuất|gợi ý|thêm|create|add)\s+(một\s+)?(task|công việc|việc|issue|ticket)\s*(để|về|cho|:)?\s*/i, '')
+    .replace(/^(hãy|hay|vui lòng|vui long|làm ơn|lam on|please)\s+/i, '')
+    .replace(/^(tạo|tao|đề xuất|de xuat|gợi ý|goi y|thêm|them|create|add)\s+((một|mot|1)\s+)?(task|công việc|cong viec|việc|viec|issue|ticket)\s*(để|de|về|ve|cho|:)?\s*/i, '')
     .split(/(?<=[.!?])\s|\n/)[0]
     .replace(/[.!?]+$/, '')
     .trim();

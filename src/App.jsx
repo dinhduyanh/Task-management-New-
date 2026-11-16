@@ -439,7 +439,8 @@ export default function App() {
     upsertDashboard,
     removeDashboard,
     openAssistant,
-    createTask: handleCreateTask
+    createTask: handleCreateTask,
+    openTask: handleOpenTaskFromGlobalSearch
   };
 
   if (!isLoggedIn) return <Login onLogin={handleLogin} notice={loginNotice} />;

@@ -34,3 +34,16 @@ const deps = dependencyMap(items, [{ source: 'a', target: 'b', type: 'Blocks' },
 ok(deps.get('a').blocks.map((x) => x.key).join() === 'P-2,P-5,P-6' && deps.get('a').blockedBy.map((x) => x.key).join() === 'P-4', 'dependency map (both link directions, done blockers ignored)', { priority: '-' });
 r = ev({ title: 'Setup', priority: 'Low' }, deps.get('a')); ok(r.priority === 'Highest', 'blocks 3 open items → Highest', r);
 r = ev({ title: 'Setup' }, { blocks: [{ key: 'P-9' }] }); ok(r.priority === 'High', 'blocks 1 item → High', r);
+
+// ---- Vietnamese typed without accents, more incident signals, false-positive guards
+r = ev({ title: 'He thong bi sap khi thanh toan', issueType: 'Bug' }); ok(r.priority === 'Highest', 'unaccented "bi sap" → Highest', r);
+r = ev({ title: 'Khong dang nhap duoc bang Google', issueType: 'Bug' }); ok(r.priority === 'High', 'unaccented login failure → High', r);
+r = ev({ title: 'Mat du lieu don hang', issueType: 'Bug' }); ok(r.priority === 'Highest', 'unaccented data loss → Highest', r);
+r = ev({ title: 'Sua loi chinh ta o footer', issueType: 'Bug' }); ok(r.priority === 'Low', 'unaccented typo → Low', r);
+r = ev({ title: 'Y tuong: them hieu ung', issueType: 'Improvement' }); ok(r.priority === 'Lowest', 'unaccented idea → Lowest', r);
+r = ev({ title: 'Viec khong quan trong', issueType: 'Task' }); ok(r.priority === 'Low', 'unaccented "khong quan trong" → Low', r);
+r = ev({ title: 'API trả về lỗi 500 khi lưu', issueType: 'Bug' }); ok(r.priority === 'Highest', 'HTTP 500 error → Highest', r);
+r = ev({ title: 'Memory leak on the worker', issueType: 'Bug' }); ok(r.priority === 'Highest', 'memory leak → Highest', r);
+r = ev({ title: 'Regression in report export', issueType: 'Bug' }); ok(r.priority === 'High', 'regression → High', r);
+r = ev({ title: 'Sắp đến hạn nộp báo cáo tháng', issueType: 'Task' }); ok(r.priority === 'Medium', '"sắp" (soon) is not a crash', r);
+r = ev({ title: 'Gui email cho 500 khach hang', issueType: 'Task' }); ok(r.priority === 'Medium', 'the number 500 alone is not an error', r);

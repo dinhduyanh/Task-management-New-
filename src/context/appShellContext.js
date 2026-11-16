@@ -22,7 +22,9 @@ export const AppShellContext = createContext({
   /** Opens the AI Project Assistant: openAssistant({ spaceId, taskIds }) (defaults to the current project). */
   openAssistant: () => {},
   /** Creates a work item (same as the Create dialog); resolves to the item or null. */
-  createTask: async () => null
+  createTask: async () => null,
+  /** Opens a work item's details (navigates to its project). */
+  openTask: () => {}
 });
 
 export function useAppShell() {

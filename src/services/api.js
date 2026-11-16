@@ -105,8 +105,8 @@ export const api = {
   getDashboardWidgets: () => request('/dashboard/widgets'),
   // AI Project Assistant
   aiStatus: () => request('/ai/status'),
-  aiChat: (payload) => request('/ai/chat', json('POST', payload)),
-  aiSuggestTask: (payload) => request('/ai/suggest-task', json('POST', payload)),
+  aiChat: (payload, { signal } = {}) => request('/ai/chat', { ...json('POST', payload), signal }),
+  aiSuggestTask: (payload, { signal } = {}) => request('/ai/suggest-task', { ...json('POST', payload), signal }),
   aiApplyPriority: (changes) => request('/ai/apply-priority', json('POST', { changes })),
 
   // User dashboards (layouts of SQL widgets)
