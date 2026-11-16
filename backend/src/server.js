@@ -1,4 +1,4 @@
-import './env.js'; // must stay first: loads backend/.env before other modules read it
+import { describeAiConfiguration } from './env.js'; // must stay first: loads backend/.env before other modules read it
 import express from 'express';
 import cors from 'cors';
 import spacesRouter from './routes/spaces.js';
@@ -52,6 +52,7 @@ app.use((error, _req, res, _next) => {
 const server = app.listen(port, () => {
   console.log(`TASKFLOW API is running at http://localhost:${port}`);
   console.log('SQLite database: backend/data/taskflow.sqlite');
+  describeAiConfiguration().forEach((line) => console.log(line));
 });
 function shutdown() {
   server.close(() => { db.close(); process.exit(0); });
