@@ -6,7 +6,6 @@ import { useAppShell } from '../../context/appShellContext';
 import { CATEGORY_LABEL } from './workflowMeta';
 import './WorkflowDiagram.css';
 
-const HIGHLIGHT = '#1d7afc';
 const SELECTED = '#e56910';
 const START_EDGE = '__start-edge';
 
@@ -19,7 +18,7 @@ const SIDES = [['t', Position.Top], ['r', Position.Right], ['b', Position.Bottom
 /** A workflow state: coloured box with handles on every side (both directions). */
 function StateNode({ data }) {
   return (
-    <div className={`wf-node is-${data.color} ${data.current ? 'is-current' : ''} ${data.next ? 'is-next' : ''}`} title={`${data.name} · ${CATEGORY_LABEL[data.category] || data.category}${data.current ? ' · current status' : ''}`}>
+    <div className={`wf-node is-${data.color} ${data.current ? 'is-current' : ''}`} title={`${data.name} · ${CATEGORY_LABEL[data.category] || data.category}${data.current ? ' · current status' : ''}`}>
       {SIDES.map(([id, position]) => (
         <span key={id}>
           <Handle type="target" id={`in-${id}`} position={position} isConnectable={false} />
@@ -49,15 +48,15 @@ function TransitionEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition
   const { selectedId, select } = useContext(SelectionContext);
   const selected = selectedId === id;
   const [path, labelX, labelY] = getSmoothStepPath({ sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, borderRadius: 10, offset: data?.offset ?? 28 });
-  const style = selected ? { stroke: SELECTED, strokeWidth: 3 } : data?.highlight ? { stroke: HIGHLIGHT, strokeWidth: 2.4 } : undefined;
+  const style = selected ? { stroke: SELECTED, strokeWidth: 3 } : undefined;
   return (
     <>
-      <BaseEdge id={id} path={path} markerEnd={markerEnd} className="wf-edge-path" style={style} interactionWidth={18} />
+      <BaseEdge id={id} path={path} markerEnd={selected ? `url(#wf-arrow-selected)` : markerEnd} className="wf-edge-path" style={style} interactionWidth={18} />
       {label && (
         <EdgeLabelRenderer>
           <button
             type="button"
-            className={`wf-edge-label nodrag nopan ${data?.highlight ? 'is-next' : ''} ${selected ? 'is-selected' : ''}`}
+            className={`wf-edge-label nodrag nopan ${selected ? 'is-selected' : ''}`}
             style={{ transform: `translate(-50%, -50%) translate(${labelX}px, ${labelY}px)` }}
             onClick={(event) => { event.stopPropagation(); select(selected ? null : id); }}
             aria-pressed={selected}
@@ -84,7 +83,6 @@ function edgeSides(from, to, hasReverse) {
 
 function buildGraph(workflow, currentStatus = null) {
   const current = currentStatus ? workflow.states.find((state) => state.name.toLowerCase() === String(currentStatus).toLowerCase()) : null;
-  const nextIds = new Set(current ? workflow.transitions.filter((transition) => transition.from === current.id || !transition.from).map((transition) => transition.to) : []);
   const byId = new Map(workflow.states.map((state) => [state.id, state]));
   const anyTargets = new Set(workflow.transitions.filter((transition) => !transition.from).map((transition) => transition.to));
   const initial = workflow.states.find((state) => state.initial) || workflow.states[0];
@@ -92,7 +90,7 @@ function buildGraph(workflow, currentStatus = null) {
     id: state.id,
     type: 'state',
     position: { x: state.x, y: state.y },
-    data: { name: state.name, color: state.color, category: state.category, count: state.workItemCount || 0, any: anyTargets.has(state.id), current: current?.id === state.id, next: nextIds.has(state.id) && current?.id !== state.id },
+    data: { name: state.name, color: state.color, category: state.category, count: state.workItemCount || 0, any: anyTargets.has(state.id), current: current?.id === state.id },
     style: { width: NODE_W, height: NODE_H }
   }));
   const edges = [];
@@ -107,12 +105,12 @@ function buildGraph(workflow, currentStatus = null) {
     if (!from || !to) continue;
     const hasReverse = workflow.transitions.some((other) => other.from === transition.to && other.to === transition.from);
     const [source, target] = edgeSides(from, to, hasReverse);
-    edges.push(edge(transition.id, from.id, to.id, transition.name, source, target, current?.id === from.id));
+    edges.push(edge(transition.id, from.id, to.id, transition.name, source, target));
   }
   return { nodes, edges };
 }
 
-function edge(id, source, target, label, sourceSide, targetSide, highlight = false) {
+function edge(id, source, target, label, sourceSide, targetSide) {
   return {
     id,
     source,
@@ -121,9 +119,8 @@ function edge(id, source, target, label, sourceSide, targetSide, highlight = fal
     targetHandle: `in-${targetSide}`,
     label,
     type: 'transition',
-    data: { offset: 28, highlight },
-    zIndex: highlight ? 2 : 0,
-    markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16, ...(highlight ? { color: HIGHLIGHT } : {}) }
+    data: { offset: 28 },
+    markerEnd: { type: MarkerType.ArrowClosed, width: 16, height: 16 }
   };
 }
 
@@ -218,7 +215,7 @@ function AutoFit({ containerRef, userMovedRef }) {
 
 /**
  * Interactive diagram of a workflow (pan, zoom, drag to inspect, reset).
- * `currentStatus` highlights that state and the transitions leaving it.
+ * `currentStatus` marks that state as Current; transitions are highlighted only when clicked.
  */
 export default function WorkflowDiagram({ workflow, currentStatus = null, height = 600, selectedTransitionId, onSelectTransition }) {
   const { theme } = useAppShell();
@@ -245,6 +242,9 @@ export default function WorkflowDiagram({ workflow, currentStatus = null, height
               fitView
               fitViewOptions={{ padding: 0.18 }}
               minZoom={0.3}
+              zoomOnScroll={false}
+              panOnScroll
+              zoomOnPinch
               maxZoom={1.8}
               nodesConnectable={false}
               edgesFocusable={false}
@@ -260,6 +260,13 @@ export default function WorkflowDiagram({ workflow, currentStatus = null, height
               }}
             >
               <AutoFit containerRef={containerRef} userMovedRef={userMovedRef} />
+              <svg className="wf-defs" aria-hidden="true">
+                <defs>
+                  <marker id="wf-arrow-selected" viewBox="-10 -10 20 20" markerWidth="16" markerHeight="16" refX="0" refY="0" orient="auto-start-reverse" markerUnits="userSpaceOnUse">
+                    <polyline points="-5,-4 0,0 -5,4 -5,-4" fill={SELECTED} stroke={SELECTED} strokeLinecap="round" strokeLinejoin="round" strokeWidth="1" />
+                  </marker>
+                </defs>
+              </svg>
               <Background gap={18} size={1} />
               <Controls
                 showInteractive={false}
@@ -276,7 +283,7 @@ export default function WorkflowDiagram({ workflow, currentStatus = null, height
           <div className="wf-legend" aria-label="Legend">
             <span><i className="wf-start-dot" /> Start</span>
             <span><i className="wf-arrow" /> Transition</span>
-            <span>Click an arrow for details · drag to pan · scroll to zoom</span>
+            <span>Click an arrow for details · scroll or drag to move · Ctrl + scroll to zoom</span>
           </div>
         </div>
 

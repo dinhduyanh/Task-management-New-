@@ -71,3 +71,4 @@
 .wf-panel-section ul { margin: 0; padding-left: 16px; color: var(--tf-fg-42526e); }
 .wf-panel-section li + li { margin-top: 2px; }
 .wf-panel-text { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; margin: 0; color: var(--tf-fg-42526e); line-height: 1.6; }
+.wf-defs { position: absolute; width: 0; height: 0; overflow: hidden; }
