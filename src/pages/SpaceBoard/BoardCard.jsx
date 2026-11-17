@@ -1,10 +1,10 @@
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
 import PriorityIcon from '../../components/common/PriorityIcon';
 import {
   assigneeName,
   dateValue,
   formatDateOnly,
-  getInitials,
   iconForType,
   issueKey,
   issueSummary,
@@ -91,7 +91,7 @@ export default function BoardCard({ issue, childCount = 0, dragging = false, dra
         <span className="sb-card-people">
           <span title={`Priority: ${issue.priority || 'Medium'}`}><PriorityIcon priority={issue.priority || 'Medium'} size={16} /></span>
           <span className={`sb-avatar ${assignee ? '' : 'is-unassigned'}`} title={assignee ? `Assignee: ${assignee}` : 'Unassigned'}>
-            {assignee ? getInitials(assignee) : <Icon name="user" size={13} />}
+            {assignee ? <PersonAvatar person={issue.assignee && typeof issue.assignee === 'object' ? issue.assignee : assignee} className="sb-avatar-inner" /> : <Icon name="user" size={13} />}
           </span>
         </span>
       </div>

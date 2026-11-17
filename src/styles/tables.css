@@ -1,0 +1,27 @@
+/* =========================================================================================
+   Shared table alignment.
+   In every list/table the main column(s) (name, plus a leading checkbox or code) stay left
+   aligned; every other column is centred, header and values alike, so they share one axis.
+   (My Tasks and the project List use the .is-center classes in SpacesList.css.)
+========================================================================================= */
+:is(.si-table, .dc-table, .ss-table, .wf-table, .swi-table, .wv-table, .td-mini-table) :is(th, td):not(:first-child),
+:is(.tt-table, .dbx-table, .summary-work-table) :is(th, td):not(:nth-child(-n + 2)) {
+  text-align: center !important;
+}
+
+/* Content blocks inside centred cells (chips, avatars + names, button groups) sit in the middle. */
+:is(.si-table, .dc-table, .ss-table, .wf-table, .swi-table, .wv-table, .td-mini-table) td:not(:first-child) > :is(div, span, button, a),
+:is(.tt-table, .dbx-table, .summary-work-table) td:not(:nth-child(-n + 2)) > :is(div, span, button, a) {
+  margin-inline: auto;
+  justify-content: center;
+}
+
+/* Sort buttons and other flex content inside centred headers. */
+:is(.si-table, .dc-table, .ss-table, .wf-table, .swi-table, .wv-table, .td-mini-table) th:not(:first-child) > *,
+:is(.tt-table, .dbx-table, .summary-work-table) th:not(:nth-child(-n + 2)) > * {
+  margin-inline: auto;
+  justify-content: center;
+}
+
+/* Menus opened from a centred cell keep left-aligned options. */
+:is(.si-table, .dc-table, .ss-table, .tt-table, .dbx-table) td :is([role="menu"], [role="listbox"]) { text-align: left; }

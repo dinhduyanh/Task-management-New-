@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
 import DatePicker from '../../components/common/DatePicker';
 import PriorityIcon from '../../components/common/PriorityIcon';
 import {
@@ -265,7 +266,7 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
   return (
     <div className="td-user-select" ref={rootRef}>
       <button type="button" className={`td-user-select-trigger ${open ? 'open' : ''}`} onClick={() => { setOpen((current) => !current); setQuery(''); }} aria-expanded={open}>
-        {selectedUser ? <><span className={`td-avatar ${userId(selectedUser) === CURRENT_USER.id ? 'current' : ''}`}>{selectedUser.initials || initials(userName(selectedUser))}</span><span>{userId(selectedUser) === CURRENT_USER.id ? 'You' : userName(selectedUser)}</span></> : <span className="td-placeholder">{placeholder}</span>}
+        {selectedUser ? <><PersonAvatar person={userId(selectedUser) === CURRENT_USER.id ? CURRENT_USER : selectedUser} className={`td-avatar ${userId(selectedUser) === CURRENT_USER.id ? 'current' : ''}`} /><span>{userId(selectedUser) === CURRENT_USER.id ? 'You' : userName(selectedUser)}</span></> : <span className="td-placeholder">{placeholder}</span>}
         <Icon name="chevron" size={13} />
       </button>
       {open && (
@@ -282,7 +283,7 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
             const selected = String(userId(value)) === id;
             return <button type="button" key={id} className={`td-user-option ${selected ? 'selected' : ''}`} onClick={() => choose(member)}>
               <span className="td-user-check">{selected ? <Icon name="check" size={12} /> : null}</span>
-              <span className="td-avatar">{initials(userName(member))}</span>
+              <PersonAvatar person={member} className="td-avatar" />
               <span className="td-user-option-name" title={`${userName(member)}${member.email ? ` · ${member.email}` : ''}`}>{userName(member)}</span>
               {selected && <Icon name="check" size={14} />}
             </button>;
@@ -881,7 +882,7 @@ export default function TaskDetailDrawer({
     return (
       <div className={`td-comment-thread ${depth > 0 ? 'nested' : ''}`} key={commentId}>
         <article className="td-comment">
-          <span className="td-avatar">{initials(authorName)}</span>
+          <PersonAvatar person={comment.author && typeof comment.author === 'object' ? comment.author : { id: comment.authorId, name: authorName }} className="td-avatar" />
           <div className="td-comment-content">
             <div className="td-comment-meta">
               <strong>{authorName}</strong>
@@ -1124,8 +1125,8 @@ export default function TaskDetailDrawer({
           <aside className="td-right-panel">
             <section className="td-people-card">
               <h2><Icon name="users" size={15} /> People &amp; responsibilities</h2>
-              <div className="td-person-row"><span>Assignee</span><div>{assignee ? <><span className="td-avatar">{initials(userName(assignee))}</span><strong>{userName(assignee)}</strong></> : <span className="td-unassigned-label">Unassigned</span>}</div></div>
-              <div className="td-person-row"><span>Creator</span><div>{creator ? <><span className="td-avatar">{initials(userName(creator))}</span><strong>{userName(creator)}</strong></> : <span className="td-unassigned-label">—</span>}</div></div>
+              <div className="td-person-row"><span>Assignee</span><div>{assignee ? <><PersonAvatar person={assignee} className="td-avatar" /><strong>{userName(assignee)}</strong></> : <span className="td-unassigned-label">Unassigned</span>}</div></div>
+              <div className="td-person-row"><span>Creator</span><div>{creator ? <><PersonAvatar person={creator} className="td-avatar" /><strong>{userName(creator)}</strong></> : <span className="td-unassigned-label">—</span>}</div></div>
               {issue.team && <div className="td-person-row"><span>Team</span><div><strong>{userName(issue.team)}</strong></div></div>}
             </section>
           </aside>

@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
 import { ExtraFilterControls, MoreFilters, MultiFilter, OrderFilter } from './IssueFilters';
-import { ISSUE_TYPES, STATUSES, getInitials } from './issueHelpers';
+import { ISSUE_TYPES, STATUSES } from './issueHelpers';
 import './IssueToolbar.css';
 
 const MAX_AVATAR_FILTERS = 6;
@@ -35,7 +36,7 @@ export default function IssueToolbar({ filters, statusOptions = STATUSES, search
               title={name}
               onClick={() => f.toggleAssignee(name)}
             >
-              {getInitials(name)}
+              <PersonAvatar person={name} className="sb-avatar-inner" />
             </button>
           ))}
           <button

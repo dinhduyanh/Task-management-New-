@@ -86,6 +86,15 @@ export default function App() {
     loadPersistentData();
   }, [isLoggedIn]);
 
+  // User directory (names + avatars) so every avatar in the app shows the real picture.
+  const [users, setUsers] = useState([]);
+  useEffect(() => {
+    if (!isLoggedIn) return undefined;
+    let active = true;
+    api.getUsers().then((rows) => { if (active && Array.isArray(rows)) setUsers(rows); }).catch(() => {});
+    return () => { active = false; };
+  }, [isLoggedIn]);
+
   useEffect(() => {
     applyTheme(theme);
   }, [theme]);
@@ -166,6 +175,7 @@ export default function App() {
   function handleUserUpdated(updatedUser) {
     setCurrentUser(updatedUser);
     storeUser(updatedUser);
+    if (updatedUser?.id) setUsers((current) => current.map((item) => (String(item.id) === String(updatedUser.id) ? { ...item, ...updatedUser } : item)));
   }
 
   function endLocalSession(notice = '') {
@@ -462,6 +472,7 @@ export default function App() {
 
   const appShell = {
     user: currentUser,
+    users,
     theme,
     setTheme,
     navigate,

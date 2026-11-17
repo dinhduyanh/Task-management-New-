@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
 import Pagination from '../../components/common/Pagination';
 import Toast from '../../components/common/Toast';
 import { useAppShell } from '../../context/appShellContext';
@@ -177,7 +178,7 @@ export default function SpaceInvolved({
                       {!space.involved && <span className="si-badge" title="You are not a member (visible as administrator)">Admin access</span>}
                       </div>
                     </td>
-                    <td>{space.lead?.name ? <span className="si-lead"><span className="si-lead-avatar" aria-hidden="true">{space.lead.name.split(/\s+/).map((part) => part[0]).slice(0, 2).join('').toUpperCase()}</span><span className="si-lead-name">{space.lead.name}</span></span> : <span className="si-muted">—</span>}</td>
+                    <td>{space.lead?.name ? <span className="si-lead"><PersonAvatar person={space.lead} className="si-lead-avatar" /><span className="si-lead-name">{space.lead.name}</span></span> : <span className="si-muted">—</span>}</td>
                     <td>{displayDate(space.startDate) || <span className="si-muted">—</span>}</td>
                     <td>{displayDate(space.endDate) || <span className="si-muted">—</span>}</td>
                     <td className="si-actions">

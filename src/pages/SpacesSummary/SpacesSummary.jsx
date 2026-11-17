@@ -2,6 +2,7 @@ import { useMemo } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
 import { visibleProjectTabs } from '../SpacesList/projectNavigation';
 import './SpacesSummary.css';
 
@@ -357,7 +358,7 @@ export default function SpacesSummary({
                           <td><StatusBadge status={task.status} /></td>
                           <td>
                             <div className="summary-assignee">
-                              <span className="summary-person-avatar">{assignee === 'Unassigned' ? '—' : getInitials(assignee)}</span>
+                              {assignee === 'Unassigned' ? <span className="summary-person-avatar">—</span> : <PersonAvatar person={task.assignee && typeof task.assignee === 'object' ? task.assignee : assignee} className="summary-person-avatar" />}
                               <span>{assignee}</span>
                             </div>
                           </td>
@@ -396,7 +397,7 @@ export default function SpacesSummary({
                     const detail = activity.description || activity.action || 'updated this space';
                     return (
                       <div className="summary-activity-item" key={activity.id || `${index}-${activity.createdAt}`}>
-                        <span className="summary-activity-avatar">{getInitials(actor)}</span>
+                        <PersonAvatar person={actor} className="summary-activity-avatar" />
                         <div className="summary-activity-copy">
                           <p><strong>{actor}</strong> {detail}</p>
                           <span>{formatActivityTime(activity.createdAt || activity.timestamp)}</span>
@@ -465,7 +466,7 @@ export default function SpacesSummary({
                     const memberName = member.name || member.fullName || 'Unnamed member';
                     return (
                       <div className="summary-member" key={member.id || `${memberName}-${index}`}>
-                        <span className="summary-member-avatar">{member.initials || getInitials(memberName)}</span>
+                        <PersonAvatar person={member} className="summary-member-avatar" />
                         <strong title={memberName}>{memberName}</strong>
                         <span>{member.role || 'Member'}</span>
                       </div>

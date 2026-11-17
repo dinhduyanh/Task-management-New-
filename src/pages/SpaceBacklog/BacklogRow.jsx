@@ -1,8 +1,8 @@
 import { useState } from 'react';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
 import {
   assigneeName,
-  getInitials,
   iconForType,
   isCompletedStatus,
   issueKey,
@@ -147,7 +147,7 @@ export default function BacklogRow({
       <StatusSelect issue={issue} allIssues={allIssues} onChange={(next) => onStatusChange(next)} disabled={!canMove} />
       {showEstimate && <EstimateField issue={issue} onChange={onEstimateChange} disabled={!canUpdate} />}
       <span className={`bl-avatar ${assignee ? '' : 'is-unassigned'}`} title={assignee ? `Assignee: ${assignee}` : 'Unassigned'}>
-        {assignee ? getInitials(assignee) : <Icon name="user" size={13} />}
+        {assignee ? <PersonAvatar person={issue.assignee && typeof issue.assignee === 'object' ? issue.assignee : assignee} className="sb-avatar-inner" /> : <Icon name="user" size={13} />}
       </span>
       <MenuButton
         label={`Actions for ${issueKey(issue)}`}

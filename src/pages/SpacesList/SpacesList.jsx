@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
 import DatePicker from '../../components/common/DatePicker';
 import PriorityIcon from '../../components/common/PriorityIcon';
 import { getInitialStatus, getIssueStatus, getTransitionOptions, validateIssueTransition } from './workflows';
@@ -319,7 +320,9 @@ export function AssigneeCell({ value, members, onAssign, disabled = false }) {
         aria-expanded={open}
         aria-label={selectedUser ? `Change assignee, currently ${selectedName}` : 'Assign work item'}
       >
-        {selectedUser && <span className="slv-assignee-avatar">{selectedId === CURRENT_USER.id ? CURRENT_USER.initials : getInitials(selectedName)}</span>}
+        {selectedUser
+          ? <PersonAvatar person={selectedId === CURRENT_USER.id ? CURRENT_USER : selectedUser} className="slv-assignee-avatar" />
+          : <span className="slv-assignee-avatar is-empty" aria-hidden="true"><Icon name="user" size={12} /></span>}
         <span className="slv-assignee-name">{selectedName}</span>
         <span className="slv-assignee-action"><Icon name={selectedUser ? 'chevron' : 'plus'} size={13} /></span>
       </button>
@@ -371,7 +374,7 @@ export function AssigneeCell({ value, members, onAssign, disabled = false }) {
                 onClick={() => choose(member)}
               >
                 <span className="slv-assignee-check">{selected && <Icon name="check" size={11} />}</span>
-                <span className="slv-assignee-avatar">{getInitials(name)}</span>
+                <PersonAvatar person={member} className="slv-assignee-avatar" />
                 <span className="slv-assignee-option-label" title={`${name}${member.email ? ` – ${member.email}` : ''}`}>{name}</span>
                 {selected && <Icon name="check" size={14} />}
               </button>
@@ -523,7 +526,7 @@ function SearchableUserField({ label, value, onChange, members, placeholder, req
                   key={id}
                   onClick={() => choose(user)}
                 >
-                  <span className="slv-user-avatar">{getInitials(optionLabel(user))}</span>
+                  <PersonAvatar person={user} className="slv-user-avatar" />
                   <span className="slv-user-option-text">
                     <strong>{optionLabel(user)}</strong>
                     {user.email && <small>{user.email}</small>}

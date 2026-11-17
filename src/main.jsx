@@ -6,6 +6,7 @@ import './index.css';
 import './theme/palette.css';
 import './theme.css';
 import './styles/layout.css';
+import './styles/tables.css';
 import { applySidebarCollapsed, getInitialSidebarCollapsed } from './theme/sidebar';
 
 // Apply the saved theme before the first render so the page never flashes light.

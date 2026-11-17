@@ -1449,3 +1449,32 @@ button.slv-inline-date:focus-visible {
 /* Priority: the hover chevron floats at the right so the icon + label stay centred. */
 :is(.slv-table, .task-table) td.is-center .slv-priority-trigger { position: relative; padding-inline: 20px; }
 :is(.slv-table, .task-table) td.is-center .slv-priority-trigger > svg:last-child { position: absolute; right: 4px; }
+
+/* =========================================
+   SAME-SIZE STATUS AND ASSIGNEE LABELS (List and My Tasks)
+   Every status pill and every assignee button has one fixed width, whatever the text.
+========================================= */
+:is(.slv-table, .task-table) .slv-status {
+  position: relative;
+  width: 130px;
+  max-width: 100%;
+  justify-content: center;
+  padding: 0 18px;
+}
+:is(.slv-table, .task-table) .slv-status > span { overflow: hidden; text-overflow: ellipsis; }
+:is(.slv-table, .task-table) .slv-status > svg { position: absolute; right: 8px; }
+:is(.slv-table, .task-table) .slv-assignee-picker { width: 150px; max-width: 100%; }
+:is(.slv-table, .task-table) .slv-assignee-trigger {
+  width: 100%;
+  max-width: 100%;
+  justify-content: flex-start;
+}
+:is(.slv-table, .task-table) .slv-assignee-name { flex: 1 1 auto; text-align: left; }
+:is(.slv-table, .task-table) .slv-assignee-action { margin-left: auto; }
+.slv-assignee-avatar.is-empty { border: 1px dashed var(--tf-bd-c1c7d0); background: transparent; color: var(--tf-fg-8993a4); }
+:is(.slv-table, .task-table) td.is-center > .slv-assignee-picker { width: 150px; }
+:is(.slv-table, .task-table) td.is-center > .slv-status-picker > .slv-status { width: 130px; padding: 0 18px; }
+
+/* List: room for the fixed-width status pill. */
+.slv-table .slv-col-work { width: 27.5%; }
+.slv-table .slv-col-status { width: 13%; }
