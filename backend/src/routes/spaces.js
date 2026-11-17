@@ -242,6 +242,37 @@ router.post('/:spaceId/members', (req, res, next) => {
 });
 
 // Adds several people at once with the same project roles. Body: { userIds: [], roles: [] }.
+/** Lower-case text without Vietnamese/other diacritics, so "pham" matches "Phạm". */
+function searchable(value) {
+  return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
+}
+
+// "Add people" search: active users who are not members yet, matching name, username or email.
+// GET /:spaceId/member-candidates?q=anh&limit=8
+router.get('/:spaceId/member-candidates', (req, res, next) => {
+  try {
+    const { spaceId } = req.params;
+    if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
+    if (!can(req.user, spaceId, 'project.setting')) return denied(res, 'project.setting');
+    const words = searchable(req.query.q).split(/\s+/).filter(Boolean);
+    if (!words.length) return res.json([]);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 25);
+    const memberIds = new Set(db.prepare('SELECT user_id FROM space_members WHERE space_id = ?').all(spaceId).map((row) => row.user_id));
+    const owner = db.prepare('SELECT owner_id FROM spaces WHERE id = ?').get(spaceId)?.owner_id;
+    if (owner) memberIds.add(owner);
+    const rows = db.prepare('SELECT id, username, email, full_name, avatar_url FROM users WHERE is_active = 1 ORDER BY lower(full_name), lower(username)').all();
+    const matches = rows
+      .filter((user) => !memberIds.has(user.id))
+      .filter((user) => {
+        const text = searchable(`${user.full_name} ${user.username} ${user.email}`);
+        return words.every((word) => text.includes(word));
+      })
+      .slice(0, limit)
+      .map((user) => ({ id: user.id, username: user.username, email: user.email, fullName: user.full_name, avatarUrl: user.avatar_url }));
+    res.json(matches);
+  } catch (error) { next(error); }
+});
+
 router.post('/:spaceId/members/bulk', (req, res, next) => {
   try {
     const spaceId = req.params.spaceId;

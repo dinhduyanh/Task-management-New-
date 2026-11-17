@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/common/Icon';
 import UserAvatar from '../../components/common/UserAvatar';
 import { useAppShell } from '../../context/appShellContext';
@@ -45,42 +45,86 @@ function RoleChecklist({ roles, value, onChange, disabled = false, idPrefix }) {
   );
 }
 
-/** "Add people": search and tick several users, choose one project role for all of them. */
+/** Matching users (not yet in the project) for the "Add people" search, fetched as the user types. */
+function useCandidateSearch(spaceId, query) {
+  const [state, setState] = useState({ query: '', results: [], error: '' });
+  const needle = query.trim();
+  useEffect(() => {
+    if (!needle) return undefined;
+    let active = true;
+    const timer = setTimeout(() => {
+      api.searchMemberCandidates(spaceId, needle)
+        .then((rows) => { if (active) setState({ query: needle, results: rows || [], error: '' }); })
+        .catch((loadError) => { if (active) setState({ query: needle, results: [], error: loadError.message }); });
+    }, 180);
+    return () => { active = false; clearTimeout(timer); };
+  }, [spaceId, needle]);
+  const loading = Boolean(needle) && state.query !== needle;
+  return { results: needle && !loading ? state.results : [], loading, error: needle ? state.error : '' };
+}
+
+/** "Add people": find people by typing (autocomplete), pick several as chips, tick one or more roles. */
 function AddPeopleModal({ space, roles, onAdd, onClose }) {
-  const [users, setUsers] = useState(null);
   const [query, setQuery] = useState('');
-  const [selected, setSelected] = useState([]); // user ids
-  const [role, setRole] = useState(() => roles.find((item) => item.name === 'Developer')?.name || roles[0]?.name || '');
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [selected, setSelected] = useState([]); // user objects
+  const [chosenRoles, setChosenRoles] = useState(() => {
+    const preferred = roles.find((item) => item.name === 'Developer') || roles[0];
+    return preferred ? [preferred.name] : [];
+  });
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
+  const inputRef = useRef(null);
+  const { results, loading, error: searchError } = useCandidateSearch(space.id, query);
+  const options = results.filter((user) => !selected.some((item) => item.id === user.id));
+  const showDropdown = open && query.trim().length > 0;
+  const activeIndex = Math.min(active, Math.max(options.length - 1, 0));
 
-  useEffect(() => {
-    let active = true;
-    api.getUsers()
-      .then((rows) => { if (active) setUsers(rows); })
-      .catch((loadError) => { if (active) { setUsers([]); setError(loadError.message); } });
-    return () => { active = false; };
-  }, []);
+  function pick(user) {
+    setSelected((current) => [...current, user]);
+    setQuery('');
+    setActive(0);
+    setError('');
+    inputRef.current?.focus();
+  }
 
-  const memberIds = useMemo(() => new Set((space.members || []).map((member) => String(member.userId || member.id))), [space.members]);
-  const candidates = (users || []).filter((user) => !memberIds.has(String(user.id)));
-  const needle = query.trim().toLowerCase();
-  const matches = candidates.filter((user) => !needle || `${user.fullName} ${user.username} ${user.email}`.toLowerCase().includes(needle));
-  const byId = new Map(candidates.map((user) => [user.id, user]));
-  const toggle = (id) => setSelected((current) => (current.includes(id) ? current.filter((item) => item !== id) : [...current, id]));
-  const allMatchesSelected = matches.length > 0 && matches.every((user) => selected.includes(user.id));
+  function unpick(id) {
+    setSelected((current) => current.filter((user) => user.id !== id));
+    inputRef.current?.focus();
+  }
+
+  function toggleRole(name) {
+    setChosenRoles((current) => (current.includes(name) ? current.filter((role) => role !== name) : [...current, name]));
+    setError('');
+  }
+
+  function onKeyDown(event) {
+    if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActive((index) => Math.min(index + 1, options.length - 1)); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setActive((index) => Math.max(index - 1, 0)); }
+    else if (event.key === 'Enter') {
+      event.preventDefault(); // never submit the form from the search box
+      if (showDropdown && options[activeIndex]) pick(options[activeIndex]);
+    } else if (event.key === 'Escape' && showDropdown) {
+      event.preventDefault(); // close the list, not the dialog
+      setOpen(false);
+    } else if (event.key === 'Backspace' && !query && selected.length) {
+      setSelected((current) => current.slice(0, -1));
+    }
+  }
 
   async function submit() {
     if (!selected.length) return setError('Choose at least one person.');
-    if (!role) return setError('Choose a project role.');
+    if (!chosenRoles.length) return setError('Choose at least one project role.');
     setSaving(true);
     setError('');
-    const message = await onAdd({ userIds: selected, roles: [role] });
+    const message = await onAdd({ userIds: selected.map((user) => user.id), roles: chosenRoles });
     setSaving(false);
     if (message) return setError(message);
     onClose(selected.length);
   }
 
+  const listId = 'sp-people-options';
   return (
     <SettingsModal
       title="Add people"
@@ -89,60 +133,93 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
       footer={<>
         {error && <span className="ss-form-error" role="alert">{error}</span>}
         <button type="button" className="ss-button" onClick={() => onClose(0)}>Cancel</button>
-        <button type="submit" className="ss-button is-primary" disabled={saving || !selected.length || !role}>
+        <button type="submit" className="ss-button is-primary" disabled={saving || !selected.length || !chosenRoles.length}>
           {saving ? 'Adding…' : selected.length ? `Add ${selected.length} ${selected.length === 1 ? 'person' : 'people'}` : 'Add'}
         </button>
       </>}
     >
       <div className="sp-people-form">
         <div className="sp-field">
-          <span>People <b className="sp-required">*</b></span>
-          {selected.length > 0 && (
-            <div className="sp-chips" aria-label="Selected people">
-              {selected.map((id) => (
-                <span className="sp-chip" key={id}>
-                  <UserAvatar user={byId.get(id)} size={20} />
-                  {byId.get(id)?.fullName || id}
-                  <button type="button" onClick={() => toggle(id)} aria-label={`Remove ${byId.get(id)?.fullName || 'person'}`}><Icon name="close" size={11} /></button>
+          <span id="sp-people-label">People <b className="sp-required">*</b></span>
+          <div className="sp-combo">
+            <div className={`sp-tag-input ${showDropdown ? 'is-open' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); inputRef.current?.focus(); } }}>
+              <Icon name="search" size={14} />
+              {selected.map((user) => (
+                <span className="sp-chip" key={user.id}>
+                  <UserAvatar user={user} size={20} />
+                  <span className="sp-chip-name">{user.fullName || user.username}</span>
+                  <button type="button" onClick={() => unpick(user.id)} aria-label={`Remove ${user.fullName || user.username}`}><Icon name="close" size={11} /></button>
                 </span>
               ))}
+              <input
+                ref={inputRef}
+                autoFocus
+                value={query}
+                onChange={(event) => { setQuery(event.target.value); setOpen(true); setActive(0); }}
+                onFocus={() => setOpen(true)}
+                onBlur={() => setOpen(false)}
+                onKeyDown={onKeyDown}
+                placeholder={selected.length ? 'Add more people…' : 'Search by name, username or email'}
+                role="combobox"
+                aria-labelledby="sp-people-label"
+                aria-autocomplete="list"
+                aria-expanded={showDropdown}
+                aria-controls={listId}
+                aria-activedescendant={showDropdown && options[activeIndex] ? `sp-opt-${options[activeIndex].id}` : undefined}
+              />
             </div>
-          )}
-          <label className="sp-user-search">
-            <Icon name="search" size={14} />
-            <input autoFocus value={query} onChange={(event) => setQuery(event.target.value)} placeholder="Search by name, username or email" aria-label="Search people" />
-          </label>
-          <div className="sp-user-list" role="listbox" aria-multiselectable="true" aria-label="People who are not in the project yet">
-            {users === null && <div className="sp-user-empty">Loading people…</div>}
-            {users !== null && !candidates.length && <div className="sp-user-empty">Everyone is already a member of this project.</div>}
-            {users !== null && candidates.length > 0 && !matches.length && <div className="sp-user-empty">No people match “{query}”.</div>}
-            {matches.length > 1 && (
-              <label className="sp-user-option is-all">
-                <input type="checkbox" checked={allMatchesSelected} onChange={() => setSelected((current) => (allMatchesSelected
-                  ? current.filter((id) => !matches.some((user) => user.id === id))
-                  : [...new Set([...current, ...matches.map((user) => user.id)])]))} />
-                <span>Select all {needle ? 'matches' : 'people'} ({matches.length})</span>
-              </label>
+            {showDropdown && (
+              <ul className="sp-dropdown" id={listId} role="listbox" aria-label="Matching people" onMouseDown={(event) => event.preventDefault()}>
+                {loading && <li className="sp-dropdown-status"><span className="sp-spinner" aria-hidden="true" /> Searching…</li>}
+                {!loading && searchError && <li className="sp-dropdown-status is-error">{searchError}</li>}
+                {!loading && !searchError && !options.length && (
+                  <li className="sp-dropdown-status is-empty" role="status">
+                    <Icon name="user" size={16} />
+                    <span><strong>User not found</strong><small>No one outside this project matches “{query.trim()}”.</small></span>
+                  </li>
+                )}
+                {!loading && options.map((user, index) => (
+                  <li
+                    key={user.id}
+                    id={`sp-opt-${user.id}`}
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    className={`sp-dropdown-option ${index === activeIndex ? 'is-active' : ''}`}
+                    onMouseEnter={() => setActive(index)}
+                    onClick={() => pick(user)}
+                  >
+                    <UserAvatar user={user} size={28} />
+                    <span className="sp-user-text">
+                      <strong>{user.fullName || user.username}</strong>
+                      <small>@{user.username}{user.email ? ` · ${user.email}` : ''}</small>
+                    </span>
+                    <Icon name="plus" size={14} />
+                  </li>
+                ))}
+              </ul>
             )}
-            {matches.map((user) => (
-              <label key={user.id} className={`sp-user-option ${selected.includes(user.id) ? 'is-selected' : ''}`} role="option" aria-selected={selected.includes(user.id)}>
-                <input type="checkbox" checked={selected.includes(user.id)} onChange={() => toggle(user.id)} />
-                <UserAvatar user={user} size={28} />
-                <span className="sp-user-text">
-                  <strong>{user.fullName || user.username}</strong>
-                  <small>@{user.username}{user.email ? ` · ${user.email}` : ''}</small>
-                </span>
-              </label>
-            ))}
           </div>
+          <small className="sp-hint">{selected.length ? `${selected.length} selected. ` : ''}Type to find people who are not in this project yet.</small>
         </div>
-        <label className="sp-field">
-          <span>Project role <b className="sp-required">*</b></span>
-          <select value={role} onChange={(event) => setRole(event.target.value)} aria-label="Project role">
-            {roles.map((item) => <option key={item.id} value={item.name}>{item.name}</option>)}
-          </select>
-          <small className="sp-hint">{roles.find((item) => item.name === role)?.description || 'Every selected person gets this role. You can change roles per person later.'}</small>
-        </label>
+
+        <fieldset className="sp-field sp-role-fieldset">
+          <legend>Project roles <b className="sp-required">*</b> <small>{chosenRoles.length} selected</small></legend>
+          <div className="sp-role-options">
+            {roles.map((item) => {
+              const checked = chosenRoles.includes(item.name);
+              return (
+                <label key={item.id} className={`sp-role-option ${checked ? 'is-checked' : ''}`}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleRole(item.name)} />
+                  <span className="sp-role-option-text">
+                    <strong>{item.name}</strong>
+                    <small>{item.description || 'Custom project role.'}</small>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
+          <small className="sp-hint">Every person you add gets all ticked roles. You can change roles per person later.</small>
+        </fieldset>
       </div>
     </SettingsModal>
   );
