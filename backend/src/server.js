@@ -14,6 +14,7 @@ import dashboardsRouter from './routes/dashboards.js';
 import aiRouter from './routes/ai.js';
 import { requireAdmin, requireAuth } from './middleware/auth.js';
 import { db } from './db.js';
+import { googleConfig, googleEnabled } from './googleAuth.js';
 
 const app = express();
 const port = Number(process.env.PORT || 4000);
@@ -53,6 +54,10 @@ const server = app.listen(port, () => {
   console.log(`TASKFLOW API is running at http://localhost:${port}`);
   console.log('SQLite database: backend/data/taskflow.sqlite');
   describeAiConfiguration().forEach((line) => console.log(line));
+  const google = googleConfig();
+  console.log(googleEnabled(google)
+    ? `Google sign-in: on (redirect URI ${google.redirectUri}, app ${google.appUrl})`
+    : 'Google sign-in: off (set GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET to turn it on)');
 });
 function shutdown() {
   server.close(() => { db.close(); process.exit(0); });

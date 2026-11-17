@@ -1,4 +1,4 @@
-import { json, request } from './api';
+import { API_BASE_URL, json, request } from './api';
 
 const AUTH_FLAG_KEY = 'taskflow.authenticated';
 const USER_KEY = 'taskflow.user';
@@ -44,19 +44,58 @@ export function clearSession() {
   safeStorage(() => sessionStorage.clear());
 }
 
+function startLocalSession(user) {
+  if (!user || typeof user !== 'object') {
+    throw new Error('Sign-in response did not include a valid user.');
+  }
+  storeUser(user);
+  safeStorage(() => localStorage.setItem(AUTH_FLAG_KEY, 'true'));
+  return user;
+}
+
+/** Messages for the ?auth_error=... codes the server sends after Google sign-in. */
+export const GOOGLE_ERROR_MESSAGES = {
+  google_not_configured: 'Google sign-in is not set up on this server yet. Ask your administrator to add a Google OAuth client.',
+  google_cancelled: 'Google sign-in was cancelled.',
+  google_state: 'That Google sign-in link has expired or was opened in another browser. Please try again.',
+  google_failed: 'Google sign-in failed. Please try again.',
+  google_account_mismatch: 'This email is already linked to a different Google account.',
+  signup_disabled: 'No account uses this Google email, and sign-up is turned off. Ask an administrator to invite you.',
+  account_disabled: 'This account has been deactivated. Contact your administrator.'
+};
+
 export const authService = {
+  /** Which sign-in methods the server offers: { password, google, signup }. */
+  async providers() {
+    return request('/auth/providers');
+  },
+
+  /** Full-page redirect to Google; the server sends the browser back to the app afterwards. */
+  googleSignInUrl() {
+    return `${API_BASE_URL}/auth/google/start`;
+  },
+
+  /** After the redirect back from Google the session cookie is set: load the user. */
+  async completeGoogleSignIn() {
+    const payload = await request('/users/me');
+    return startLocalSession(payload?.user);
+  },
+
+  async register({ fullName, email, password }) {
+    const payload = await request('/auth/register', json('POST', {
+      fullName: String(fullName || '').trim(),
+      email: String(email || '').trim(),
+      password
+    }));
+    return startLocalSession(payload?.user);
+  },
+
   async login(usernameOrEmail, password) {
     const payload = await request('/auth/login', json('POST', {
       username: String(usernameOrEmail || '').trim(),
       password
     }));
-    const user = payload?.user;
-    if (!user || typeof user !== 'object') {
-      throw new Error('Login response did not include a valid user.');
-    }
-    storeUser(user);
-    safeStorage(() => localStorage.setItem(AUTH_FLAG_KEY, 'true'));
-    return user;
+    return startLocalSession(payload?.user);
   },
 
   /**

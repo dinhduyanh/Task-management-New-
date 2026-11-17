@@ -33,6 +33,22 @@ const userColumns = db.prepare('PRAGMA table_info(users)').all().map((column) =>
 if (!userColumns.includes('role')) {
   db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
 }
+// Google sign-in: the Google account id ("sub") linked to a user. One Google account per user.
+if (!userColumns.includes('google_sub')) {
+  db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT');
+}
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL;
+  -- Short-lived OAuth sign-in attempts (state, PKCE verifier, nonce); removed once used or expired.
+  CREATE TABLE IF NOT EXISTS oauth_states (
+    state_hash TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    code_verifier TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+`);
 
 /**
  * Never leave the system without an administrator: if no active admin exists, the oldest
