@@ -17,6 +17,7 @@
 .sidebar-nav {
   display: flex;
   min-height: 0;
+  flex: 1 1 auto;
   flex-direction: column;
   gap: 2px;
   overflow-y: auto;
@@ -352,16 +353,20 @@ html.tf-sidebar-collapsed .sidebar-nav { overflow: visible; }
 .space-more-button.is-open { background: var(--tf-bg-e4edfb); color: var(--tf-fg-0755c9); }
 
 .space-context-menu {
-  position: absolute;
-  z-index: 35;
-  top: calc(100% + 4px);
-  right: 3px;
+  position: fixed;
+  z-index: 1200;
   width: 176px;
   padding: 5px;
   border: 1px solid var(--tf-bd-e2e8f0);
   border-radius: 8px;
   background: var(--tf-bg-ffffff);
   box-shadow: 0 10px 28px rgba(16, 24, 40, .14);
+  animation: space-menu-in .12s ease-out;
+}
+
+@keyframes space-menu-in {
+  from { opacity: 0; transform: translateY(-3px); }
+  to { opacity: 1; transform: none; }
 }
 
 .space-context-menu button {

@@ -1,4 +1,5 @@
 import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useAppShell } from '../../context/appShellContext';
 import { SidebarSlotContext } from '../../context/sidebarSlot';
 import { SIDEBAR_DASHBOARD_LIMIT, sidebarDashboards } from '../../services/dashboards';
@@ -58,23 +59,47 @@ export function SidebarPanel({
   const sidebarSpaces = sidebarSpaceList(spaces, activeSpaceId);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [spaceToDelete, setSpaceToDelete] = useState(null);
+  // Position of the open project menu. It is rendered in a portal with fixed positioning so it
+  // never stretches or scrolls the sidebar.
+  const [menuPosition, setMenuPosition] = useState(null);
   const menuAreaRef = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
+    if (!openMenuId) return undefined;
+    const close = () => setOpenMenuId(null);
     function handlePointerDown(event) {
-      if (menuAreaRef.current && !menuAreaRef.current.contains(event.target)) {
-        setOpenMenuId(null);
-      }
+      if (menuRef.current?.contains(event.target) || menuAreaRef.current?.contains(event.target)) return;
+      close();
     }
+    const onKey = (event) => { if (event.key === 'Escape') close(); };
+    const onScroll = (event) => { if (!menuRef.current?.contains(event.target)) close(); };
     document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, []);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [openMenuId]);
 
   const navigate = (page, data = null) => onNavigate(page, data);
 
-  function openSpaceMenu(event, spaceId) {
+  function openSpaceMenu(event, space) {
     event.stopPropagation();
-    setOpenMenuId((current) => current === spaceId ? null : spaceId);
+    if (openMenuId === space.id) { setOpenMenuId(null); return; }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const items = (canInSpace(space, 'project.setting') ? 1 : 0) + (space.permissions?.manage ? 1 : 0);
+    const height = items * 36 + 12;
+    const width = 176;
+    // Below the button, or above it when there is no room at the bottom of the window.
+    const top = rect.bottom + 4 + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 4) : rect.bottom + 4;
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+    setMenuPosition({ top, left });
+    setOpenMenuId(space.id);
   }
 
   function confirmDelete() {
@@ -251,7 +276,7 @@ export function SidebarPanel({
                 {(canInSpace(space, 'project.setting') || space.permissions?.manage) && <button
                   type="button"
                   className={`space-more-button ${openMenuId === space.id ? 'is-open' : ''}`}
-                  onClick={(event) => openSpaceMenu(event, space.id)}
+                  onClick={(event) => openSpaceMenu(event, space)}
                   aria-label={`More options for ${space.name}`}
                   aria-haspopup="menu"
                   aria-expanded={openMenuId === space.id}
@@ -262,8 +287,8 @@ export function SidebarPanel({
                 {/* Keeps names and stars aligned on rows without the options button. */}
                 {!(canInSpace(space, 'project.setting') || space.permissions?.manage) && <span className="space-more-spacer" aria-hidden="true" />}
 
-                {openMenuId === space.id && (
-                  <div className="space-context-menu" role="menu">
+                {openMenuId === space.id && menuPosition && createPortal(
+                  <div className="space-context-menu" role="menu" ref={menuRef} style={{ top: menuPosition.top, left: menuPosition.left }}>
                     {/* Project settings need the "Project Setting" permission. */}
                     {canInSpace(space, 'project.setting') && (
                       <button
@@ -293,7 +318,8 @@ export function SidebarPanel({
                         <span>Delete space</span>
                       </button>
                     )}
-                  </div>
+                  </div>,
+                  document.body
                 )}
               </div>
             )) : (
