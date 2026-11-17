@@ -1476,5 +1476,16 @@ button.slv-inline-date:focus-visible {
 :is(.slv-table, .task-table) td.is-center > .slv-status-picker > .slv-status { width: 130px; padding: 0 18px; }
 
 /* List: room for the fixed-width status pill. */
-.slv-table .slv-col-work { width: 27.5%; }
+.slv-table .slv-col-work { width: 26.5%; }
+.slv-table .slv-col-priority { width: 11%; }
 .slv-table .slv-col-status { width: 13%; }
+
+/* Same-size priority labels (List and My Tasks): fixed width, icon + label start at one spot. */
+:is(.slv-table, .task-table) td.is-center > .slv-priority-picker { width: 108px; }
+:is(.slv-table, .task-table) td.is-center .slv-priority-trigger {
+  width: 100%;
+  justify-content: flex-start;
+  padding-left: 10px;
+  padding-right: 20px;
+}
+:is(.slv-table, .task-table) td.is-center .slv-priority-trigger > span { overflow: hidden; text-overflow: ellipsis; }
