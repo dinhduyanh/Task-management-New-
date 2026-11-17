@@ -103,3 +103,13 @@ export async function exchangeCodeForProfile(config, { code, codeVerifier, nonce
     picture: /^https:\/\//.test(String(claims.picture || '')) ? String(claims.picture) : null
   };
 }
+
+/** Start-up lines describing Google sign-in, with hints for the usual setup mistakes. */
+export function describeGoogleConfiguration(config = googleConfig()) {
+  if (googleEnabled(config)) return [`Google sign-in: on (redirect URI ${config.redirectUri}, app ${config.appUrl})`];
+  const missing = [!config.clientId && 'GOOGLE_CLIENT_ID', !config.clientSecret && 'GOOGLE_CLIENT_SECRET'].filter(Boolean);
+  const lines = [`Google sign-in: off (missing ${missing.join(' and ')} in backend/.env)`];
+  const lookalikes = Object.keys(process.env).filter((key) => /google/i.test(key) && !['GOOGLE_CLIENT_ID', 'GOOGLE_CLIENT_SECRET', 'GOOGLE_REDIRECT_URI', 'GOOGLE_AUTH_URL', 'GOOGLE_TOKEN_URL', 'GOOGLE_TIMEOUT_MS'].includes(key));
+  lookalikes.forEach((key) => lines.push(`  ! ${key} is not a recognised name - did you mean ${/secret/i.test(key) ? 'GOOGLE_CLIENT_SECRET' : 'GOOGLE_CLIENT_ID'}?`));
+  return lines;
+}
