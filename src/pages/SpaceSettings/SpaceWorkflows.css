@@ -53,3 +53,8 @@
   .wf-side { max-height: none; }
 }
 @media (max-width: 480px) { .wf-legend span:last-child { display: none; } }
+
+.wf-transitions li { padding: 0; background: transparent; }
+.wf-transition { display: grid; width: 100%; gap: 4px; padding: 7px 8px; border: 1px solid transparent; border-radius: 6px; background: var(--tf-bg-f7f8fa); color: inherit; cursor: pointer; font: inherit; text-align: left; }
+.wf-transition:hover { border-color: var(--tf-bd-dfe1e6); }
+.wf-transition.is-selected { border-color: var(--tf-bd-e56910); background: var(--tf-bg-fff3eb); }

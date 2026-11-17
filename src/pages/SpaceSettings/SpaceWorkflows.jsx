@@ -32,6 +32,7 @@ function WorkflowRow({ workflow, onOpen }) {
 
 /** Diagram + transition list of one workflow. */
 function WorkflowDetail({ workflow, onBack }) {
+  const [selected, setSelected] = useState(null); // transition shown in the diagram's details panel
   const names = Object.fromEntries(workflow.states.map((state) => [state.id, state]));
 
   return (
@@ -51,19 +52,21 @@ function WorkflowDetail({ workflow, onBack }) {
       </div>
 
       <div className="wf-layout">
-        <WorkflowDiagram workflow={workflow} />
+        <WorkflowDiagram workflow={workflow} selectedTransitionId={selected} onSelectTransition={setSelected} />
 
         <aside className="wf-side">
           <h2>Transitions</h2>
           <ol className="wf-transitions">
             {workflow.transitions.map((transition) => (
               <li key={transition.id}>
-                <span className="wf-transition-name">{transition.name}</span>
-                <span className="wf-transition-path">
-                  {transition.from ? <StateChip state={names[transition.from]} /> : <span className="wf-chip is-any">Any</span>}
-                  <Icon name="chevronsRight" size={12} />
-                  <StateChip state={names[transition.to]} />
-                </span>
+                <button type="button" className={`wf-transition ${selected === transition.id ? 'is-selected' : ''}`} onClick={() => setSelected(selected === transition.id ? null : transition.id)} aria-pressed={selected === transition.id}>
+                  <span className="wf-transition-name">{transition.name}</span>
+                  <span className="wf-transition-path">
+                    {transition.from ? <StateChip state={names[transition.from]} /> : <span className="wf-chip is-any">Any</span>}
+                    <Icon name="chevronsRight" size={12} />
+                    <StateChip state={names[transition.to]} />
+                  </span>
+                </button>
               </li>
             ))}
           </ol>
