@@ -33,7 +33,7 @@ function RuleModal({ permission, rules, data, onSave, onClose }) {
   const [fields, setFields] = useState(() => rules.filter((rule) => rule.type === 'field').map((rule) => rule.value));
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
-  const fieldsAllowed = permission.scope === 'task';
+  const projectLevel = permission.scope !== 'task';
   const allChecked = roles.length > 0 && roles.every((role) => roleNames.includes(role.name));
   const toggleRole = (name) => setRoleNames((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
 
@@ -48,7 +48,7 @@ function RuleModal({ permission, rules, data, onSave, onClose }) {
     const next = [
       ...roles.filter((role) => roleNames.includes(role.name)).map((role) => ({ type: 'role', value: role.name })),
       ...userIds.map((value) => ({ type: 'user', value })),
-      ...(fieldsAllowed ? fields.map((value) => ({ type: 'field', value })) : [])
+      ...fields.map((value) => ({ type: 'field', value }))
     ];
     const message = await onSave(next);
     setSaving(false);
@@ -124,15 +124,14 @@ function RuleModal({ permission, rules, data, onSave, onClose }) {
           <ChipSelect
             id="spr-fields"
             options={fieldOptions}
-            value={fieldsAllowed ? fields : []}
+            value={fields}
             onChange={setFields}
-            placeholder={fieldsAllowed ? 'Select fields' : 'Not available for this permission'}
+            placeholder="Select fields"
             ariaLabel="User in Field"
-            disabled={!fieldsAllowed}
           />
-          <small className="sp-hint">{fieldsAllowed
-            ? 'The person in that field of a work item gets this permission for that item.'
-            : `"${permission.label}" is not tied to a work item, so field rules do not apply.`}</small>
+          <small className="sp-hint">{projectLevel
+            ? `"${permission.label}" is not tied to one work item: anyone who is in the chosen field of any work item of this project gets it.`
+            : 'The person in that field of a work item gets this permission for that item.'}</small>
         </label>
       </div>
     </SettingsModal>

@@ -19,7 +19,10 @@ export const FIELD_RULES = {
   creator: { label: 'Creator / Reporter', description: 'The person who created (reported) the work item' }
 };
 
-// scope 'project': not tied to one work item, so "User in Field" rules do not apply.
+// scope 'task': checked against one work item; a "User in Field" rule means the person in that
+//   field of that item.
+// scope 'project': not tied to one work item; a "User in Field" rule means anyone who is in that
+//   field (assignee / creator) of at least one work item of the project.
 export const PERMISSION_GROUPS = [
   {
     id: 'project', label: 'Project permissions', permissions: [
@@ -106,7 +109,6 @@ export function validateRules(key, rules, spaceId = null) {
       if (!result.some((item) => item.type === 'role' && item.value === match)) result.push({ type, value: match });
     } else if (type === 'field') {
       if (!FIELD_RULES[value]) return { error: `Unknown field: ${value || '(empty)'}.` };
-      if (permission.scope !== 'task') return { error: `"${permission.label}" is not tied to a work item, so User in Field rules cannot be used.` };
       if (!result.some((item) => item.type === 'field' && item.value === value)) result.push({ type, value });
     } else if (type === 'user') {
       // Only project members: permissions never apply to people outside the project.
@@ -171,7 +173,11 @@ export function memberContext(user, spaceId, cache = null) {
     const isOwner = Boolean(space.owner_id) && space.owner_id === user.id;
     const isMember = Boolean(member) || isOwner;
     const isProjectAdmin = isAdmin(user) || isOwner || roles.some((role) => role.toLowerCase() === ADMIN_PROJECT_ROLE.toLowerCase());
-    context = { spaceId: id, userId: String(user.id), exists: true, isMember: isMember || isAdmin(user), isProjectAdmin, isOwner, roles, rules: projectRules(id) };
+    const held = db.prepare(`SELECT
+        EXISTS(SELECT 1 FROM work_items WHERE space_id = ? AND assignee_id = ?) AS assignee,
+        EXISTS(SELECT 1 FROM work_items WHERE space_id = ? AND creator_id = ?) AS creator`).get(id, user.id, id, user.id);
+    const fieldsHeld = { assignee: Boolean(held.assignee), creator: Boolean(held.creator) };
+    context = { spaceId: id, userId: String(user.id), fieldsHeld, exists: true, isMember: isMember || isAdmin(user), isProjectAdmin, isOwner, roles, rules: projectRules(id) };
   }
   cache?.set(id, context);
   return context;
@@ -191,7 +197,10 @@ export function grantsFor(context) {
     const all = rules.some((rule) => (rule.type === 'role'
       && (rule.value === ALL_MEMBER_ROLE || roles.includes(rule.value.toLowerCase())))
       || (rule.type === 'user' && rule.value === context.userId));
-    grants[key] = { all, fields: all ? [] : rules.filter((rule) => rule.type === 'field').map((rule) => rule.value) };
+    const fields = rules.filter((rule) => rule.type === 'field').map((rule) => rule.value);
+    // Project-level permissions: holding the field on any work item of the project is enough.
+    const byField = PERMISSION_BY_KEY[key].scope === 'project' && fields.some((field) => context.fieldsHeld?.[field]);
+    grants[key] = { all: all || byField, fields: all || byField ? [] : fields };
   }
   return grants;
 }
