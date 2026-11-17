@@ -13,6 +13,7 @@ import { useAppShell } from '../../context/appShellContext';
 import { useProjectPermissions, userAsPerson } from '../../services/projectPermissions';
 import { api } from '../../services/api';
 import { FILE_ACCEPT, formatBytes, validateUploadFile } from '../../services/fileTypes';
+import WorkflowModal from '../../components/workflow/WorkflowModal';
 import './TaskDetailDrawer.css';
 
 /** The signed-in user as a person record (assignee options, comment author). */
@@ -450,6 +451,7 @@ export default function TaskDetailDrawer({
   const [pendingAssignee, setPendingAssignee] = useState(null);
   const [pendingStatus, setPendingStatus] = useState('In Progress');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
   const [linkComposerOpen, setLinkComposerOpen] = useState(false);
   const [linkType, setLinkType] = useState('Relates to');
   const [linkedIssueId, setLinkedIssueId] = useState('');
@@ -488,10 +490,10 @@ export default function TaskDetailDrawer({
   }, [issue.id, issue.description]);
 
   useEffect(() => {
-    const onKeyDown = (event) => { if (event.key === 'Escape' && !startModalOpen && !deleteConfirmOpen) onClose(); };
+    const onKeyDown = (event) => { if (event.key === 'Escape' && !startModalOpen && !deleteConfirmOpen && !workflowOpen) onClose(); };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, startModalOpen, deleteConfirmOpen]);
+  }, [onClose, startModalOpen, deleteConfirmOpen, workflowOpen]);
 
   function recordHistory(action, detail = '') {
     const entry = {
@@ -951,7 +953,10 @@ export default function TaskDetailDrawer({
               <button type="button" className="td-secondary-button" onClick={() => { setTitleDraft(title); setEditingTitle(false); }}>Cancel</button>
             </div> : <div className="td-title-display"><h1 className="td-issue-title">{title}</h1>{allow.update && <button type="button" className="td-edit-button td-title-edit-button" title="Edit title" onClick={startTitleEdit}><Icon name="edit" size={13} /></button>}</div>}
             <div className="td-issue-actions-row">
-              <div className="td-heading-status"><StatusMenu issue={issue} allIssues={allIssues} onSelect={handleStatusChange} disabled={!allow.move} /></div>
+              <div className="td-heading-status">
+                <StatusMenu issue={issue} allIssues={allIssues} onSelect={handleStatusChange} disabled={!allow.move} />
+                <button type="button" className="td-workflow-button" onClick={() => setWorkflowOpen(true)} title={`View the ${type} workflow`} aria-label={`View the ${type} workflow`}><Icon name="workflow" size={15} /></button>
+              </div>
               <div className="td-action-buttons">
                 <button type="button" className="td-action-button" title={!allow.createChild ? NO_PERMISSION : allowedChildTypes.length ? `Create child: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'} disabled={!allowedChildTypes.length || !allow.createChild} onClick={() => onCreateChild(issue, allowedChildTypes)}><Icon name="plus" size={16} /></button>
  <button type="button" className="td-action-button td-ai-button" title="Ask the AI Project Assistant about this work item" aria-label="AI Project Assistant" onClick={() => openAssistant({ spaceId: issue.spaceId ?? space.id, taskIds: [issue.id] })}><Icon name="sparkles" size={15} /></button>
@@ -1134,6 +1139,7 @@ export default function TaskDetailDrawer({
           </div>
         </div>}
 
+        {workflowOpen && <WorkflowModal spaceId={issue.spaceId ?? space.id} issueType={type} status={issue.status} issueKey={key} onClose={() => setWorkflowOpen(false)} />}
         {deleteConfirmOpen && <div className="td-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteConfirmOpen(false); }}>
           <div className="td-start-modal" role="dialog" aria-modal="true">
             <div className="td-modal-title"><h2>Delete work item?</h2><button type="button" onClick={() => setDeleteConfirmOpen(false)}><Icon name="close" size={15} /></button></div>
