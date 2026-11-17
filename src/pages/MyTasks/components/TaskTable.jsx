@@ -78,13 +78,13 @@ export default function TaskTable({
                 <input type="checkbox" checked={allVisibleSelected} onChange={handleSelectAll} aria-label="Select all visible tasks" disabled={!pageRows.length} />
               </th>
               <th className="work-column">Work</th>
-              <th>Project</th>
-              <th>Assignee</th>
-              <th>Priority</th>
-              <th>Status</th>
-              <th>Create Date</th>
-              <th>Start Date</th>
-              <th>Due Date</th>
+              <th className="is-center">Project</th>
+              <th className="is-center">Assignee</th>
+              <th className="is-center">Priority</th>
+              <th className="is-center">Status</th>
+              <th className="is-center">Create Date</th>
+              <th className="is-center">Start Date</th>
+              <th className="is-center">Due Date</th>
             </tr>
           </thead>
 
@@ -105,15 +105,15 @@ export default function TaskTable({
                       <button type="button" className="task-name mt-title" onClick={() => onOpenTask(task)} title={issueSummary(task)}>{issueSummary(task)}</button>
                     </div>
                   </td>
-                  <td><span className="mt-project" title={space?.name || ''}>{space?.name || task.spaceCode || '—'}</span></td>
-                  <td>
+                  <td className="is-center"><span className="mt-project" title={space?.name || ''}>{space?.name || task.spaceCode || '—'}</span></td>
+                  <td className="is-center">
                     <AssigneeCell value={task.assignee} members={space?.members || []} disabled={!can('task.assign', task)} onAssign={(member) => onUpdateTask(task.id, { assignee: member })} />
                   </td>
-                  <td><PriorityCell value={task.priority} disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { priority: value })} /></td>
-                  <td><StatusCell issue={task} allIssues={spaceTasks} disabled={!can('task.move', task)} onChange={(value) => onChangeStatus(task, value)} /></td>
-                  <td className="date-cell">{formatDateTime(dateValue(task, 'createdAt'))}</td>
-                  <td className="date-cell slv-date-cell"><EditableDateCell value={dateValue(task, 'startDate')} label="Start Date" disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { startDate: value })} /></td>
-                  <td className="date-cell slv-date-cell"><EditableDateCell value={dateValue(task, 'dueDate')} label="Due Date" disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { dueDate: value })} /></td>
+                  <td className="is-center"><PriorityCell value={task.priority} disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { priority: value })} /></td>
+                  <td className="is-center"><StatusCell issue={task} allIssues={spaceTasks} disabled={!can('task.move', task)} onChange={(value) => onChangeStatus(task, value)} /></td>
+                  <td className="date-cell is-center">{formatDateTime(dateValue(task, 'createdAt'))}</td>
+                  <td className="date-cell slv-date-cell is-center"><EditableDateCell value={dateValue(task, 'startDate')} label="Start Date" disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { startDate: value })} /></td>
+                  <td className="date-cell slv-date-cell is-center"><EditableDateCell value={dateValue(task, 'dueDate')} label="Due Date" disabled={!can('task.update', task)} onChange={(value) => onUpdateTask(task.id, { dueDate: value })} /></td>
                 </tr>
               );
             }) : (

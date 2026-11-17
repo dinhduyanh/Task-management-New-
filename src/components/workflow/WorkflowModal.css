@@ -16,3 +16,5 @@
 .wfm-muted { color: var(--tf-fg-8993a4); font-size: 12px; }
 .wfm-empty { padding: 40px; color: var(--tf-fg-6b778c); font-size: 13px; text-align: center; }
 @media (max-width: 600px) { .wfm-backdrop { padding: 0; } .wfm-dialog { max-height: 100vh; border-radius: 0; } }
+.wfm-desc { margin: 0; color: var(--tf-fg-5e6c84); font-size: 12.5px; }
+.wfm-desc span { color: var(--tf-fg-8993a4); }

@@ -1393,24 +1393,24 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
         </colgroup><thead><tr>
           <th className="slv-check-col"><input type="checkbox" checked={allPageSelected} onChange={togglePage} disabled={!pageRows.length} aria-label="Select all visible rows" /></th>
           <th className="slv-work-col"><SortHeading label="Work" field="summary" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Assignee" field="assignee" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Priority" field="priority" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Status" field="status" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Create Date" field="createdAt" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Start Date" field="startDate" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="End Date" field="dueDate" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Assignee" field="assignee" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Priority" field="priority" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Status" field="status" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Create Date" field="createdAt" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Start Date" field="startDate" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="End Date" field="dueDate" sort={sort} onSort={changeSort} /></th>
         </tr></thead><tbody>
           {pageRows.length ? pageRows.map((issue) => {
             const type = issueType(issue); const assignee = assigneeName(issue);
             return <tr key={issue.id} className={selected.includes(issue.id) ? 'row-selected' : ''}>
               <td className="slv-check-col"><input type="checkbox" checked={selected.includes(issue.id)} onChange={() => setSelected((current) => current.includes(issue.id) ? current.filter((id) => id !== issue.id) : [...current, issue.id])} aria-label={`Select ${issueKey(issue)}`} /></td>
               <td><div className="slv-work-cell"><span className={`slv-type-icon type-${type.toLowerCase().replace(/[^a-z]+/g, '-')}`}><Icon name={iconForType(type)} size={15} /></span><button type="button" onClick={() => setDetailIssueId(issue.id)} className="slv-key" title={`Open ${issueKey(issue)} details`}>{issueKey(issue)}</button><span className="slv-summary" title={issueSummary(issue)}>{issueSummary(issue)}</span></div></td>
-              <td><AssigneeCell value={issue.assignee} members={space.members} disabled={!can('task.assign', issue)} onAssign={(member) => onUpdateTask(issue.id, { assignee: member })} /></td>
-              <td><PriorityCell value={issue.priority} disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { priority: value })} /></td>
-              <td><StatusCell issue={issue} allIssues={inSpace} disabled={!can('task.move', issue)} onChange={(value) => changeStatus(issue, value)} /></td>
-              <td className="slv-date-cell">{formatDateTime(dateValue(issue, 'createdAt'))}</td>
-              <td className="slv-date-cell"><EditableDateCell value={dateValue(issue, 'startDate')} label="Start Date" disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { startDate: value })} /></td>
-              <td className="slv-date-cell"><EditableDateCell value={dateValue(issue, 'dueDate')} label="Due Date" disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { dueDate: value })} /></td>
+              <td className="is-center"><AssigneeCell value={issue.assignee} members={space.members} disabled={!can('task.assign', issue)} onAssign={(member) => onUpdateTask(issue.id, { assignee: member })} /></td>
+              <td className="is-center"><PriorityCell value={issue.priority} disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { priority: value })} /></td>
+              <td className="is-center"><StatusCell issue={issue} allIssues={inSpace} disabled={!can('task.move', issue)} onChange={(value) => changeStatus(issue, value)} /></td>
+              <td className="slv-date-cell is-center">{formatDateTime(dateValue(issue, 'createdAt'))}</td>
+              <td className="slv-date-cell is-center"><EditableDateCell value={dateValue(issue, 'startDate')} label="Start Date" disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { startDate: value })} /></td>
+              <td className="slv-date-cell is-center"><EditableDateCell value={dateValue(issue, 'dueDate')} label="Due Date" disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { dueDate: value })} /></td>
             </tr>;
           }) : <tr><td colSpan="8" className="slv-empty"><div><Icon name="file" size={28} /><strong>{inSpace.length ? 'No work items match your filters' : 'No work items yet'}</strong><span>{inSpace.length ? 'Try changing your search or filters.' : 'Work items created in this Space will appear here.'}</span>{!inSpace.length && mayCreate && <button type="button" onClick={() => { setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); setCreateOpen(true); }}><Icon name="plus" size={14} /> Create</button>}</div></td></tr>}
         </tbody></table></div>

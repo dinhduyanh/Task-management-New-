@@ -1424,3 +1424,28 @@ button.slv-inline-date.is-open,
 button.slv-inline-date:focus-visible {
   padding-right: 24px;
 }
+
+/* =========================================
+   CENTRED COLUMNS (List and My Tasks)
+   Every column except Work is centred: header and cell content share one axis.
+========================================= */
+.slv-table th.is-center,
+.slv-table td.is-center,
+.task-table th.is-center,
+.task-table td.is-center { text-align: center !important; }
+.slv-table th.is-center .slv-sort-heading { margin-inline: auto; justify-content: center; }
+:is(.slv-table, .task-table) td.is-center > :is(.slv-priority-picker, .slv-status-picker, .slv-assignee-picker, .slv-inline-date-wrap, .slv-inline-date, .mt-project) {
+  width: fit-content;
+  max-width: 100%;
+  margin-inline: auto;
+  justify-content: center;
+  vertical-align: middle;
+}
+/* Menus opened from a centred cell keep their normal left-aligned content. */
+:is(.slv-table, .task-table) td.is-center :is([role="listbox"], [role="menu"], .slv-status-menu, .slv-priority-menu, .slv-assignee-menu) { text-align: left; }
+/* Date buttons: keep the date itself centred; the calendar icon floats at the right edge. */
+:is(.slv-table, .task-table) td.is-center .slv-inline-date { justify-content: center; padding-inline: 22px; }
+:is(.slv-table, .task-table) td.is-center .slv-inline-date > svg { position: absolute; right: 6px; }
+/* Priority: the hover chevron floats at the right so the icon + label stay centred. */
+:is(.slv-table, .task-table) td.is-center .slv-priority-trigger { position: relative; padding-inline: 20px; }
+:is(.slv-table, .task-table) td.is-center .slv-priority-trigger > svg:last-child { position: absolute; right: 4px; }

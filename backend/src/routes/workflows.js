@@ -20,8 +20,12 @@ router.get('/spaces/:spaceId/workflows', (req, res) => {
     const mine = rows.filter((row) => types.includes(String(row.issue_type || '').toLowerCase()));
     const byState = {};
     mine.forEach((row) => { byState[row.status] = (byState[row.status] || 0) + row.count; });
+    const issueTypeCounts = Object.fromEntries(workflow.issueTypes.map((type) => [type, mine
+      .filter((row) => String(row.issue_type || '').toLowerCase() === type.toLowerCase())
+      .reduce((sum, row) => sum + row.count, 0)]));
     return {
       ...workflow,
+      issueTypeCounts,
       workItemCount: mine.reduce((sum, row) => sum + row.count, 0),
       states: workflow.states.map((state) => ({ ...state, workItemCount: byState[state.name] || 0 }))
     };

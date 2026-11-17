@@ -8,6 +8,7 @@ import Toast from '../../components/common/Toast';
 import { canInSpace } from '../../services/projectPermissions';
 import { PROJECT_FEATURES, isFeatureVisible } from '../SpacesList/projectNavigation';
 import WorkflowSettings from './SpaceWorkflows';
+import WorkItemsSettings from './SpaceWorkItems';
 import './SpaceSettings.css';
 
 const SETTINGS_ITEMS = [
@@ -19,7 +20,6 @@ const SETTINGS_ITEMS = [
   { label: 'Work Items', icon: 'tasks' }
 ];
 
-const ISSUE_TYPES = ['Epic', 'Task', 'Bug', 'Improvement', 'Story', 'Sub-task', 'Feature'];
 function parseDate(value) {
   if (!value) return null;
   const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(value).trim());
@@ -363,19 +363,6 @@ function FeaturesSettings({ space = {}, onSetFeatures = async () => '' }) {
   );
 }
 
-function WorkItemsSettings() {
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Work Items</h1><p>Issue types that can be used in this space.</p></div>
-      <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Issue types</strong><span>{ISSUE_TYPES.length} types</span></div>
-        <div className="settings-issue-types">{ISSUE_TYPES.map((type) => <div className="settings-issue-type" key={type}><span className="settings-issue-type-icon"><Icon name={type === 'Bug' ? 'bug' : 'tasks'} size={16} /></span><strong>{type}</strong></div>)}</div>
-        <p className="settings-note">Issue type creation and configuration will be connected to the work item module.</p>
-      </div>
-    </section>
-  );
-}
-
 export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {}, onAddMember = async () => '', onAddMembers = async () => '', onRemoveMember = async () => '', onSetFeatures = async () => '' }) {
   const [activeTab, setActiveTab] = useState('Summary');
   const pageContent = useMemo(() => {
@@ -384,7 +371,7 @@ export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onG
       case 'Permissions': return <PermissionsSettings space={space} />;
       case 'Features': return <FeaturesSettings space={space} onSetFeatures={onSetFeatures} />;
       case 'Workflow': return <WorkflowSettings key={space.id} space={space} />;
-      case 'Work Items': return <WorkItemsSettings />;
+      case 'Work Items': return <WorkItemsSettings key={space.id} space={space} />;
       default: return <SummarySettings key={space.id} space={space} onSave={onSave} />;
     }
   }, [activeTab, onSave, onAddMember, onAddMembers, onRemoveMember, onSetFeatures, space]);

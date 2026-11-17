@@ -49,7 +49,7 @@ export default function WorkflowModal({ spaceId, issueType, status, issueKey, on
           <span className="wfm-icon" aria-hidden="true"><Icon name="workflow" size={16} /></span>
           <div className="wfm-title">
             <h2>{workflow ? workflow.name : 'Workflow'}</h2>
-            <span>{issueType}{issueKey ? ` · ${issueKey}` : ''}</span>
+            <span>{issueKey ? `${issueType} · ${issueKey}` : `Workflow of ${issueType}`}</span>
           </div>
           <button type="button" className="wfm-close" onClick={onClose} aria-label="Close"><Icon name="close" size={16} /></button>
         </header>
@@ -57,7 +57,7 @@ export default function WorkflowModal({ spaceId, issueType, status, issueKey, on
         {!workflow && !error && <div className="wfm-empty">Loading workflow…</div>}
         {workflow && (
           <>
-            <div className="wfm-summary">
+            {status && <div className="wfm-summary">
               <div>
                 <span className="wfm-label">Current status</span>
                 {current ? <StateChip state={current} /> : <span className="wfm-muted">{status || '—'}</span>}
@@ -70,7 +70,8 @@ export default function WorkflowModal({ spaceId, issueType, status, issueKey, on
                   </span>
                 )) : <span className="wfm-muted">{current ? 'No further transitions (final status)' : 'This status is not part of the workflow'}</span>}
               </div>
-            </div>
+            </div>}
+            {!status && <p className="wfm-desc">{workflow.description} <span>Used by {workflow.issueTypes.join(', ')}.</span></p>}
             <WorkflowDiagram workflow={workflow} currentStatus={status} height="min(560px, calc(100vh - 220px))" />
           </>
         )}
