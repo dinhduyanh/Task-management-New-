@@ -1,20 +1,23 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Icon from '../../components/common/Icon';
 import { useAppShell } from '../../context/appShellContext';
 import { api } from '../../services/api';
+import ChipSelect from '../../components/common/ChipSelect';
 import { ConfirmModal } from '../SpaceBacklog/SprintModals';
+import SettingsModal from '../SystemSettings/SettingsModal';
 import './SpacePermissions.css';
 
-function RuleBadge({ rule, fieldLabels, locked = false, onRemove = null, disabled = false }) {
-  const isField = rule.type === 'field';
-  const value = isField ? fieldLabels[rule.value] || rule.value : rule.value;
+const KIND_LABEL = { role: 'Role', user: 'User', field: 'Field' };
+
+function RuleBadge({ rule, label, locked = false, onRemove = null, disabled = false }) {
+  const kind = KIND_LABEL[rule.type] || rule.type;
   return (
-    <span className={`sp-rule ${isField ? 'is-field' : 'is-role'} ${locked ? 'is-locked' : ''}`}>
-      <span className="sp-rule-kind">{isField ? 'User in Field' : 'Role'}</span>
-      <span className="sp-rule-value">{value}</span>
+    <span className={`sp-rule is-${rule.type} ${locked ? 'is-locked' : ''}`}>
+      <span className="sp-rule-kind">{kind}</span>
+      <span className="sp-rule-value">{label}</span>
       {locked && <Icon name="lock" size={12} />}
       {onRemove && (
-        <button type="button" className="sp-rule-remove" onClick={onRemove} disabled={disabled} aria-label={`Remove ${isField ? 'User in Field' : 'Role'} ${value}`} title="Remove rule">
+        <button type="button" className="sp-rule-remove" onClick={onRemove} disabled={disabled} aria-label={`Remove ${kind} ${label}`} title="Remove rule">
           <Icon name="close" size={11} />
         </button>
       )}
@@ -22,55 +25,117 @@ function RuleBadge({ rule, fieldLabels, locked = false, onRemove = null, disable
   );
 }
 
-/** "Add rule" button with a menu of the roles and fields not used yet. */
-function AddRuleMenu({ permission, rules, roles, fields, allMemberRole, disabled, onAdd }) {
-  const [open, setOpen] = useState(false);
-  const rootRef = useRef(null);
-  useEffect(() => {
-    if (!open) return undefined;
-    const onPointer = (event) => { if (rootRef.current && !rootRef.current.contains(event.target)) setOpen(false); };
-    const onKey = (event) => { if (event.key === 'Escape') setOpen(false); };
-    document.addEventListener('mousedown', onPointer);
-    document.addEventListener('keydown', onKey);
-    return () => { document.removeEventListener('mousedown', onPointer); document.removeEventListener('keydown', onKey); };
-  }, [open]);
-
-  const usedRoles = new Set(rules.filter((rule) => rule.type === 'role').map((rule) => rule.value));
-  const usedFields = new Set(rules.filter((rule) => rule.type === 'field').map((rule) => rule.value));
-  const availableRoles = roles.filter((role) => role.name !== 'Admin Project' && !usedRoles.has(role.name));
-  const availableFields = fields.filter((field) => !usedFields.has(field.value));
+/** Nexus-style "UPDATE FOR … PERMISSION" dialog: Role checkboxes, User and User in Field pickers. */
+function RuleModal({ permission, rules, data, onSave, onClose }) {
+  const roles = data.roles.filter((role) => role.name !== data.adminRole);
+  const [roleNames, setRoleNames] = useState(() => rules.filter((rule) => rule.type === 'role').map((rule) => rule.value));
+  const [userIds, setUserIds] = useState(() => rules.filter((rule) => rule.type === 'user').map((rule) => rule.value));
+  const [fields, setFields] = useState(() => rules.filter((rule) => rule.type === 'field').map((rule) => rule.value));
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
   const fieldsAllowed = permission.scope === 'task';
-  const choose = (rule) => { setOpen(false); onAdd(rule); };
+  const allChecked = roles.length > 0 && roles.every((role) => roleNames.includes(role.name));
+  const toggleRole = (name) => setRoleNames((current) => (current.includes(name) ? current.filter((item) => item !== name) : [...current, name]));
+
+  const userOptions = data.users
+    .filter((user) => user.active || userIds.includes(user.id))
+    .map((user) => ({ value: user.id, label: user.fullName || user.username, sublabel: user.email || `@${user.username}`, user }));
+  const fieldOptions = data.fields.map((field) => ({ value: field.value, label: field.label, sublabel: field.description }));
+
+  async function submit() {
+    setSaving(true);
+    setError('');
+    const next = [
+      ...roles.filter((role) => roleNames.includes(role.name)).map((role) => ({ type: 'role', value: role.name })),
+      ...userIds.map((value) => ({ type: 'user', value })),
+      ...(fieldsAllowed ? fields.map((value) => ({ type: 'field', value })) : [])
+    ];
+    const message = await onSave(next);
+    setSaving(false);
+    if (message) setError(message);
+    else onClose();
+  }
 
   return (
-    <div className="sp-add-rule" ref={rootRef}>
-      <button type="button" className="sp-add-rule-button" onClick={() => setOpen((value) => !value)} disabled={disabled} aria-expanded={open} aria-haspopup="menu" aria-label={`Add access rule to ${permission.label}`}>
-        <Icon name="plus" size={12} /> Add rule
-      </button>
-      {open && (
-        <div className="sp-rule-menu" role="menu">
-          <div className="sp-rule-menu-group">Role</div>
-          {availableRoles.length ? availableRoles.map((role) => (
-            <button type="button" role="menuitem" key={role.id} onClick={() => choose({ type: 'role', value: role.name })}>
-              <span className="sp-rule-menu-kind is-role">Role</span>
-              <span>
-                <strong>{role.name}</strong>
-                <small>{role.name === allMemberRole ? 'Every member of the project' : role.description || 'Members with this project role'}</small>
-              </span>
-            </button>
-          )) : <div className="sp-rule-menu-empty">Every role is already listed.</div>}
-          <div className="sp-rule-menu-group">User in Field</div>
-          {!fieldsAllowed ? (
-            <div className="sp-rule-menu-empty">Not available: this permission is not tied to a work item.</div>
-          ) : availableFields.length ? availableFields.map((field) => (
-            <button type="button" role="menuitem" key={field.value} onClick={() => choose({ type: 'field', value: field.value })}>
-              <span className="sp-rule-menu-kind is-field">Field</span>
-              <span><strong>{field.label}</strong><small>{field.description}</small></span>
-            </button>
-          )) : <div className="sp-rule-menu-empty">Both fields are already listed.</div>}
+    <SettingsModal
+      title={`UPDATE FOR ${permission.label.toUpperCase()} PERMISSION`}
+      onClose={onClose}
+      onSubmit={submit}
+      footer={<>
+        {error && <span className="ss-form-error" role="alert">{error}</span>}
+        <button type="button" className="ss-button" onClick={onClose}>Cancel</button>
+        <button type="submit" className="ss-button is-primary" disabled={saving}>{saving ? 'Updating…' : 'Update'}</button>
+      </>}
+    >
+      <div className="spr-modal">
+        <div className="spr-grant">Grant to</div>
+
+        <div className="sp-field sp-role-field">
+          <div className="sp-role-head">
+            <span id="spr-roles">Role</span>
+            <label className="sp-select-all">
+              <input
+                type="checkbox"
+                checked={allChecked}
+                ref={(el) => { if (el) el.indeterminate = !allChecked && roleNames.length > 0; }}
+                onChange={() => setRoleNames(allChecked ? [] : roles.map((role) => role.name))}
+              />
+              Select all role
+            </label>
+          </div>
+          <div className="sp-role-list" role="group" aria-labelledby="spr-roles">
+            <label className="sp-role-row is-checked is-locked" title={`${data.adminRole} always has every permission.`}>
+              <input type="checkbox" checked disabled />
+              <span className="sp-role-name">{data.adminRole}</span>
+              <Icon name="lock" size={11} />
+              <span className="sp-role-desc">always has every permission</span>
+            </label>
+            {roles.map((role) => {
+              const checked = roleNames.includes(role.name);
+              const description = role.name === data.allMemberRole ? 'every member of the project' : role.description;
+              return (
+                <label key={role.id} className={`sp-role-row ${checked ? 'is-checked' : ''}`} title={description || role.name}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleRole(role.name)} />
+                  <span className="sp-role-name">{role.name}</span>
+                  {description && <span className="sp-role-desc">{description}</span>}
+                </label>
+              );
+            })}
+          </div>
         </div>
-      )}
-    </div>
+
+        <label className="sp-field" htmlFor="spr-users">
+          <span>User</span>
+          <ChipSelect
+            id="spr-users"
+            options={userOptions}
+            value={userIds}
+            onChange={setUserIds}
+            placeholder="Search project members by name or email"
+            ariaLabel="Users"
+            chipLabel={(option) => (option.user?.email ? `${option.label} - ${option.user.email}` : option.label)}
+            emptyText={data.users.length ? 'User not found' : 'This project has no members yet.'}
+          />
+          <small className="sp-hint">Only members of this project can be chosen.</small>
+        </label>
+
+        <label className="sp-field" htmlFor="spr-fields">
+          <span>User in Field</span>
+          <ChipSelect
+            id="spr-fields"
+            options={fieldOptions}
+            value={fieldsAllowed ? fields : []}
+            onChange={setFields}
+            placeholder={fieldsAllowed ? 'Select fields' : 'Not available for this permission'}
+            ariaLabel="User in Field"
+            disabled={!fieldsAllowed}
+          />
+          <small className="sp-hint">{fieldsAllowed
+            ? 'The person in that field of a work item gets this permission for that item.'
+            : `"${permission.label}" is not tied to a work item, so field rules do not apply.`}</small>
+        </label>
+      </div>
+    </SettingsModal>
   );
 }
 
@@ -82,6 +147,7 @@ export default function PermissionsSettings({ space, onChanged = () => {} }) {
   const [notice, setNotice] = useState(null); // { type, message }
   const [confirmReset, setConfirmReset] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
+  const [editing, setEditing] = useState(null); // permission whose rules are open in the dialog
 
   useEffect(() => {
     let active = true;
@@ -97,6 +163,7 @@ export default function PermissionsSettings({ space, onChanged = () => {} }) {
     return () => window.clearTimeout(timer);
   }, [notice]);
 
+  /** Saves a rule list. Resolves to '' or an error message. */
   async function saveRules(permission, rules) {
     const previous = data;
     setData((current) => ({ ...current, rules: { ...current.rules, [permission.key]: rules } }));
@@ -105,9 +172,11 @@ export default function PermissionsSettings({ space, onChanged = () => {} }) {
       setData(await api.updateSpacePermission(space.id, permission.key, rules));
       setNotice({ type: 'success', message: `${permission.label} updated.` });
       onChanged();
+      return '';
     } catch (saveError) {
       setData(previous);
       setNotice({ type: 'error', message: saveError.message });
+      return saveError.message;
     } finally {
       setSaving('');
     }
@@ -136,6 +205,8 @@ export default function PermissionsSettings({ space, onChanged = () => {} }) {
   }
 
   const fieldLabels = Object.fromEntries(data.fields.map((field) => [field.value, field.label]));
+  const userLabels = Object.fromEntries((data.users || []).map((user) => [user.id, user.fullName || user.username]));
+  const ruleLabel = (rule) => (rule.type === 'field' ? fieldLabels[rule.value] || rule.value : rule.type === 'user' ? userLabels[rule.value] || 'Unknown user' : rule.value);
   const adminRule = { type: 'role', value: data.adminRole };
   const canEdit = data.canEdit;
 
@@ -144,7 +215,7 @@ export default function PermissionsSettings({ space, onChanged = () => {} }) {
       <div className="sp-perm-heading">
         <div className="settings-content-heading">
           <h1>Permissions</h1>
-          <p>Choose who can do what in this project. Rules can name a project role or a person field of the work item (its Assignee or Creator).</p>
+          <p>Choose who can do what in this project. Rules can name a project role, a specific member, or a person field of the work item (its Assignee or Creator / Reporter).</p>
         </div>
         {canEdit && <button type="button" className="sp-button" onClick={() => setConfirmReset(true)}><Icon name="refresh" size={14} /> Reset to defaults</button>}
       </div>
@@ -181,26 +252,20 @@ export default function PermissionsSettings({ space, onChanged = () => {} }) {
                     <small>{permission.description}</small>
                   </div>
                   <div className="sp-perm-rules" role="cell">
-                    <RuleBadge rule={adminRule} fieldLabels={fieldLabels} locked />
+                    <RuleBadge rule={adminRule} label={data.adminRole} locked />
                     {rules.map((rule) => (
                       <RuleBadge
                         key={`${rule.type}:${rule.value}`}
                         rule={rule}
-                        fieldLabels={fieldLabels}
+                        label={ruleLabel(rule)}
                         disabled={busy}
                         onRemove={canEdit ? () => saveRules(permission, rules.filter((item) => item !== rule)) : null}
                       />
                     ))}
                     {canEdit && (
-                      <AddRuleMenu
-                        permission={permission}
-                        rules={rules}
-                        roles={data.roles}
-                        fields={data.fields}
-                        allMemberRole={data.allMemberRole}
-                        disabled={busy}
-                        onAdd={(rule) => saveRules(permission, [...rules, rule])}
-                      />
+                      <button type="button" className="sp-add-rule-button" onClick={() => setEditing(permission)} disabled={busy} aria-label={`Add access rule to ${permission.label}`}>
+                        <Icon name="plus" size={12} /> Add rule
+                      </button>
                     )}
                   </div>
                 </div>
@@ -209,6 +274,16 @@ export default function PermissionsSettings({ space, onChanged = () => {} }) {
           </div>
         </div>
       ))}
+
+      {editing && (
+        <RuleModal
+          permission={editing}
+          rules={data.rules[editing.key] || []}
+          data={data}
+          onSave={(rules) => saveRules(editing, rules)}
+          onClose={() => setEditing(null)}
+        />
+      )}
 
       {confirmReset && (
         <ConfirmModal

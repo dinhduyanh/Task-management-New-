@@ -3,6 +3,7 @@
 // Each project (Space) has an access rule list per permission. A rule is either
 //   { type: 'role',  value: '<project role name>' }   -> members holding that role
 //   { type: 'field', value: 'assignee' | 'creator' }   -> the work item's assignee / creator
+//   { type: 'user',  value: '<user id>' }               -> one project member
 // Two built-in project roles exist:
 //   "Admin Project" - the project owner, system administrators and members given this role.
 //                     They always hold every permission (the rule cannot be removed).
@@ -15,7 +16,7 @@ export const ADMIN_PROJECT_ROLE = 'Admin Project';
 export const ALL_MEMBER_ROLE = 'All Member';
 export const FIELD_RULES = {
   assignee: { label: 'Assignee', description: 'The person the work item is assigned to' },
-  creator: { label: 'Creator', description: 'The person who created the work item' }
+  creator: { label: 'Creator / Reporter', description: 'The person who created (reported) the work item' }
 };
 
 // scope 'project': not tied to one work item, so "User in Field" rules do not apply.
@@ -73,7 +74,7 @@ export function defaultRules(key) {
 
 function cleanRules(rules) {
   return (Array.isArray(rules) ? rules : [])
-    .filter((rule) => rule && (rule.type === 'role' || rule.type === 'field'))
+    .filter((rule) => rule && (rule.type === 'role' || rule.type === 'field' || rule.type === 'user'))
     .map((rule) => ({ type: rule.type, value: String(rule.value) }))
     .filter((rule) => rule.value && rule.value !== ADMIN_PROJECT_ROLE);
 }
@@ -89,7 +90,7 @@ export function projectRules(spaceId) {
  * Validates a rule list for one permission. Returns { rules } or { error }.
  * Role rules must name an existing project role; field rules only apply to work item permissions.
  */
-export function validateRules(key, rules) {
+export function validateRules(key, rules, spaceId = null) {
   const permission = PERMISSION_BY_KEY[key];
   if (!permission) return { error: 'Unknown permission.' };
   if (!Array.isArray(rules)) return { error: 'Rules must be a list.' };
@@ -107,8 +108,15 @@ export function validateRules(key, rules) {
       if (!FIELD_RULES[value]) return { error: `Unknown field: ${value || '(empty)'}.` };
       if (permission.scope !== 'task') return { error: `"${permission.label}" is not tied to a work item, so User in Field rules cannot be used.` };
       if (!result.some((item) => item.type === 'field' && item.value === value)) result.push({ type, value });
+    } else if (type === 'user') {
+      // Only project members: permissions never apply to people outside the project.
+      const user = db.prepare('SELECT id, is_active FROM users WHERE id = ?').get(value);
+      const space = spaceId ? db.prepare('SELECT owner_id FROM spaces WHERE id = ?').get(String(spaceId)) : null;
+      const member = spaceId && (space?.owner_id === value || db.prepare('SELECT 1 FROM space_members WHERE space_id = ? AND user_id = ?').get(String(spaceId), value));
+      if (!user || !user.is_active || !member) return { error: 'User rules can only name active members of this project.' };
+      if (!result.some((item) => item.type === 'user' && item.value === value)) result.push({ type, value });
     } else {
-      return { error: 'Each rule must be a Role or a User in Field rule.' };
+      return { error: 'Each rule must be a Role, a User or a User in Field rule.' };
     }
   }
   return { rules: result };
@@ -122,6 +130,16 @@ export function saveRules(spaceId, key, rules) {
 
 export function resetRules(spaceId) {
   db.prepare('DELETE FROM project_permissions WHERE space_id = ?').run(String(spaceId));
+}
+
+/** Removes a person's User rules from a project (when they leave it). Defaults are untouched. */
+export function removeUserFromRules(spaceId, userId) {
+  const update = db.prepare('UPDATE project_permissions SET rules_json = ?, updated_at = ? WHERE space_id = ? AND permission_key = ?');
+  for (const row of db.prepare('SELECT permission_key, rules_json FROM project_permissions WHERE space_id = ?').all(String(spaceId))) {
+    const rules = cleanRules(parseJson(row.rules_json, []));
+    const next = rules.filter((rule) => !(rule.type === 'user' && rule.value === String(userId)));
+    if (next.length !== rules.length) update.run(JSON.stringify(next), nowIso(), String(spaceId), row.permission_key);
+  }
 }
 
 /** Renames (or, with newName null, removes) a project role inside every saved rule list. */
@@ -145,7 +163,7 @@ export function memberContext(user, spaceId, cache = null) {
   const id = String(spaceId || '');
   if (cache?.has(id)) return cache.get(id);
   const space = db.prepare('SELECT id, owner_id FROM spaces WHERE id = ?').get(id);
-  let context = { spaceId: id, exists: Boolean(space), isMember: false, isProjectAdmin: false, isOwner: false, roles: [] };
+  let context = { spaceId: id, userId: user ? String(user.id) : null, exists: Boolean(space), isMember: false, isProjectAdmin: false, isOwner: false, roles: [] };
   if (space && user) {
     const member = db.prepare('SELECT member_json FROM space_members WHERE space_id = ? AND user_id = ?').get(id, user.id);
     const record = member ? parseJson(member.member_json, {}) : null;
@@ -153,7 +171,7 @@ export function memberContext(user, spaceId, cache = null) {
     const isOwner = Boolean(space.owner_id) && space.owner_id === user.id;
     const isMember = Boolean(member) || isOwner;
     const isProjectAdmin = isAdmin(user) || isOwner || roles.some((role) => role.toLowerCase() === ADMIN_PROJECT_ROLE.toLowerCase());
-    context = { spaceId: id, exists: true, isMember: isMember || isAdmin(user), isProjectAdmin, isOwner, roles, rules: projectRules(id) };
+    context = { spaceId: id, userId: String(user.id), exists: true, isMember: isMember || isAdmin(user), isProjectAdmin, isOwner, roles, rules: projectRules(id) };
   }
   cache?.set(id, context);
   return context;
@@ -170,8 +188,9 @@ export function grantsFor(context) {
     if (!context.isMember) { grants[key] = { all: false, fields: [] }; continue; }
     const rules = context.rules[key] || [];
     const roles = context.roles.map((role) => role.toLowerCase());
-    const all = rules.some((rule) => rule.type === 'role'
-      && (rule.value === ALL_MEMBER_ROLE || roles.includes(rule.value.toLowerCase())));
+    const all = rules.some((rule) => (rule.type === 'role'
+      && (rule.value === ALL_MEMBER_ROLE || roles.includes(rule.value.toLowerCase())))
+      || (rule.type === 'user' && rule.value === context.userId));
     grants[key] = { all, fields: all ? [] : rules.filter((rule) => rule.type === 'field').map((rule) => rule.value) };
   }
   return grants;

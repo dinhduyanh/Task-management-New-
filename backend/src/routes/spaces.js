@@ -3,7 +3,7 @@ import { db, createId, nowIso, parseJson, spaceRowToObject, logActivity } from '
 import { canAccessSpace, canManageSpace, spaceFilter } from '../access.js';
 import {
   ADMIN_PROJECT_ROLE, ALL_MEMBER_ROLE, FIELD_RULES, PERMISSION_GROUPS, can, denied, grantsFor,
-  memberContext, projectRules, resetRules, saveRules, validateRules
+  memberContext, projectRules, removeUserFromRules, resetRules, saveRules, validateRules
 } from '../projectPermissions.js';
 
 const router = Router();
@@ -312,7 +312,10 @@ router.delete('/:spaceId/members/:userId', (req, res) => {
   const owner = db.prepare('SELECT owner_id FROM spaces WHERE id = ?').get(spaceId)?.owner_id;
   if (owner && owner === userId) return res.status(400).json({ error: 'The project owner cannot be removed.' });
   const result = db.prepare('DELETE FROM space_members WHERE space_id = ? AND user_id = ?').run(spaceId, userId);
-  if (result.changes) db.prepare('DELETE FROM space_pins WHERE space_id = ? AND user_id = ?').run(spaceId, userId);
+  if (result.changes) {
+    db.prepare('DELETE FROM space_pins WHERE space_id = ? AND user_id = ?').run(spaceId, userId);
+    removeUserFromRules(spaceId, userId); // their User rules no longer apply
+  }
   if (!result.changes) return res.status(404).json({ error: 'Member not found.' });
   logActivity({ spaceId, actorName: req.user.fullName || 'You', description: 'removed a member' });
   res.json(spaceRowToObject(db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId)).members);
@@ -341,6 +344,17 @@ router.put('/:spaceId/pin', (req, res) => {
 // ---- Project permissions ----------------------------------------------------------
 // Members may read the rules; only project admins (Admin Project) may change them.
 
+function permissionUsers(spaceId) {
+  const space = db.prepare('SELECT owner_id FROM spaces WHERE id = ?').get(spaceId);
+  const ids = new Set(db.prepare('SELECT user_id FROM space_members WHERE space_id = ?').all(spaceId).map((row) => row.user_id));
+  if (space?.owner_id) ids.add(space.owner_id);
+  Object.values(projectRules(spaceId)).flat().forEach((rule) => { if (rule.type === 'user') ids.add(rule.value); });
+  if (!ids.size) return [];
+  return db.prepare(`SELECT id, username, email, full_name, avatar_url, is_active FROM users WHERE id IN (${[...ids].map(() => '?').join(',')}) ORDER BY lower(full_name)`)
+    .all(...ids)
+    .map((row) => ({ id: row.id, username: row.username, email: row.email, fullName: row.full_name, avatarUrl: row.avatar_url, active: Boolean(row.is_active) }));
+}
+
 function permissionsPayload(spaceId, user) {
   const context = memberContext(user, spaceId);
   return {
@@ -349,6 +363,8 @@ function permissionsPayload(spaceId, user) {
     roles: db.prepare('SELECT id, name, description, is_system FROM project_roles ORDER BY position, lower(name)').all()
       .map((row) => ({ id: row.id, name: row.name, description: row.description, isSystem: Boolean(row.is_system) })),
     fields: Object.entries(FIELD_RULES).map(([value, field]) => ({ value, ...field })),
+    // Members who can be named in User rules (plus anyone already named, e.g. a deactivated account).
+    users: permissionUsers(spaceId),
     adminRole: ADMIN_PROJECT_ROLE,
     allMemberRole: ALL_MEMBER_ROLE,
     canEdit: context.isProjectAdmin,
@@ -365,7 +381,7 @@ router.put('/:spaceId/permissions/:key', (req, res) => {
   const { spaceId, key } = req.params;
   if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
   if (!memberContext(req.user, spaceId).isProjectAdmin) return res.status(403).json({ error: 'Only a project admin can change project permissions.' });
-  const { rules, error } = validateRules(key, req.body?.rules);
+  const { rules, error } = validateRules(key, req.body?.rules, spaceId);
   if (error) return res.status(400).json({ error });
   saveRules(spaceId, key, rules);
   logActivity({ spaceId, actorName: req.user.fullName || 'You', description: `changed the access rules of ${key}` });
