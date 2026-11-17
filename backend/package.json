@@ -10,7 +10,8 @@
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
     "check": "node --check src/server.js && node --check src/db.js",
-    "test": "node --test"
+    "test": "node --test",
+    "check:google": "node scripts/check-google.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
