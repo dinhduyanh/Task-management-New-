@@ -12,6 +12,7 @@ import adminRouter from './routes/admin.js';
 import catalogRouter from './routes/catalog.js';
 import dashboardsRouter from './routes/dashboards.js';
 import aiRouter from './routes/ai.js';
+import workflowsRouter from './routes/workflows.js';
 import { requireAdmin, requireAuth } from './middleware/auth.js';
 import { db } from './db.js';
 import { describeGoogleConfiguration } from './googleAuth.js';
@@ -42,6 +43,7 @@ app.use('/api', attachmentsRouter);
 app.use('/api', catalogRouter);
 app.use('/api/dashboards', dashboardsRouter);
 app.use('/api/ai', aiRouter);
+app.use('/api', workflowsRouter);
 
 app.use((error, _req, res, _next) => {
   if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'This Code or Key already exists.' });

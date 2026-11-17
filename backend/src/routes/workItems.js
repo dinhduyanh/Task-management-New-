@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { db, createId, nowIso, parseJson, logActivity } from '../db.js';
-import { ISSUE_WORKFLOWS, initialStatus, normalizeIssueType } from '../workflows.js';
+import { initialStatus, normalizeIssueType, workflowForIssueType } from '../workflows.js';
 import { mergeAttachmentList } from './attachments.js';
 import { canAccessSpace, requireSpaceAccess, spaceFilter, spaceIdOf } from '../access.js';
 import { allowed, presentItem, reviewItemCreate, reviewItemUpdate, userRecord } from '../workItemPermissions.js';
@@ -219,7 +219,7 @@ router.patch('/:id', itemAccess, (req, res, next) => {
 
     // Enforce the approved Issue Type workflow on the server, not only in React.
     if (status !== row.status) {
-      const workflow = ISSUE_WORKFLOWS[row.issue_type] || ISSUE_WORKFLOWS.Task;
+      const workflow = workflowForIssueType(row.issue_type);
       const allowedTargets = workflow.transitions[row.status] || [];
       if (!allowedTargets.includes(status)) {
         return res.status(400).json({ error: `Transition from ${row.status} to ${status} is not allowed for ${row.issue_type}.` });

@@ -287,3 +287,45 @@ CREATE TABLE IF NOT EXISTS space_features (
   PRIMARY KEY (space_id, feature_key),
   FOREIGN KEY (space_id) REFERENCES spaces(id) ON DELETE CASCADE
 );
+
+-- Work item workflows: states and the transitions allowed between them.
+-- Seeded on start-up (backend/src/workflows.js) when empty; status changes are checked against these rows.
+CREATE TABLE IF NOT EXISTS workflows (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  issue_types_json TEXT NOT NULL DEFAULT '[]',
+  is_default INTEGER NOT NULL DEFAULT 0,
+  completion_requires_children INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS workflow_states (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  category TEXT NOT NULL DEFAULT 'todo',   -- todo | progress | done | closed
+  color TEXT NOT NULL DEFAULT 'slate',
+  is_initial INTEGER NOT NULL DEFAULT 0,
+  x REAL NOT NULL DEFAULT 0,               -- diagram position
+  y REAL NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL DEFAULT 0,
+  UNIQUE (workflow_id, name),
+  FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS workflow_transitions (
+  id TEXT PRIMARY KEY,
+  workflow_id TEXT NOT NULL,
+  name TEXT NOT NULL,
+  from_state_id TEXT,                      -- NULL = from any state
+  to_state_id TEXT NOT NULL,
+  position INTEGER NOT NULL DEFAULT 0,
+  FOREIGN KEY (workflow_id) REFERENCES workflows(id) ON DELETE CASCADE,
+  FOREIGN KEY (from_state_id) REFERENCES workflow_states(id) ON DELETE CASCADE,
+  FOREIGN KEY (to_state_id) REFERENCES workflow_states(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_workflow_states_workflow ON workflow_states(workflow_id);
+CREATE INDEX IF NOT EXISTS idx_workflow_transitions_workflow ON workflow_transitions(workflow_id);

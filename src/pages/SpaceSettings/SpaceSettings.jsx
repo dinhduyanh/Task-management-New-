@@ -7,6 +7,7 @@ import PermissionsSettings from './SpacePermissions';
 import Toast from '../../components/common/Toast';
 import { canInSpace } from '../../services/projectPermissions';
 import { PROJECT_FEATURES, isFeatureVisible } from '../SpacesList/projectNavigation';
+import WorkflowSettings from './SpaceWorkflows';
 import './SpaceSettings.css';
 
 const SETTINGS_ITEMS = [
@@ -19,14 +20,6 @@ const SETTINGS_ITEMS = [
 ];
 
 const ISSUE_TYPES = ['Epic', 'Task', 'Bug', 'Improvement', 'Story', 'Sub-task', 'Feature'];
-const WORKFLOW_STATUSES = [
-  { label: 'Backlog', tone: 'backlog' },
-  { label: 'To Do', tone: 'todo' },
-  { label: 'In Progress', tone: 'progress' },
-  { label: 'In Review', tone: 'review' },
-  { label: 'Done', tone: 'done' }
-];
-
 function parseDate(value) {
   if (!value) return null;
   const match = /^(\d{2})-(\d{2})-(\d{4})$/.exec(String(value).trim());
@@ -370,22 +363,6 @@ function FeaturesSettings({ space = {}, onSetFeatures = async () => '' }) {
   );
 }
 
-function WorkflowSettings() {
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Workflow</h1><p>Overview of the work item lifecycle for this space.</p></div>
-      <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Default workflow</strong><span>Workflow overview</span></div>
-        <div className="settings-workflow-list">
-          {WORKFLOW_STATUSES.map((status, index) => <div className="settings-workflow-step" key={status.label}><span className={`settings-workflow-dot ${status.tone}`}>{index + 1}</span><strong>{status.label}</strong>{index < WORKFLOW_STATUSES.length - 1 && <span className="settings-workflow-connector" />}</div>)}
-        </div>
-        <div className="settings-workflow-extras"><span className="settings-workflow-chip blocked">Blocked</span><span className="settings-workflow-chip cancelled">Cancel</span><small>Additional workflow states</small></div>
-        <p className="settings-note">Workflow editing and transition rules will be added in a later implementation step.</p>
-      </div>
-    </section>
-  );
-}
-
 function WorkItemsSettings() {
   return (
     <section className="settings-secondary-content">
@@ -406,7 +383,7 @@ export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onG
       case 'People': return <PeopleSettings space={space} onAddMember={onAddMember} onAddMembers={onAddMembers} onRemoveMember={onRemoveMember} />;
       case 'Permissions': return <PermissionsSettings space={space} />;
       case 'Features': return <FeaturesSettings space={space} onSetFeatures={onSetFeatures} />;
-      case 'Workflow': return <WorkflowSettings />;
+      case 'Workflow': return <WorkflowSettings key={space.id} space={space} />;
       case 'Work Items': return <WorkItemsSettings />;
       default: return <SummarySettings key={space.id} space={space} onSave={onSave} />;
     }
