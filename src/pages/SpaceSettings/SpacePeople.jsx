@@ -69,10 +69,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [selected, setSelected] = useState([]); // user objects
-  const [chosenRoles, setChosenRoles] = useState(() => {
-    const preferred = roles.find((item) => item.name === 'Developer') || roles[0];
-    return preferred ? [preferred.name] : [];
-  });
+  const [chosenRoles, setChosenRoles] = useState([]); // optional: no role = member with the implicit All Member role
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
@@ -116,7 +113,6 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
 
   async function submit() {
     if (!selected.length) return setError('Choose at least one person.');
-    if (!chosenRoles.length) return setError('Choose at least one project role.');
     setSaving(true);
     setError('');
     const message = await onAdd({ userIds: selected.map((user) => user.id), roles: chosenRoles });
@@ -134,7 +130,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
       footer={<>
         {error && <span className="ss-form-error" role="alert">{error}</span>}
         <button type="button" className="ss-button" onClick={() => onClose(0)}>Cancel</button>
-        <button type="submit" className="ss-button is-primary" disabled={saving || !selected.length || !chosenRoles.length}>
+        <button type="submit" className="ss-button is-primary" disabled={saving || !selected.length}>
           {saving ? 'Adding…' : selected.length ? `Add ${selected.length} ${selected.length === 1 ? 'person' : 'people'}` : 'Add'}
         </button>
       </>}
@@ -205,7 +201,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
 
         <div className="sp-field sp-role-field">
           <div className="sp-role-head">
-            <span id="sp-roles-label">Role <b className="sp-required">*</b></span>
+            <span id="sp-roles-label">Role <small className="sp-optional">(optional)</small></span>
             {roles.length > 1 && (
               <label className="sp-select-all">
                 <input
@@ -230,7 +226,9 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
               );
             })}
           </div>
-          <small className="sp-hint">{chosenRoles.length ? `${chosenRoles.length} role${chosenRoles.length === 1 ? '' : 's'} selected · ` : ''}Every person you add gets all ticked roles.</small>
+          <small className="sp-hint">{chosenRoles.length
+            ? `${chosenRoles.length} role${chosenRoles.length === 1 ? '' : 's'} selected · every person you add gets all ticked roles.`
+            : 'No role ticked: people join as members (All Member) and you can give roles later.'}</small>
         </div>
       </div>
     </SettingsModal>

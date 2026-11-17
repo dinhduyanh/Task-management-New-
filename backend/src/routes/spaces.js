@@ -72,9 +72,9 @@ function memberRecord(user, roles) {
  * Validates project role names against the roles managed in System Settings.
  * "All Member" is implicit and cannot be given; "Admin Project" only by a project admin.
  */
-function readRoles(value, actorIsProjectAdmin) {
+function readRoles(value, actorIsProjectAdmin, { allowEmpty = false } = {}) {
   const names = (Array.isArray(value) ? value : []).map((role) => String(role || '').trim()).filter(Boolean);
-  if (!names.length) return { error: 'Choose at least one project role.' };
+  if (!names.length) return allowEmpty ? { roles: [] } : { error: 'Choose at least one project role.' };
   const known = db.prepare('SELECT name FROM project_roles').all().map((row) => row.name);
   const roles = [];
   for (const name of names) {
@@ -282,7 +282,8 @@ router.post('/:spaceId/members/bulk', (req, res, next) => {
     const userIds = [...new Set((Array.isArray(req.body?.userIds) ? req.body.userIds : []).map(String))];
     if (!userIds.length) return res.status(400).json({ error: 'Choose at least one person.' });
     if (userIds.length > 200) return res.status(400).json({ error: 'Add at most 200 people at a time.' });
-    const { roles, error, status } = readRoles(req.body?.roles, actorIsProjectAdmin);
+    // No role is fine: every member has the implicit All Member role.
+    const { roles, error, status } = readRoles(req.body?.roles, actorIsProjectAdmin, { allowEmpty: true });
     if (error) return res.status(status || 400).json({ error });
     const users = [];
     for (const userId of userIds) {
@@ -297,7 +298,7 @@ router.post('/:spaceId/members/bulk', (req, res, next) => {
     db.transaction(() => {
       const insert = db.prepare('INSERT INTO space_members (space_id, user_id, member_json, created_at) VALUES (?, ?, ?, ?)');
       users.forEach((user) => insert.run(spaceId, user.id, JSON.stringify(memberRecord(user, roles)), now));
-      logActivity({ spaceId, actorName: req.user.fullName || 'You', description: `added ${users.map((user) => user.full_name).join(', ')} as ${roles.join(', ')}` });
+      logActivity({ spaceId, actorName: req.user.fullName || 'You', description: `added ${users.map((user) => user.full_name).join(', ')} as ${roles.length ? roles.join(', ') : 'members'}` });
     })();
     res.status(201).json(spaceRowToObject(db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId)).members);
   } catch (error) { next(error); }
