@@ -110,31 +110,28 @@ function StateChip({ state }) {
   return <span className={`wf-chip is-${state.color}`}>{state.name}</span>;
 }
 
-/** Card in the workflow list. */
-function WorkflowCard({ workflow, onOpen }) {
+/** Row in the workflow list (clicking it opens the diagram). */
+function WorkflowRow({ workflow, onOpen }) {
   const rank = { todo: 0, progress: 1, done: 2, closed: 3 };
   const ordered = [...workflow.states].sort((a, b) => ((rank[a.category] ?? 9) - (rank[b.category] ?? 9)) || (a.y - b.y) || (a.x - b.x));
+  const count = workflow.workItemCount || 0;
   return (
-    <button type="button" className="wf-card" onClick={() => onOpen(workflow.id)} aria-label={`Open ${workflow.name}`}>
-      <div className="wf-card-head">
-        <span className="wf-card-icon" aria-hidden="true"><Icon name="workflow" size={18} /></span>
-        <div className="wf-card-title">
-          <strong>{workflow.name}</strong>
-          <span className="wf-card-types">{workflow.issueTypes.join(' · ')}</span>
+    <tr className="wf-row" tabIndex={0} onClick={() => onOpen(workflow.id)} onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); onOpen(workflow.id); } }} aria-label={`Open ${workflow.name}`}>
+      <td>
+        <div className="wf-row-name">
+          <span className="wf-row-icon" aria-hidden="true"><Icon name="workflow" size={15} /></span>
+          <span className="wf-row-text">
+            <strong>{workflow.name}{workflow.isDefault && <span className="wf-badge">Default</span>}</strong>
+            <small title={workflow.description}>{workflow.description}</small>
+          </span>
         </div>
-        {workflow.isDefault && <span className="wf-badge">Default</span>}
-        <Icon name="chevronsRight" size={16} className="wf-card-go" />
-      </div>
-      <p className="wf-card-desc">{workflow.description}</p>
-      <div className="wf-card-states">
-        {ordered.map((state) => <StateChip key={state.id} state={state} />)}
-      </div>
-      <div className="wf-card-foot">
-        <span>{workflow.states.length} states</span>
-        <span>{workflow.transitions.length} transitions</span>
-        <span>{workflow.workItemCount || 0} work item{workflow.workItemCount === 1 ? '' : 's'} in this project</span>
-      </div>
-    </button>
+      </td>
+      <td className="wf-row-types">{workflow.issueTypes.join(', ')}</td>
+      <td><div className="wf-row-states">{ordered.map((state) => <StateChip key={state.id} state={state} />)}</div></td>
+      <td className="wf-num">{workflow.transitions.length}</td>
+      <td className="wf-num">{count}</td>
+      <td className="wf-go"><Icon name="chevronsRight" size={15} /></td>
+    </tr>
   );
 }
 
@@ -248,8 +245,24 @@ export default function WorkflowSettings({ space }) {
       {error && <div className="settings-section-card"><div className="settings-empty-state">{error}</div></div>}
       {!workflows && !error && <div className="settings-section-card"><div className="settings-empty-state">Loading workflows…</div></div>}
       {workflows && (
-        <div className="wf-grid">
-          {workflows.map((workflow) => <WorkflowCard key={workflow.id} workflow={workflow} onOpen={setOpenId} />)}
+        <div className="settings-section-card wf-list">
+          <div className="wf-list-scroll">
+            <table className="wf-table">
+              <thead>
+                <tr>
+                  <th>Workflow</th>
+                  <th>Issue types</th>
+                  <th>States</th>
+                  <th className="wf-num">Transitions</th>
+                  <th className="wf-num">Work items</th>
+                  <th aria-label="Open" />
+                </tr>
+              </thead>
+              <tbody>
+                {workflows.map((workflow) => <WorkflowRow key={workflow.id} workflow={workflow} onOpen={setOpenId} />)}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
     </section>
