@@ -657,7 +657,7 @@
 
 /* ---- Add people: autocomplete with chips + role checkboxes ------------------------------- */
 .sp-combo { position: relative; }
-.sp-tag-input { display: flex; min-height: 40px; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--tf-bd-dfe1e6); border-radius: 6px; background: var(--tf-bg-ffffff); color: var(--tf-fg-6b778c); cursor: text; transition: border-color 0.15s, box-shadow 0.15s; }
+.sp-tag-input { display: flex; min-height: 38px; flex-wrap: wrap; align-items: center; gap: 6px; padding: 5px 10px; border: 1px solid var(--tf-bd-dfe1e6); border-radius: 6px; background: var(--tf-bg-ffffff); color: var(--tf-fg-6b778c); cursor: text; transition: border-color 0.15s, box-shadow 0.15s; }
 .sp-tag-input:focus-within { border-color: var(--tf-bd-4c9aff); box-shadow: 0 0 0 2px var(--tf-bd-deebff); }
 .sp-tag-input.is-open { border-bottom-left-radius: 0; border-bottom-right-radius: 0; }
 .sp-tag-input input { min-width: 160px; height: 28px; flex: 1; border: 0; outline: 0; background: transparent; color: var(--tf-fg-172b4d); font: inherit; font-size: 13px; font-weight: 400; }
@@ -674,16 +674,21 @@
 .sp-spinner { width: 14px; height: 14px; border: 2px solid var(--tf-bd-c1c7d0); border-top-color: var(--tf-bd-0052cc); border-radius: 50%; animation: sp-spin 0.7s linear infinite; }
 @keyframes sp-spin { to { transform: rotate(360deg); } }
 
-.sp-role-fieldset { min-width: 0; margin: 0; padding: 0; border: 0; }
-.sp-role-fieldset legend { display: flex; width: 100%; align-items: baseline; gap: 6px; margin-bottom: 6px; padding: 0; color: var(--tf-fg-344054); font-size: 12px; font-weight: 600; }
-.sp-role-fieldset legend small { margin-left: auto; color: var(--tf-fg-8290a5); font-weight: 400; }
-.sp-role-options { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
-.sp-role-option { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--tf-bd-dfe1e6); border-radius: 8px; background: var(--tf-bg-ffffff); cursor: pointer; font-weight: 400; transition: border-color 0.15s, background 0.15s; }
-.sp-role-option:hover { border-color: var(--tf-bd-b3bac5); }
-.sp-role-option.is-checked { border-color: var(--tf-bd-4c9aff); background: var(--tf-bg-f0f6ff); }
-.sp-role-option input { width: 16px; height: 16px; flex: 0 0 16px; margin: 1px 0 0; accent-color: var(--tf-fg-0052cc); cursor: pointer; }
-.sp-role-option input:focus-visible { outline: 2px solid var(--tf-bd-4c9aff); outline-offset: 2px; }
-.sp-role-option-text { display: flex; min-width: 0; flex-direction: column; gap: 2px; }
-.sp-role-option-text strong { color: var(--tf-fg-172b4d); font-size: 13px; }
-.sp-role-option-text small { color: var(--tf-fg-6b778c); font-size: 11px; line-height: 1.4; }
-@media (max-width: 560px) { .sp-role-options { grid-template-columns: 1fr; } }
+.sp-tag-chevron { flex: 0 0 auto; margin-left: auto; color: var(--tf-fg-6b778c); transition: transform 0.15s; }
+.sp-tag-input.is-open .sp-tag-chevron { transform: rotate(180deg); }
+
+/* Role: compact checklist, one role per line (scrolls when a project has many roles). */
+.sp-role-head { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.sp-select-all { display: inline-flex; align-items: center; gap: 7px; color: var(--tf-fg-42526e); cursor: pointer; font-size: 12px; font-weight: 500; }
+.sp-select-all input,
+.sp-role-row input { width: 15px; height: 15px; flex: 0 0 15px; margin: 0; accent-color: var(--tf-fg-0052cc); cursor: pointer; }
+.sp-role-list { display: flex; max-height: 232px; flex-direction: column; padding: 6px; overflow-y: auto; border: 1px solid var(--tf-bd-dfe1e6); border-radius: 6px; background: var(--tf-bg-ffffff); scrollbar-width: thin; }
+.sp-role-row { display: flex; min-height: 30px; align-items: center; gap: 10px; padding: 0 8px; border-radius: 4px; color: var(--tf-fg-172b4d); cursor: pointer; font-size: 13px; font-weight: 400; }
+.sp-role-row:hover { background: var(--tf-bg-f4f5f7); }
+.sp-role-row.is-checked { background: var(--tf-bg-e9f2ff); }
+.sp-role-row input:focus-visible { outline: 2px solid var(--tf-bd-4c9aff); outline-offset: 2px; }
+.sp-role-name { flex: 0 0 auto; white-space: nowrap; }
+.sp-role-row.is-checked .sp-role-name { color: var(--tf-fg-0747a6); font-weight: 600; }
+.sp-role-desc { min-width: 0; overflow: hidden; color: var(--tf-fg-8993a4); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.sp-role-desc::before { margin-right: 8px; color: var(--tf-fg-c1c7d0); content: '—'; }
+@media (max-width: 560px) { .sp-role-desc { display: none; } }

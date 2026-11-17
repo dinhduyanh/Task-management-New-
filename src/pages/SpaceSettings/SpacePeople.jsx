@@ -80,6 +80,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
   const options = results.filter((user) => !selected.some((item) => item.id === user.id));
   const showDropdown = open && query.trim().length > 0;
   const activeIndex = Math.min(active, Math.max(options.length - 1, 0));
+  const allRolesChecked = roles.length > 0 && roles.every((item) => chosenRoles.includes(item.name));
 
   function pick(user) {
     setSelected((current) => [...current, user]);
@@ -140,10 +141,9 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
     >
       <div className="sp-people-form">
         <div className="sp-field">
-          <span id="sp-people-label">People <b className="sp-required">*</b></span>
+          <span id="sp-people-label">User <b className="sp-required">*</b></span>
           <div className="sp-combo">
             <div className={`sp-tag-input ${showDropdown ? 'is-open' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); inputRef.current?.focus(); } }}>
-              <Icon name="search" size={14} />
               {selected.map((user) => (
                 <span className="sp-chip" key={user.id}>
                   <UserAvatar user={user} size={20} />
@@ -159,7 +159,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
                 onFocus={() => setOpen(true)}
                 onBlur={() => setOpen(false)}
                 onKeyDown={onKeyDown}
-                placeholder={selected.length ? 'Add more people…' : 'Search by name, username or email'}
+                placeholder={selected.length ? 'Add more…' : 'Select'}
                 role="combobox"
                 aria-labelledby="sp-people-label"
                 aria-autocomplete="list"
@@ -167,6 +167,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
                 aria-controls={listId}
                 aria-activedescendant={showDropdown && options[activeIndex] ? `sp-opt-${options[activeIndex].id}` : undefined}
               />
+              <Icon name="chevron" size={14} className="sp-tag-chevron" />
             </div>
             {showDropdown && (
               <ul className="sp-dropdown" id={listId} role="listbox" aria-label="Matching people" onMouseDown={(event) => event.preventDefault()}>
@@ -199,27 +200,38 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
               </ul>
             )}
           </div>
-          <small className="sp-hint">{selected.length ? `${selected.length} selected. ` : ''}Type to find people who are not in this project yet.</small>
+          <small className="sp-hint">{selected.length ? `${selected.length} selected · ` : ''}Type a name, username or email to find people who are not in this project yet.</small>
         </div>
 
-        <fieldset className="sp-field sp-role-fieldset">
-          <legend>Project roles <b className="sp-required">*</b> <small>{chosenRoles.length} selected</small></legend>
-          <div className="sp-role-options">
+        <div className="sp-field sp-role-field">
+          <div className="sp-role-head">
+            <span id="sp-roles-label">Role <b className="sp-required">*</b></span>
+            {roles.length > 1 && (
+              <label className="sp-select-all">
+                <input
+                  type="checkbox"
+                  checked={allRolesChecked}
+                  ref={(el) => { if (el) el.indeterminate = !allRolesChecked && chosenRoles.length > 0; }}
+                  onChange={() => { setChosenRoles(allRolesChecked ? [] : roles.map((item) => item.name)); setError(''); }}
+                />
+                Select all role
+              </label>
+            )}
+          </div>
+          <div className="sp-role-list" role="group" aria-labelledby="sp-roles-label">
             {roles.map((item) => {
               const checked = chosenRoles.includes(item.name);
               return (
-                <label key={item.id} className={`sp-role-option ${checked ? 'is-checked' : ''}`}>
+                <label key={item.id} className={`sp-role-row ${checked ? 'is-checked' : ''}`} title={item.description || item.name}>
                   <input type="checkbox" checked={checked} onChange={() => toggleRole(item.name)} />
-                  <span className="sp-role-option-text">
-                    <strong>{item.name}</strong>
-                    <small>{item.description || 'Custom project role.'}</small>
-                  </span>
+                  <span className="sp-role-name">{item.name}</span>
+                  {item.description && <span className="sp-role-desc">{item.description}</span>}
                 </label>
               );
             })}
           </div>
-          <small className="sp-hint">Every person you add gets all ticked roles. You can change roles per person later.</small>
-        </fieldset>
+          <small className="sp-hint">{chosenRoles.length ? `${chosenRoles.length} role${chosenRoles.length === 1 ? '' : 's'} selected · ` : ''}Every person you add gets all ticked roles.</small>
+        </div>
       </div>
     </SettingsModal>
   );
