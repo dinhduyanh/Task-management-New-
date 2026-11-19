@@ -176,6 +176,22 @@ export const api = {
     json('POST', { ids, sprintId: sprintId || null })
   ),
 
+  // Notifications (header bell)
+  getNotifications: ({ filter = 'all', limit = 30, offset = 0 } = {}) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (filter === 'unread') params.set('filter', 'unread');
+    if (offset) params.set('offset', String(offset));
+    return request(`/notifications?${params}`);
+  },
+  getUnreadNotificationCount: () => request('/notifications/unread-count'),
+  markNotificationRead: (id, isRead = true) => request(`/notifications/${encodeURIComponent(id)}`, json('PATCH', { isRead })),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
+
+  // Follow a work item (followers get "Task Updated" notifications)
+  getWatchStatus: (workItemId) => request(`/work-items/${encodeURIComponent(workItemId)}/watch`),
+  setWatching: (workItemId, watching) => request(`/work-items/${encodeURIComponent(workItemId)}/watch`, json('PUT', { watching })),
+  getWorkItem: (id) => request(`/work-items/${encodeURIComponent(id)}`),
+
   // Files attached to work items
   getAttachments: (spaceId) => request(`/attachments${spaceId ? `?spaceId=${encodeURIComponent(spaceId)}` : ''}`),
 

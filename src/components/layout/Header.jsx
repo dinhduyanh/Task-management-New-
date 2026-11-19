@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../common/Icon';
 import UserProfileMenu from './UserProfileMenu';
+import NotificationBell from './NotificationBell';
 import { useAppShell } from '../../context/appShellContext';
 import './Header.css';
 
@@ -134,16 +135,14 @@ export default function Header({
           )}
         </div>
 
-        <button type="button" className="create-button" onClick={onGlobalCreate}>
+        <button type="button" className="create-button" onClick={onGlobalCreate} aria-label="Create" title="Create">
           <Icon name="plus" size={16} /><span>Create</span>
         </button>
         <div className="header-spacer" />
         <button type="button" className="header-icon-button ai-header-button" aria-label="AI Project Assistant" title="AI Project Assistant" onClick={() => openAssistant()}>
           <Icon name="sparkles" size={19} />
         </button>
-        <button type="button" className="header-icon-button notification-button" aria-label="Notifications" title="Notifications">
-          <Icon name="bell" size={19} /><span className="notification-badge">3</span>
-        </button>
+        <NotificationBell />
         {/* System Settings is for administrators only (the page and its API are guarded too). */}
         {isAdmin && (
           <button

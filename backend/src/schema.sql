@@ -329,3 +329,41 @@ CREATE TABLE IF NOT EXISTS workflow_transitions (
 );
 CREATE INDEX IF NOT EXISTS idx_workflow_states_workflow ON workflow_states(workflow_id);
 CREATE INDEX IF NOT EXISTS idx_workflow_transitions_workflow ON workflow_transitions(workflow_id);
+
+-- In-app notifications. Each row is also the email outbox entry: email_status goes
+-- pending -> sent | failed | skipped and is processed by the background mail queue.
+CREATE TABLE IF NOT EXISTS notifications (
+  id TEXT PRIMARY KEY,
+  recipient_id TEXT NOT NULL,
+  actor_id TEXT,
+  actor_name TEXT,
+  type TEXT NOT NULL,                      -- assigned | comment | reply | task_updated
+  work_item_id TEXT,
+  space_id TEXT,
+  issue_key TEXT,
+  task_title TEXT,
+  message TEXT NOT NULL,
+  data_json TEXT NOT NULL DEFAULT '{}',    -- e.g. { changes: [{ field, from, to }] }
+  is_read INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  read_at TEXT,
+  email_status TEXT NOT NULL DEFAULT 'pending',
+  email_attempts INTEGER NOT NULL DEFAULT 0,
+  email_error TEXT,
+  email_next_at TEXT,                      -- retry not before this time
+  emailed_at TEXT,
+  FOREIGN KEY (recipient_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id, is_read, created_at);
+CREATE INDEX IF NOT EXISTS idx_notifications_email ON notifications(email_status, created_at);
+
+-- Users following (watching) a work item; they get "Task Updated" notifications.
+CREATE TABLE IF NOT EXISTS work_item_watchers (
+  work_item_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  created_at TEXT NOT NULL,
+  PRIMARY KEY (work_item_id, user_id),
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_watchers_user ON work_item_watchers(user_id);

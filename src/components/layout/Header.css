@@ -286,8 +286,13 @@
 }
 
 @media (max-width: 450px) {
-  /* The AI assistant stays reachable on phones; the notifications placeholder makes room. */
-  .notification-button {
+  /* The AI assistant and the notifications stay reachable on phones; Create shows only its icon. */
+  .create-button {
+    width: 34px;
+    padding: 0;
+  }
+
+  .create-button span {
     display: none;
   }
 

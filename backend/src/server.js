@@ -13,6 +13,8 @@ import catalogRouter from './routes/catalog.js';
 import dashboardsRouter from './routes/dashboards.js';
 import aiRouter from './routes/ai.js';
 import workflowsRouter from './routes/workflows.js';
+import notificationsRouter from './routes/notifications.js';
+import { mailQueue, startMailQueue } from './notifications.js';
 import { requireAdmin, requireAuth } from './middleware/auth.js';
 import { db } from './db.js';
 import { describeGoogleConfiguration } from './googleAuth.js';
@@ -44,6 +46,7 @@ app.use('/api', catalogRouter);
 app.use('/api/dashboards', dashboardsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api', workflowsRouter);
+app.use('/api/notifications', notificationsRouter);
 
 app.use((error, _req, res, _next) => {
   if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'This Code or Key already exists.' });
@@ -57,8 +60,10 @@ const server = app.listen(port, () => {
   console.log('SQLite database: backend/data/taskflow.sqlite');
   describeAiConfiguration().forEach((line) => console.log(line));
   describeGoogleConfiguration().forEach((line) => console.log(line));
+  console.log(startMailQueue());
 });
 function shutdown() {
+  mailQueue.stopped = true;
   server.close(() => { db.close(); process.exit(0); });
 }
 process.on('SIGINT', shutdown);

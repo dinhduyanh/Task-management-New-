@@ -10,6 +10,7 @@ import { Router } from 'express';
 import { db, createId, nowIso, parseJson, logActivity } from '../db.js';
 import { canAccessSpace } from '../access.js';
 import { allowed, presentItem } from '../workItemPermissions.js';
+import { notifyTaskUpdated } from '../notifications.js';
 import { normalizePriority } from '../ai/priorityEngine.js';
 import {
   ISSUE_TYPES, detectIntent, evaluateItems, followUpsFor, loadProjectItems, mentionedKeys, mentionsMine, planFrom,
@@ -203,7 +204,10 @@ function applyPriorities(req, changes) {
       };
       db.prepare('UPDATE work_items SET priority = ?, updated_at = ?, data_json = ? WHERE id = ?').run(priority, now, JSON.stringify(next), row.id);
       logActivity({ spaceId: row.space_id, workItemId: row.id, actorName: actor, description: `changed priority of ${row.issue_key} from ${row.priority} to ${priority} (AI Assistant)` });
-      updated.push(presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.id)));
+      const saved = db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.id);
+      try { notifyTaskUpdated({ actor: req.user, item: saved, changes: [{ field: 'priority', from: row.priority, to: priority }] }); }
+      catch (error) { console.error('[notifications] ai priority:', error.message); }
+      updated.push(presentItem(req, saved));
     }
   })();
   return { updated, skipped };

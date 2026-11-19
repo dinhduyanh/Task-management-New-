@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { api } from './services/api';
 import { authService, clearSession, getStoredUser, isAuthenticated, storeUser } from './services/authService';
 import { userProfileService } from './services/userProfileService';
@@ -39,6 +39,26 @@ const SETTINGS_HASH = /^#\/settings(?:\/([a-z-]+))?$/;
 function settingsRouteFromHash() {
   const match = window.location.hash.match(SETTINGS_HASH);
   return match ? { page: 'systemSettings', data: { tab: match[1] || 'users' } } : null;
+}
+
+const LINKED_TASK_KEY = 'taskflow:linked-task';
+
+/** Reads ?task=<id> from the URL (email links), removes it and keeps it until sign-in. */
+function takeLinkedTaskId() {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const fromUrl = params.get('task');
+    if (fromUrl) {
+      params.delete('task');
+      const query = params.toString();
+      window.history.replaceState(null, '', `${window.location.pathname}${query ? `?${query}` : ''}${window.location.hash}`);
+      window.sessionStorage.setItem(LINKED_TASK_KEY, fromUrl);
+      return fromUrl;
+    }
+    return window.sessionStorage.getItem(LINKED_TASK_KEY);
+  } catch {
+    return null;
+  }
 }
 
 export default function App() {
@@ -85,6 +105,17 @@ export default function App() {
     if (!isLoggedIn) return;
     loadPersistentData();
   }, [isLoggedIn]);
+
+  // Email links open a task with ?task=<id>; it waits through sign-in if needed.
+  const [linkedTaskId] = useState(takeLinkedTaskId);
+  const linkedTaskHandled = useRef(false);
+  useEffect(() => {
+    if (!isLoggedIn || !linkedTaskId || linkedTaskHandled.current) return;
+    linkedTaskHandled.current = true;
+    try { window.sessionStorage.removeItem(LINKED_TASK_KEY); } catch { /* storage unavailable */ }
+    openTaskById(linkedTaskId);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoggedIn, linkedTaskId]);
 
   // User directory (names + avatars) so every avatar in the app shows the real picture.
   const [users, setUsers] = useState([]);
@@ -344,6 +375,31 @@ export default function App() {
     });
   }
 
+  /** Loads the latest copy of a work item (it may have changed elsewhere) and opens it. */
+  async function openTaskById(taskId) {
+    if (!taskId) return false;
+    try {
+      const fresh = await api.getWorkItem(taskId);
+      setTasks((currentTasks) => (currentTasks.some((task) => String(task.id) === String(fresh.id))
+        ? currentTasks.map((task) => String(task.id) === String(fresh.id) ? fresh : task)
+        : [...currentTasks, fresh]));
+      if (!spaces.some((space) => String(space.id) === String(fresh.spaceId))) {
+        const spaceRows = await api.getSpaces();
+        if (Array.isArray(spaceRows)) setSpaces(spaceRows);
+      }
+      navigate('spaceList', {
+        id: fresh.spaceId,
+        taskId: fresh.id,
+        fullPageTaskDetail: true,
+        openRequestId: `${Date.now()}-${Math.random().toString(36).slice(2, 9)}`
+      });
+      return true;
+    } catch (error) {
+      setBackendError(error?.status === 404 ? 'This work item no longer exists or you no longer have access to it.' : (error.message || 'Unable to open the work item.'));
+      return false;
+    }
+  }
+
   async function handleCreateTask(taskData) {
     try {
       const newTask = await api.createWorkItem(taskData);
@@ -487,7 +543,8 @@ export default function App() {
     sidebarCollapsed,
     toggleSidebar: (force) => setSidebarCollapsed((current) => (typeof force === 'boolean' ? force : !current)),
     createTask: handleCreateTask,
-    openTask: handleOpenTaskFromGlobalSearch
+    openTask: handleOpenTaskFromGlobalSearch,
+    openTaskById
   };
 
   if (!isLoggedIn) return <Login onLogin={handleLogin} notice={loginNotice} />;

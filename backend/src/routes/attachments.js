@@ -8,6 +8,7 @@ import { optionalAuth } from '../middleware/auth.js';
 import { requireSpaceAccess, spaceFilter, spaceIdOf } from '../access.js';
 import { allowed, presentItem } from '../workItemPermissions.js';
 import { denied } from '../projectPermissions.js';
+import { notifyTaskUpdated } from '../notifications.js';
 
 const router = Router();
 router.use(optionalAuth);
@@ -91,6 +92,10 @@ function mayDeleteFile(req, file, item) {
   return (own && allowed(req, item.space_id, 'attachment.delete_own', item)) || allowed(req, item.space_id, 'attachment.delete_all', item);
 }
 
+function notifySafely(fn) {
+  try { fn(); } catch (error) { console.error('[notifications] attachment:', error.message); }
+}
+
 const fileAccess = requireSpaceAccess((req) => spaceIdOf.file(req.params.id), 'File not found.');
 
 router.post(
@@ -122,6 +127,10 @@ router.post(
         logActivity({ spaceId: item.space_id, workItemId: item.id, actorName: req.user?.fullName || 'You', description: `attached ${name} to ${item.issue_key}` });
       })();
       const row = db.prepare('SELECT * FROM work_item_files WHERE id = ?').get(id);
+      // Comment files are part of the comment notification.
+      // Files uploaded by the creator right after creating the item are part of "Assigned".
+      const justCreated = String(item.creator_id) === String(req.user?.id) && Date.now() - Date.parse(item.created_at) < 120000;
+      if (source === 'work_item' && !justCreated) notifySafely(() => notifyTaskUpdated({ actor: req.user, item, changes: [{ field: 'attachmentAdded', to: name }] }));
       res.status(201).json({
         attachment: metadata(row),
         workItem: presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(item.id))
@@ -179,6 +188,7 @@ router.delete('/attachments/:id', fileAccess, (req, res, next) => {
       syncWorkItemAttachments(row.work_item_id);
       logActivity({ spaceId: row.space_id, workItemId: row.work_item_id, actorName: req.user?.fullName || 'You', description: `deleted file ${row.file_name}` });
     })();
+    notifySafely(() => notifyTaskUpdated({ actor: req.user, item, changes: [{ field: 'attachmentRemoved', from: row.file_name }] }));
     res.json({ workItem: presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.work_item_id)) });
   } catch (error) { next(error); }
 });

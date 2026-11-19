@@ -5,8 +5,14 @@ import { mergeAttachmentList } from './attachments.js';
 import { canAccessSpace, requireSpaceAccess, spaceFilter, spaceIdOf } from '../access.js';
 import { allowed, presentItem, reviewItemCreate, reviewItemUpdate, userRecord } from '../workItemPermissions.js';
 import { denied } from '../projectPermissions.js';
+import { isWatching, notifyComment, notifyWorkItemChanges, setWatching } from '../notifications.js';
 
 const router = Router();
+
+/** Notifications must never break the change that triggered them. */
+function safely(label, fn) {
+  try { fn(); } catch (error) { console.error(`[notifications] ${label}:`, error.message); }
+}
 
 const PARENT_TYPES_BY_CHILD = {
   Story: ['Epic', 'Feature'],
@@ -182,7 +188,12 @@ router.post('/', (req, res, next) => {
         VALUES (?, ?, NULL, ?, ?, ?)`)
         .run(createId('status'), id, status, creator.fullName, now);
       logActivity({ spaceId, workItemId: id, actorName: creator.fullName, description: `created ${issueType} ${key}` });
+      setWatching(id, req.user.id, true); // the creator follows the work item
     })();
+    safely('create', () => {
+      const created = db.prepare('SELECT * FROM work_items WHERE id = ?').get(id);
+      notifyWorkItemChanges({ actor: req.user, before: null, after: { row: created, data: parseJson(created.data_json, {}) } });
+    });
 
     res.status(201).json(presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(id)));
   } catch (error) { next(error); }
@@ -263,7 +274,13 @@ router.patch('/:id', itemAccess, (req, res, next) => {
       logActivity({ spaceId: row.space_id, workItemId: row.id, actorName: req.user.fullName || 'You', description: `updated ${Object.keys(updates).join(', ') || 'work item'}` });
     })();
 
-    res.json(presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.id)));
+    const saved = db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.id);
+    safely('update', () => notifyWorkItemChanges({
+      actor: req.user,
+      before: { row, data: currentData },
+      after: { row: saved, data: parseJson(saved.data_json, {}) }
+    }));
+    res.json(presentItem(req, saved));
   } catch (error) { next(error); }
 });
 
@@ -374,7 +391,22 @@ router.post('/:id/comments', itemAccess, (req, res) => {
   db.prepare(`INSERT INTO comments (id, work_item_id, parent_comment_id, author_id, author_name, body, created_at, updated_at, data_json)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
     .run(id, issue.id, req.body?.parentCommentId || null, req.user.id, authorName, body, now, now, JSON.stringify(req.body?.metadata || {}));
+  safely('comment', () => {
+    const parent = req.body?.parentCommentId ? db.prepare('SELECT author_id FROM comments WHERE id = ? AND work_item_id = ?').get(String(req.body.parentCommentId), issue.id) : null;
+    notifyComment({ actor: req.user, item: issue, comment: { id, text: body }, parentAuthorId: parent?.author_id || null });
+  });
   res.status(201).json({ id, workItemId: issue.id, parentCommentId: req.body?.parentCommentId || null, authorId: req.user.id, author: authorName, body, createdAt: now, updatedAt: now });
+});
+
+// Follow / unfollow: followers get "Task Updated" notifications.
+router.get('/:id/watch', itemAccess, (req, res) => {
+  res.json({ watching: isWatching(req.params.id, req.user.id) });
+});
+
+router.put('/:id/watch', itemAccess, (req, res) => {
+  const watching = req.body?.watching !== false;
+  setWatching(req.params.id, req.user.id, watching);
+  res.json({ watching });
 });
 
 export default router;

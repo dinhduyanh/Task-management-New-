@@ -403,6 +403,27 @@ export default function TaskDetailDrawer({
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hideEmpty, setHideEmpty] = useState(false);
+  // Following the work item: followers get "Task Updated" notifications.
+  const [watching, setWatchingState] = useState(null);
+  useEffect(() => {
+    if (!issue?.id) return undefined;
+    let active = true;
+    setWatchingState(null);
+    api.getWatchStatus(issue.id).then((result) => { if (active) setWatchingState(Boolean(result?.watching)); }).catch(() => {});
+    return () => { active = false; };
+  }, [issue?.id]);
+  async function toggleWatching() {
+    const next = !watching;
+    setWatchingState(next);
+    try {
+      await api.setWatching(issue.id, next);
+      setCopied(next ? 'Following this work item' : 'Stopped following');
+    } catch {
+      setWatchingState(!next);
+      setCopied('Could not change follow');
+    }
+    window.setTimeout(() => setCopied(''), 1800);
+  }
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(issueTitle(issue));
   const [editingInfoField, setEditingInfoField] = useState(null);
@@ -961,7 +982,8 @@ export default function TaskDetailDrawer({
               <div className="td-action-buttons">
                 <button type="button" className="td-action-button" title={!allow.createChild ? NO_PERMISSION : allowedChildTypes.length ? `Create child: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'} disabled={!allowedChildTypes.length || !allow.createChild} onClick={() => onCreateChild(issue, allowedChildTypes)}><Icon name="plus" size={16} /></button>
  <button type="button" className="td-action-button td-ai-button" title="Ask the AI Project Assistant about this work item" aria-label="AI Project Assistant" onClick={() => openAssistant({ spaceId: issue.spaceId ?? space.id, taskIds: [issue.id] })}><Icon name="sparkles" size={15} /></button>
-                <button type="button" className="td-action-button" title="Copy link" onClick={() => copyText(`${window.location.origin}${window.location.pathname}#${key}`, 'Link copied')}><Icon name="link" size={15} /></button>
+                {watching !== null && <button type="button" className={`td-action-button td-watch-button ${watching ? 'is-active' : ''}`} title={watching ? 'Following: you get notified about changes. Click to stop following' : 'Follow to get notified about changes'} aria-label={watching ? 'Stop following' : 'Follow'} aria-pressed={watching} onClick={toggleWatching}><Icon name={watching ? 'eye' : 'eyeOff'} size={15} /></button>}
+                <button type="button" className="td-action-button" title="Copy link" onClick={() => copyText(`${window.location.origin}${window.location.pathname}?task=${encodeURIComponent(issue.id)}`, 'Link copied')}><Icon name="link" size={15} /></button>
                 {onMoveTask && <button type="button" className="td-action-button" title={allow.move ? 'Move to another project' : NO_PERMISSION} aria-label="Move to another project" disabled={!allow.move} onClick={() => onMoveTask(issue)}><Icon name="spaces" size={15} /></button>}
                 <button type="button" className="td-action-button" title={allow.clone ? 'Clone work item' : NO_PERMISSION} disabled={!allow.clone} onClick={handleClone}><Icon name="copy" size={15} /></button>
                 <button type="button" className="td-action-button danger" title={allow.remove ? 'Delete work item' : NO_PERMISSION} disabled={!allow.remove} onClick={() => setDeleteConfirmOpen(true)}><Icon name="trash" size={15} /></button>
