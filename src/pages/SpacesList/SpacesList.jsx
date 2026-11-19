@@ -236,7 +236,7 @@ export function AssigneeCell({ value, members, onAssign, disabled = false }) {
   const CURRENT_USER = useCurrentUserRecord();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 232 });
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 260 });
   const rootRef = useRef(null);
 
   function toggleMenu(event) {
@@ -245,7 +245,7 @@ export function AssigneeCell({ value, members, onAssign, disabled = false }) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const width = 232;
+    const width = 260;
     const estimatedHeight = Math.min(330, 105 + (Array.isArray(members) ? members.length : 0) * 43);
     const top = window.innerHeight - rect.bottom < estimatedHeight + 8
       ? Math.max(8, rect.top - estimatedHeight - 4)
@@ -293,7 +293,7 @@ export function AssigneeCell({ value, members, onAssign, disabled = false }) {
     ? currentUser
     : otherUsers.find((member) => getUserId(member) === selectedId) || value || null;
   const selectedName = selectedUser
-    ? (selectedId === CURRENT_USER.id ? 'You' : optionLabel(selectedUser) || String(selectedUser))
+    ? (selectedId === CURRENT_USER.id ? optionLabel(currentUser) : optionLabel(selectedUser) || String(selectedUser))
     : 'Unassigned';
 
   function choose(user) {
@@ -354,8 +354,8 @@ export function AssigneeCell({ value, members, onAssign, disabled = false }) {
               onClick={() => choose(currentUser)}
             >
               <span className="slv-assignee-check">{selectedId === CURRENT_USER.id && <Icon name="check" size={11} />}</span>
-              <span className="slv-assignee-current-icon"><Icon name="user" size={13} /></span>
-              <span className="slv-assignee-option-label">Current User</span>
+              <PersonAvatar person={currentUser} className="slv-assignee-avatar" />
+              <span className="slv-assignee-option-label slv-current-label" title={`${optionLabel(currentUser)} (Current user)`}><span className="slv-current-name">{optionLabel(currentUser)}</span><small className="slv-current-tag">(Current user)</small></span>
               {selectedId === CURRENT_USER.id && <Icon name="check" size={14} />}
             </button>
           )}
@@ -478,7 +478,7 @@ function SearchableUserField({ label, value, onChange, members, placeholder, req
         >
           <span className={selectedUser ? '' : 'placeholder'}>
             {selectedUser
-              ? (value === CURRENT_USER.id ? 'Current User' : optionLabel(selectedUser))
+              ? (value === CURRENT_USER.id ? optionLabel(currentUser) : optionLabel(selectedUser))
               : placeholder}
           </span>
           <Icon name="chevron" size={14} />
@@ -505,10 +505,10 @@ function SearchableUserField({ label, value, onChange, members, placeholder, req
                 className={`slv-user-option current-user ${value === CURRENT_USER.id ? 'selected' : ''}`}
                 onClick={() => choose(currentUser)}
               >
-                <span className="slv-user-avatar">YO</span>
+                <PersonAvatar person={currentUser} className="slv-user-avatar" />
                 <span className="slv-user-option-text">
-                  <strong>Current User</strong>
-                  <small>{optionLabel(currentUser)}</small>
+                  <strong>{optionLabel(currentUser)}</strong>
+                  <small>Current user</small>
                 </span>
                 {value === CURRENT_USER.id && <Icon name="check" size={15} />}
               </button>

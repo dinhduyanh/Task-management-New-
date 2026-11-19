@@ -9,16 +9,19 @@ function initialsOf(user) {
 }
 
 /**
- * The user's uploaded picture, or their initials when none is set or the picture fails to load
- * (e.g. an expired Google photo link). referrerPolicy="no-referrer" lets Google photos load from localhost.
+ * The user's uploaded picture, or their initials. The initials are always drawn and the picture
+ * covers them once it has loaded; a picture that fails (e.g. an expired Google photo) is dropped.
+ * referrerPolicy="no-referrer" lets Google profile photos load from localhost.
  */
 export default function UserAvatar({ user, size = 36, className = '' }) {
   const [failedUrl, setFailedUrl] = useState('');
+  const [loadedUrl, setLoadedUrl] = useState('');
   const url = user?.avatarUrl && user.avatarUrl !== failedUrl ? user.avatarUrl : '';
   const style = { width: size, height: size, fontSize: Math.round(size * 0.38) };
   return (
     <span className={`tf-user-avatar ${className}`} style={style} aria-hidden="true">
-      {url ? <img src={url} alt="" referrerPolicy="no-referrer" onError={() => setFailedUrl(url)} /> : initialsOf(user)}
+      {initialsOf(user)}
+      {url && <img className={loadedUrl === url ? 'is-loaded' : ''} src={url} alt="" referrerPolicy="no-referrer" onLoad={() => setLoadedUrl(url)} onError={() => setFailedUrl(url)} />}
     </span>
   );
 }

@@ -11,8 +11,14 @@
   user-select: none;
 }
 
+.tf-user-avatar { position: relative; }
+/* The picture covers the initials once it has loaded. */
 .tf-user-avatar img {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   object-fit: cover;
+  opacity: 0;
 }
+.tf-user-avatar img.is-loaded { opacity: 1; }

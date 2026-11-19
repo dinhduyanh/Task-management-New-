@@ -473,3 +473,5 @@
 .td-workflow-button:hover{border-color:var(--tf-bd-4c9aff);background:var(--tf-bg-e9f2ff);color:var(--tf-fg-0c66e4)}
 .td-workflow-button:focus-visible{outline:2px solid var(--tf-bd-4c9aff);outline-offset:2px}
 .td-mini-table .td-table-link{padding:0}
+.td-current-tag{color:var(--tf-fg-6b778c);font-size:10px;font-weight:400;white-space:nowrap}
+.td-current-label{display:flex;min-width:0;align-items:baseline;gap:4px}.td-current-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}.td-current-label .td-current-tag{flex:none}

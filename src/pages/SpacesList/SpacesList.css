@@ -1529,3 +1529,10 @@ button.slv-inline-date:focus-visible {
 }
 :is(.slv-table, .task-table) .slv-status > span { overflow: visible; text-overflow: clip; }
 :is(.slv-table, .task-table) .slv-status > svg { position: static; flex: 0 0 auto; }
+
+/* "(Current user)" next to the signed-in user's name, only inside the user pickers. */
+.slv-current-tag { color: var(--tf-fg-6b778c); font-size: 11px; font-weight: 400; white-space: nowrap; }
+/* In the picker the name shortens first; "(Current user)" always shows in full. */
+.slv-current-label { display: flex; min-width: 0; align-items: baseline; gap: 4px; }
+.slv-current-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.slv-current-label .slv-current-tag { flex: none; }

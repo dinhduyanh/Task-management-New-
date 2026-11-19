@@ -266,7 +266,7 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
   return (
     <div className="td-user-select" ref={rootRef}>
       <button type="button" className={`td-user-select-trigger ${open ? 'open' : ''}`} onClick={() => { setOpen((current) => !current); setQuery(''); }} aria-expanded={open}>
-        {selectedUser ? <><PersonAvatar person={userId(selectedUser) === CURRENT_USER.id ? CURRENT_USER : selectedUser} className={`td-avatar ${userId(selectedUser) === CURRENT_USER.id ? 'current' : ''}`} /><span>{userId(selectedUser) === CURRENT_USER.id ? 'You' : userName(selectedUser)}</span></> : <span className="td-placeholder">{placeholder}</span>}
+        {selectedUser ? <><PersonAvatar person={userId(selectedUser) === CURRENT_USER.id ? CURRENT_USER : selectedUser} className={`td-avatar ${userId(selectedUser) === CURRENT_USER.id ? 'current' : ''}`} /><span>{userId(selectedUser) === CURRENT_USER.id ? userName(CURRENT_USER) : userName(selectedUser)}</span></> : <span className="td-placeholder">{placeholder}</span>}
         <Icon name="chevron" size={13} />
       </button>
       {open && (
@@ -274,8 +274,8 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
           <div className="td-user-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search users" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
           <button type="button" className={`td-user-option td-current-user ${value && String(userId(value)) === CURRENT_USER.id ? 'selected' : ''}`} onClick={() => choose(CURRENT_USER)}>
             <span className="td-user-check">{value && String(userId(value)) === CURRENT_USER.id ? <Icon name="check" size={12} /> : null}</span>
-            <span className="td-current-user-symbol"><Icon name="user" size={14} /></span>
-            <span className="td-user-option-name">Current User</span>
+            <PersonAvatar person={CURRENT_USER} className="td-avatar" />
+            <span className="td-user-option-name td-current-label" title={`${userName(CURRENT_USER)} (Current user)`}><span className="td-current-name">{userName(CURRENT_USER)}</span><small className="td-current-tag">(Current user)</small></span>
             {value && String(userId(value)) === CURRENT_USER.id && <Icon name="check" size={14} />}
           </button>
           {visibleUsers.map((member) => {
