@@ -28,6 +28,8 @@ import AIAssistant from './components/ai/AIAssistant';
 import DashboardView from './pages/Dashboard/DashboardView';
 import DashboardsList from './pages/Dashboard/DashboardsList';
 import DashboardBuilder from './pages/Dashboard/DashboardBuilder';
+import FilterSearch from './pages/Filters/FilterSearch';
+import FiltersList from './pages/Filters/FiltersList';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
 import './App.css';
@@ -601,6 +603,19 @@ export default function App() {
         onMoveTasks={handleMoveTasks}
       />
     );
+  } else if (currentRoute.page === 'filterSearch' || currentRoute.page === 'filter') {
+    pageContent = (
+      <FilterSearch
+        {...sharedNavigationProps}
+        routeData={currentRoute.data}
+        onUpdateTask={handleUpdateTask}
+        onCreateTask={handleCreateTask}
+        onDeleteTasks={handleDeleteTasks}
+        onMoveTasks={handleMoveTasks}
+      />
+    );
+  } else if (currentRoute.page === 'filters') {
+    pageContent = <FiltersList {...sharedNavigationProps} />;
   } else if (currentRoute.page === 'space') {
     const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
     pageContent = <SpacesSummary {...sharedNavigationProps} space={selectedSpace} />;
@@ -759,7 +774,7 @@ export default function App() {
       />
     );
   } else {
-    const placeholderTitles = { filter: 'Filter' };
+    const placeholderTitles = {};
     pageContent = (
       <PlaceholderPage
         {...sharedNavigationProps}

@@ -28,11 +28,11 @@ function sidebarSpaceList(spaces, activeSpaceId) {
  */
 export default function Sidebar(props) {
   const setSlot = useContext(SidebarSlotContext);
-  const { activeSection = 'My Tasks', activeSpaceId = null, activeDashboardId = null } = props;
+  const { activeSection = 'My Tasks', activeSpaceId = null, activeDashboardId = null, activeFilterView = null } = props;
 
   useLayoutEffect(() => {
-    if (setSlot) setSlot({ activeSection, activeSpaceId, activeDashboardId });
-  }, [setSlot, activeSection, activeSpaceId, activeDashboardId]);
+    if (setSlot) setSlot({ activeSection, activeSpaceId, activeDashboardId, activeFilterView });
+  }, [setSlot, activeSection, activeSpaceId, activeDashboardId, activeFilterView]);
 
   useLayoutEffect(() => {
     if (!setSlot) return undefined;
@@ -46,6 +46,7 @@ export function SidebarPanel({
   activeSection = 'My Tasks',
   activeSpaceId = null,
   activeDashboardId = null,
+  activeFilterView = null, // 'search' | 'all' on the Filters pages
   spaces = [],
   onCreateSpace = () => {},
   onNavigate = () => {},
@@ -54,6 +55,13 @@ export function SidebarPanel({
 }) {
   const [spacesExpanded, setSpacesExpanded] = useState(true);
   const [dashboardsExpanded, setDashboardsExpanded] = useState(true);
+  const [filtersExpanded, setFiltersExpanded] = useState(activeSection === 'Filters');
+  // Opening a Filters page (e.g. from a link) shows its submenu.
+  const [lastSection, setLastSection] = useState(activeSection);
+  if (lastSection !== activeSection) {
+    setLastSection(activeSection);
+    if (activeSection === 'Filters') setFiltersExpanded(true);
+  }
   const { dashboards, sidebarCollapsed, toggleSidebar } = useAppShell();
   const shortcutDashboards = sidebarDashboards(dashboards);
   const sidebarSpaces = sidebarSpaceList(spaces, activeSpaceId);
@@ -336,16 +344,58 @@ export function SidebarPanel({
 
         <div className="sidebar-divider" role="separator" />
 
-        <button
-          type="button"
-          className={`nav-item nav-item-button ${activeSection === 'Filter' ? 'nav-item-active' : ''}`}
-          onClick={() => navigate('filter')}
-          aria-current={activeSection === 'Filter' ? 'page' : undefined}
-          data-tip="Filter"
-        >
-          <Icon name="filter" />
-          <span className="nav-label">Filter</span>
-        </button>
+        {/* Filters: Search work items + View all filters. */}
+        <div className={`spaces-nav-row ${activeSection === 'Filters' && !filtersExpanded ? 'spaces-nav-row-active' : ''}`}>
+          <button
+            type="button"
+            className="spaces-main-toggle"
+            onClick={() => {
+              if (sidebarCollapsed) { navigate('filterSearch'); return; }
+              setFiltersExpanded((current) => !current);
+            }}
+            aria-expanded={filtersExpanded}
+            title="Filters"
+            data-tip="Filters"
+          >
+            <Icon name="filter" />
+            <span className="nav-label">Filters</span>
+          </button>
+          <div className="spaces-nav-actions">
+            <button
+              type="button"
+              className={`spaces-chevron-button ${filtersExpanded ? 'is-expanded' : ''}`}
+              onClick={() => setFiltersExpanded((current) => !current)}
+              aria-label={filtersExpanded ? 'Collapse Filters' : 'Expand Filters'}
+              aria-expanded={filtersExpanded}
+            >
+              <Icon name="chevron" size={15} />
+            </button>
+          </div>
+        </div>
+
+        {filtersExpanded && !sidebarCollapsed && (
+          <div className="spaces-submenu sidebar-filters" aria-label="Filters">
+            {[
+              { view: 'search', page: 'filterSearch', icon: 'search', label: 'Search work items' },
+              { view: 'all', page: 'filters', icon: 'list', label: 'View all filters' }
+            ].map((item) => {
+              const active = activeSection === 'Filters' && activeFilterView === item.view;
+              return (
+                <div className={`space-item-row ${active ? 'space-item-row-active' : ''}`} key={item.view}>
+                  <button
+                    type="button"
+                    className={`space-item space-item-button ${active ? 'space-item-active' : ''}`}
+                    onClick={() => navigate(item.page)}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <span className="sidebar-dashboard-icon"><Icon name={item.icon} size={15} /></span>
+                    <span className="space-item-name">{item.label}</span>
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </nav>
 
       <div className="sidebar-bottom">

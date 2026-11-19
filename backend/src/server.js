@@ -14,6 +14,7 @@ import dashboardsRouter from './routes/dashboards.js';
 import aiRouter from './routes/ai.js';
 import workflowsRouter from './routes/workflows.js';
 import notificationsRouter from './routes/notifications.js';
+import filtersRouter from './routes/filters.js';
 import { mailQueue, startMailQueue } from './notifications.js';
 import { requireAdmin, requireAuth } from './middleware/auth.js';
 import { db } from './db.js';
@@ -47,6 +48,7 @@ app.use('/api/dashboards', dashboardsRouter);
 app.use('/api/ai', aiRouter);
 app.use('/api', workflowsRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/filters', filtersRouter);
 
 app.use((error, _req, res, _next) => {
   if (error?.code === 'SQLITE_CONSTRAINT_UNIQUE') return res.status(409).json({ error: 'This Code or Key already exists.' });

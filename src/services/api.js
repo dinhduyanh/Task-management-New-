@@ -176,6 +176,20 @@ export const api = {
     json('POST', { ids, sprintId: sprintId || null })
   ),
 
+  // Filters: TQL search, dropdown values, saved filters, natural language -> TQL
+  searchWorkItems: ({ tql = '', page = 1, pageSize = 20 } = {}, options = {}) => request('/filters/search', {
+    ...json('POST', { tql, page, pageSize, timezoneOffset: new Date().getTimezoneOffset() }),
+    signal: options.signal
+  }),
+  getFilterMeta: () => request('/filters/meta'),
+  getSavedFilters: () => request('/filters/saved'),
+  getSavedFilter: (id) => request(`/filters/saved/${encodeURIComponent(id)}`),
+  createSavedFilter: (payload) => request('/filters/saved', json('POST', payload)),
+  updateSavedFilter: (id, payload) => request(`/filters/saved/${encodeURIComponent(id)}`, json('PATCH', payload)),
+  deleteSavedFilter: (id) => request(`/filters/saved/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  copySavedFilter: (id, name) => request(`/filters/saved/${encodeURIComponent(id)}/copy`, json('POST', name ? { name } : {})),
+  tqlFromText: (text) => request('/filters/ai', json('POST', { text })),
+
   // Notifications (header bell)
   getNotifications: ({ filter = 'all', limit = 30, offset = 0 } = {}) => {
     const params = new URLSearchParams({ limit: String(limit) });

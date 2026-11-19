@@ -21,16 +21,38 @@ export default function TaskTable({
   onUpdateTask = () => {},
   onChangeStatus = () => {},
   onMoveSelected = null,
-  onDeleteSelected = null
+  onDeleteSelected = null,
+  // Server-side paging (Filters): rows are already one page; total / page come from the API.
+  paging = null, // { page, pageSize, total, onPageChange, onPageSizeChange }
+  // Sortable headers: sort = { field, direction }, onSort(field)
+  sort = null,
+  onSort = null,
+  headerActions = null,
+  loading = false,
+  emptyTitle = 'No tasks found',
+  emptyText = 'Try changing your search or filters.'
 }) {
   const { user } = useAppShell();
   const [selectedTaskIds, setSelectedTaskIds] = useState([]);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
 
-  const pageCount = Math.max(1, Math.ceil(tasks.length / pageSize));
-  const currentPage = Math.min(page, pageCount);
-  const pageRows = tasks.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const total = paging ? paging.total : tasks.length;
+  const size = paging ? paging.pageSize : pageSize;
+  const pageCount = Math.max(1, Math.ceil(total / size));
+  const currentPage = paging ? paging.page : Math.min(page, pageCount);
+  const pageRows = paging ? tasks : tasks.slice((currentPage - 1) * size, currentPage * size);
+  const sortHeader = (field, label, className = '') => {
+    if (!onSort) return <th className={className}>{label}</th>;
+    const active = sort?.field === field;
+    return (
+      <th className={className} aria-sort={active ? (sort.direction === 'DESC' ? 'descending' : 'ascending') : 'none'}>
+        <button type="button" className={`mt-sort ${active ? 'is-active' : ''}`} onClick={() => onSort(field)} title={`Sort by ${label}`}>
+          {label}<span className="mt-sort-icon" aria-hidden="true">{active ? (sort.direction === 'DESC' ? '↓' : '↑') : '↕'}</span>
+        </button>
+      </th>
+    );
+  };
   const visibleTaskIds = useMemo(() => pageRows.map((task) => task.id), [pageRows]);
   const selectedVisibleCount = visibleTaskIds.filter((id) => selectedTaskIds.includes(id)).length;
   const allVisibleSelected = visibleTaskIds.length > 0 && selectedVisibleCount === visibleTaskIds.length;
@@ -53,7 +75,10 @@ export default function TaskTable({
           <h2>{title}</h2>
           {subtitle && <p>{subtitle}</p>}
         </div>
-        <span className="task-count">{tasks.length} task{tasks.length === 1 ? '' : 's'}</span>
+        <div className="mt-header-right">
+          <span className="task-count">{total} {paging ? 'work item' : 'task'}{total === 1 ? '' : 's'}</span>
+          {headerActions}
+        </div>
       </div>
 
       {selectedTasks.length > 0 && (
@@ -77,18 +102,18 @@ export default function TaskTable({
               <th className="checkbox-column">
                 <input type="checkbox" checked={allVisibleSelected} onChange={handleSelectAll} aria-label="Select all visible tasks" disabled={!pageRows.length} />
               </th>
-              <th className="work-column">Work</th>
-              <th className="is-center">Project</th>
-              <th className="is-center">Assignee</th>
-              <th className="is-center">Priority</th>
-              <th className="is-center">Status</th>
-              <th className="is-center">Create Date</th>
-              <th className="is-center">Start Date</th>
-              <th className="is-center">Due Date</th>
+              {sortHeader('key', 'Work', 'work-column')}
+              {sortHeader('project', 'Project', 'is-center')}
+              {sortHeader('assignee', 'Assignee', 'is-center')}
+              {sortHeader('priority', 'Priority', 'is-center')}
+              {sortHeader('status', 'Status', 'is-center')}
+              {sortHeader('created', 'Create Date', 'is-center')}
+              {sortHeader('startDate', 'Start Date', 'is-center')}
+              {sortHeader('dueDate', 'Due Date', 'is-center')}
             </tr>
           </thead>
 
-          <tbody>
+          <tbody className={loading ? 'is-loading' : ''} aria-busy={loading || undefined}>
             {pageRows.length > 0 ? pageRows.map((task) => {
               const space = spaceOfItem(spaces, task);
               const type = issueType(task);
@@ -120,8 +145,8 @@ export default function TaskTable({
               <tr>
                 <td colSpan="9" className="empty-state">
                   <Icon name="file" size={30} />
-                  <strong>No tasks found</strong>
-                  <span>Try changing your search or filters.</span>
+                  <strong>{loading ? 'Loading…' : emptyTitle}</strong>
+                  {!loading && <span>{emptyText}</span>}
                 </td>
               </tr>
             )}
@@ -130,12 +155,12 @@ export default function TaskTable({
       </div>
       <Pagination
         page={currentPage}
-        pageSize={pageSize}
-        total={tasks.length}
-        pageSizes={[10, 20, 50]}
-        label="tasks"
-        onPageChange={setPage}
-        onPageSizeChange={(size) => { setPageSize(size); setPage(1); }}
+        pageSize={size}
+        total={total}
+        pageSizes={paging ? [20, 50, 100] : [10, 20, 50]}
+        label={paging ? 'work items' : 'tasks'}
+        onPageChange={paging ? paging.onPageChange : setPage}
+        onPageSizeChange={paging ? paging.onPageSizeChange : (next) => { setPageSize(next); setPage(1); }}
       />
     </section>
   );

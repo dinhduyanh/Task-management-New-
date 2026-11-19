@@ -334,3 +334,43 @@
 /* Project: the badge starts under the "Project" title and never spills out of its column. */
 .task-table td .mt-project { display: inline-block; max-width: 100%; margin: 0; vertical-align: middle; }
 .task-table th:nth-child(3), .task-table td:nth-child(3) { max-width: 160px; }
+
+.mt-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sortable column headers (Filters). The button keeps the header's text style. */
+.mt-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.mt-sort:hover,
+.mt-sort.is-active {
+  color: var(--tf-primary);
+}
+
+.mt-sort-icon {
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.mt-sort.is-active .mt-sort-icon {
+  opacity: 1;
+}
+
+.task-table tbody.is-loading {
+  opacity: 0.55;
+  transition: opacity 0.15s;
+}

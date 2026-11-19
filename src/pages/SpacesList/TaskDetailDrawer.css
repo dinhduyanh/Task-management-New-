@@ -478,3 +478,10 @@
 
 /* Follow toggle: highlighted while following. */
 .td-action-button.td-watch-button.is-active{border-color:var(--tf-bd-4c9aff);color:var(--tf-fg-0052cc);background:var(--tf-bg-f0f6ff)}
+
+/* Embedded in a page panel (Filters > detail split view). */
+.td-overlay.td-overlay-embedded{position:relative;inset:auto;z-index:auto;display:flex;height:100%;min-height:0;background:transparent}
+.td-overlay-embedded .td-drawer,.td-overlay-embedded .td-drawer.expanded{width:100%;max-width:none;height:100%;min-height:0;border-radius:0;box-shadow:none;animation:none}
+.td-overlay-embedded .td-body{grid-template-columns:minmax(0,1fr);overflow:auto}
+.td-overlay-embedded .td-main-column{overflow:visible}
+.td-overlay-embedded .td-right-panel{border-left:0;border-top:1px solid var(--tf-bd-ebecf0)}

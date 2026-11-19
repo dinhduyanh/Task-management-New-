@@ -399,7 +399,8 @@ export default function TaskDetailDrawer({
   onCreateChild = () => {},
   onOpenIssue = () => {},
   onMoveTask = null, // (issue) => open the "Move to project" picker
-  fullPage = false
+  fullPage = false,
+  embedded = false // shown inside a page panel (Filters split view) instead of over the page
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hideEmpty, setHideEmpty] = useState(false);
@@ -512,10 +513,10 @@ export default function TaskDetailDrawer({
   }, [issue.id, issue.description]);
 
   useEffect(() => {
-    const onKeyDown = (event) => { if (event.key === 'Escape' && !startModalOpen && !deleteConfirmOpen && !workflowOpen) onClose(); };
+    const onKeyDown = (event) => { if (event.key === 'Escape' && !embedded && !startModalOpen && !deleteConfirmOpen && !workflowOpen) onClose(); };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, startModalOpen, deleteConfirmOpen, workflowOpen]);
+  }, [onClose, embedded, startModalOpen, deleteConfirmOpen, workflowOpen]);
 
   function recordHistory(action, detail = '') {
     const entry = {
@@ -951,8 +952,8 @@ export default function TaskDetailDrawer({
 
 
   return (
-    <div className={`td-overlay ${fullPage ? 'td-overlay-full-page' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className={`td-drawer ${expanded ? 'expanded' : ''}`} role="dialog" aria-modal="true" aria-label={`Task detail ${key}`}>
+    <div className={`td-overlay ${fullPage ? 'td-overlay-full-page' : ''} ${embedded ? 'td-overlay-embedded' : ''}`} onMouseDown={(event) => { if (!embedded && event.target === event.currentTarget) onClose(); }}>
+      <section className={`td-drawer ${expanded ? 'expanded' : ''}`} role={embedded ? 'region' : 'dialog'} aria-modal={embedded ? undefined : 'true'} aria-label={`Task detail ${key}`}>
         <header className="td-header">
           <div className="td-header-left">
             <button type="button" className="td-icon-button td-close-button" onClick={onClose} aria-label="Close Task detail"><Icon name="close" size={16} /></button>

@@ -367,3 +367,22 @@ CREATE TABLE IF NOT EXISTS work_item_watchers (
   FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_watchers_user ON work_item_watchers(user_id);
+
+-- Saved work item filters (Filters > View all filters). tql_query is what runs; the
+-- filter_config_json keeps the Default-mode dropdown values when the query has them.
+-- System defaults (is_system_default = 1) have no owner and are visible to everyone.
+CREATE TABLE IF NOT EXISTS saved_filters (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  description TEXT NOT NULL DEFAULT '',
+  tql_query TEXT NOT NULL DEFAULT '',
+  filter_config_json TEXT,
+  owner_id TEXT,
+  visibility TEXT NOT NULL DEFAULT 'private',   -- private | public
+  is_system_default INTEGER NOT NULL DEFAULT 0,
+  position INTEGER NOT NULL DEFAULT 0,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_saved_filters_owner ON saved_filters(owner_id);
