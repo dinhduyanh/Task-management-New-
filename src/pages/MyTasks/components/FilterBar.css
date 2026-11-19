@@ -6,8 +6,8 @@
   gap: 9px;
   margin-bottom: 20px;
   padding: 12px;
-  background: #fff;
-  border: 1px solid #e8edf4;
+  background: var(--tf-bg-ffffff);
+  border: 1px solid var(--tf-bd-e8edf4);
   border-radius: 9px;
 }
 
@@ -18,14 +18,14 @@
   width: 225px;
   height: 36px;
   padding: 0 10px;
-  border: 1px solid #dce3ed;
+  border: 1px solid var(--tf-bd-dce3ed);
   border-radius: 6px;
-  background: #fff;
-  color: #8a95a5;
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-8a95a5);
 }
 
 .mytasks-task-search:focus-within {
-  border-color: #8bb5ee;
+  border-color: var(--tf-bd-8bb5ee);
   box-shadow: 0 0 0 2px rgba(37, 99, 235, 0.06);
 }
 
@@ -48,14 +48,14 @@
   border: 0;
   outline: 0;
   background: transparent;
-  color: #344054;
+  color: var(--tf-fg-344054);
   font: inherit;
   font-size: 12px;
 }
 
 .mytasks-task-search input::placeholder,
 .filter-dropdown-search input::placeholder {
-  color: #9aa6b7;
+  color: var(--tf-fg-9aa6b7);
 }
 
 /* Dropdown trigger */
@@ -73,10 +73,10 @@
   max-width: 190px;
   height: 36px;
   padding: 0 10px;
-  border: 1px solid #dce3ed;
+  border: 1px solid var(--tf-bd-dce3ed);
   border-radius: 6px;
-  background: #fff;
-  color: #667085;
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-667085);
   font: inherit;
   font-size: 12px;
   cursor: pointer;
@@ -85,8 +85,8 @@
 
 .filter-dropdown-trigger:hover,
 .filter-dropdown-trigger.is-open {
-  border-color: #a9c7ed;
-  background: #fbfdff;
+  border-color: var(--tf-bd-a9c7ed);
+  background: var(--tf-bg-fbfdff);
 }
 
 .filter-dropdown-trigger.is-open {
@@ -104,7 +104,7 @@
   height: 14px;
   flex: 0 0 auto;
   fill: none;
-  stroke: #8b96a6;
+  stroke: var(--tf-fg-8b96a6);
   stroke-width: 1.8;
   stroke-linecap: round;
   stroke-linejoin: round;
@@ -118,8 +118,8 @@
   height: 18px;
   padding: 0 5px;
   border-radius: 10px;
-  background: #eaf2ff;
-  color: #2768c5;
+  background: var(--tf-bg-eaf2ff);
+  color: var(--tf-fg-2768c5);
   font-size: 10px;
   font-weight: 600;
 }
@@ -132,9 +132,9 @@
   z-index: 100;
   width: 220px;
   padding: 7px;
-  border: 1px solid #e6ebf2;
+  border: 1px solid var(--tf-bd-e6ebf2);
   border-radius: 9px;
-  background: #fff;
+  background: var(--tf-bg-ffffff);
   box-shadow: 0 10px 28px rgba(25, 42, 70, 0.13), 0 2px 6px rgba(25, 42, 70, 0.05);
   animation: filter-menu-appear 0.12s ease-out;
 }
@@ -151,14 +151,14 @@
   height: 34px;
   margin-bottom: 6px;
   padding: 0 9px;
-  border: 1px solid #dce3ed;
+  border: 1px solid var(--tf-bd-dce3ed);
   border-radius: 6px;
-  color: #8c98a9;
-  background: #fff;
+  color: var(--tf-fg-8c98a9);
+  background: var(--tf-bg-ffffff);
 }
 
 .filter-dropdown-search:focus-within {
-  border-color: #8bb5ee;
+  border-color: var(--tf-bd-8bb5ee);
 }
 
 .filter-search-clear {
@@ -172,15 +172,15 @@
   border: 0;
   border-radius: 4px;
   background: transparent;
-  color: #8b96a6;
+  color: var(--tf-fg-8b96a6);
   font-size: 17px;
   line-height: 1;
   cursor: pointer;
 }
 
 .filter-search-clear:hover {
-  background: #f1f4f8;
-  color: #475467;
+  background: var(--tf-bg-f1f4f8);
+  color: var(--tf-fg-475467);
 }
 
 .filter-dropdown-options {
@@ -199,7 +199,7 @@
 
 .filter-dropdown-options::-webkit-scrollbar-thumb {
   border-radius: 8px;
-  background: #d5dce6;
+  background: var(--tf-bg-d5dce6);
 }
 
 .filter-dropdown-option {
@@ -210,19 +210,19 @@
   min-height: 36px;
   padding: 0 8px;
   border-radius: 6px;
-  color: #475467;
+  color: var(--tf-fg-475467);
   font-size: 12px;
   cursor: pointer;
   transition: background 0.12s;
 }
 
 .filter-dropdown-option:hover {
-  background: #f5f8fc;
+  background: var(--tf-bg-f5f8fc);
 }
 
 .filter-dropdown-option.selected {
-  background: #e8f3fd;
-  color: #344054;
+  background: var(--tf-bg-e8f3fd);
+  color: var(--tf-fg-344054);
 }
 
 .filter-dropdown-option input {
@@ -240,18 +240,18 @@
   width: 14px;
   height: 14px;
   flex: 0 0 14px;
-  border: 1.5px solid #91a0b4;
+  border: 1.5px solid var(--tf-bd-91a0b4);
   border-radius: 3px;
-  background: #fff;
-  color: #fff;
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-ffffff);
   font-size: 10px;
   font-weight: 700;
   line-height: 1;
 }
 
 .filter-dropdown-option.selected .filter-checkbox-visual {
-  border-color: #3478d4;
-  background: #3478d4;
+  border-color: var(--tf-bd-3478d4);
+  background: var(--tf-bg-3478d4);
 }
 
 .filter-dropdown-option input:focus-visible + .filter-checkbox-visual {
@@ -275,7 +275,7 @@
 
 .filter-dropdown-empty {
   padding: 17px 8px;
-  color: #98a2b3;
+  color: var(--tf-fg-98a2b3);
   font-size: 11px;
   text-align: center;
 }
@@ -287,8 +287,8 @@
   gap: 8px;
   margin-top: 6px;
   padding: 8px 5px 2px;
-  border-top: 1px solid #eef1f5;
-  color: #98a2b3;
+  border-top: 1px solid var(--tf-bd-eef1f5);
+  color: var(--tf-fg-98a2b3);
   font-size: 10px;
 }
 
@@ -296,7 +296,7 @@
   padding: 0;
   border: 0;
   background: transparent;
-  color: #3478d4;
+  color: var(--tf-fg-3478d4);
   font: inherit;
   cursor: pointer;
 }
@@ -318,14 +318,14 @@
 
 /* Dynamic filters added from More Filter */
 .dynamic-field-dropdown .filter-dropdown-trigger {
-  border-color: #cbdcf2;
-  background: #fbfdff;
+  border-color: var(--tf-bd-cbdcf2);
+  background: var(--tf-bg-fbfdff);
 }
 
 .dynamic-field-dropdown .filter-dropdown-trigger:hover,
 .dynamic-field-dropdown .filter-dropdown-trigger.is-open {
-  border-color: #8bb5ee;
-  background: #f5f9ff;
+  border-color: var(--tf-bd-8bb5ee);
+  background: var(--tf-bg-f5f9ff);
 }
 
 .dynamic-field-dropdown .filter-dropdown-label {
@@ -364,10 +364,10 @@
   width: 36px;
   height: 36px;
   padding: 0;
-  border: 1px solid #cbdcf2;
+  border: 1px solid var(--tf-bd-cbdcf2);
   border-radius: 6px;
-  background: #ffffff;
-  color: #286ac3;
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-286ac3);
   cursor: pointer;
   transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
 }
@@ -384,8 +384,8 @@
 
 .apply-filters-button:hover,
 .apply-filters-button.has-pending-changes {
-  border-color: #75a8e8;
-  background: #edf5ff;
+  border-color: var(--tf-bd-75a8e8);
+  background: var(--tf-bg-edf5ff);
 }
 
 .apply-filters-button:focus-visible {

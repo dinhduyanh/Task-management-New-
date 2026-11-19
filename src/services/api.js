@@ -1,16 +1,26 @@
+// Accept VITE_API_BASE_URL either as the server origin (http://localhost:4000)
+// or including the /api prefix (http://localhost:4000/api).
+const API_ORIGIN = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000')
+  .replace(/\/+$/, '')
+  .replace(/\/api$/, '');
 
-const API_ORIGIN = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:4000'
-).replace(/\/$/, '');
+export const API_BASE_URL = `${API_ORIGIN}/api`;
 
-const API_BASE_URL = `${API_ORIGIN}/api`;
+export class ApiError extends Error {
+  constructor(message, status, payload) {
+    super(message);
+    this.name = 'ApiError';
+    this.status = status;
+    this.payload = payload;
+  }
+}
 
-async function request(path, options = {}) {
+export async function request(path, options = {}) {
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...options,
     credentials: 'include',
     headers: {
-      ...(options.body instanceof FormData
+      ...(options.body instanceof FormData || !options.body
         ? {}
         : { 'Content-Type': 'application/json' }),
       ...(options.headers || {})
@@ -32,47 +42,19 @@ async function request(path, options = {}) {
       ? payload.error
       : `API request failed (${response.status}).`;
 
-    throw new Error(message);
+    throw new ApiError(message, response.status, payload);
   }
 
   return payload;
 }
 
-const json = (method, body) => ({
+export const json = (method, body) => ({
   method,
   body: JSON.stringify(body)
 });
 
 export const api = {
   health: () => request('/health'),
-
-  // Authentication
-  login: (username, password) => request(
-    '/auth/login',
-    json('POST', { username, password })
-  ),
-
-  logout: () => request('/auth/logout', {
-    method: 'POST'
-  }),
-
-  // User Profile
-  getCurrentUser: () => request('/users/me'),
-
-  updateProfile: (data) => request(
-    '/users/me',
-    json('PATCH', data)
-  ),
-
-  changePassword: (data) => request(
-    '/users/change-password',
-    json('POST', data)
-  ),
-
-  updateAvatar: (data) => request(
-    '/users/me/avatar',
-    json('POST', data)
-  ),
 
   // Spaces
   getSpaces: () => request('/spaces'),
@@ -92,10 +74,72 @@ export const api = {
     { method: 'DELETE' }
   ),
 
+  /** payload: { userId, roles } (adds the member or changes their roles). */
   addSpaceMember: (id, payload) => request(
     `/spaces/${encodeURIComponent(id)}/members`,
     json('POST', payload)
   ),
+
+  /** Saves (pinned: true) or removes a project from the sidebar Spaces list (max 5). */
+  setSpaceFeatures: (id, features) => request(`/spaces/${encodeURIComponent(id)}/features`, json('PUT', { features })),
+  searchMemberCandidates: (spaceId, query, exclude = []) => request(`/spaces/${encodeURIComponent(spaceId)}/member-candidates?${new URLSearchParams({ q: query, limit: '10', exclude: exclude.join(',') })}`),
+  getSpaceWorkflows: (spaceId) => request(`/spaces/${encodeURIComponent(spaceId)}/workflows`),
+  pinSpace: (id, pinned) => request(`/spaces/${encodeURIComponent(id)}/pin`, json('PUT', { pinned })),
+
+  /** payload: { userIds, roles } (adds several people with the same roles). */
+  addSpaceMembers: (id, payload) => request(
+    `/spaces/${encodeURIComponent(id)}/members/bulk`,
+    json('POST', payload)
+  ),
+
+  removeSpaceMember: (id, userId) => request(
+    `/spaces/${encodeURIComponent(id)}/members/${encodeURIComponent(userId)}`,
+    { method: 'DELETE' }
+  ),
+
+  // Project roles (read: every user; manage: admins)
+  getProjectRoles: () => request('/project-roles'),
+  // Project permissions (read: members; change: project admins)
+  getSpacePermissions: (id) => request(`/spaces/${encodeURIComponent(id)}/permissions`),
+  updateSpacePermission: (id, key, rules) => request(
+    `/spaces/${encodeURIComponent(id)}/permissions/${encodeURIComponent(key)}`,
+    { method: 'PUT', body: JSON.stringify({ rules }) }
+  ),
+  resetSpacePermissions: (id) => request(`/spaces/${encodeURIComponent(id)}/permissions/reset`, { method: 'POST' }),
+
+  // Dashboard widgets visible to the signed-in user
+  getDashboardWidgets: () => request('/dashboard/widgets'),
+  // AI Project Assistant
+  aiStatus: () => request('/ai/status'),
+  aiChat: (payload, { signal } = {}) => request('/ai/chat', { ...json('POST', payload), signal }),
+  aiSuggestTask: (payload, { signal } = {}) => request('/ai/suggest-task', { ...json('POST', payload), signal }),
+  aiApplyPriority: (changes) => request('/ai/apply-priority', json('POST', { changes })),
+
+  // User dashboards (layouts of SQL widgets)
+  getDashboards: () => request('/dashboards'),
+  getDashboard: (id, { visit = true } = {}) => request(`/dashboards/${encodeURIComponent(id)}${visit ? '' : '?visit=0'}`),
+  createDashboard: (values) => request('/dashboards', json('POST', values)),
+  updateDashboard: (id, values) => request(`/dashboards/${encodeURIComponent(id)}`, json('PATCH', values)),
+  deleteDashboard: (id) => request(`/dashboards/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  starDashboard: (id, starred) => request(`/dashboards/${encodeURIComponent(id)}/star`, json('PUT', { starred })),
+  getDashboardWidgetData: (id) => request(`/dashboard/widgets/${encodeURIComponent(id)}/data`),
+
+  // System administration (admins only)
+  admin: {
+    getUsers: () => request('/admin/users'),
+    createUser: (data) => request('/admin/users', json('POST', data)),
+    updateUser: (id, data) => request(`/admin/users/${encodeURIComponent(id)}`, json('PATCH', data)),
+    resetPassword: (id, password) => request(`/admin/users/${encodeURIComponent(id)}/password`, json('POST', { password })),
+    getProjectRoles: () => request('/admin/project-roles'),
+    createProjectRole: (data) => request('/admin/project-roles', json('POST', data)),
+    updateProjectRole: (id, data) => request(`/admin/project-roles/${encodeURIComponent(id)}`, json('PATCH', data)),
+    deleteProjectRole: (id) => request(`/admin/project-roles/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    getWidgets: () => request('/admin/widgets'),
+    createWidget: (data) => request('/admin/widgets', json('POST', data)),
+    updateWidget: (id, data) => request(`/admin/widgets/${encodeURIComponent(id)}`, json('PATCH', data)),
+    deleteWidget: (id) => request(`/admin/widgets/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+    previewWidget: (sql) => request('/admin/widgets/preview', json('POST', { sql }))
+  },
 
   // Work Items
   getWorkItems: (spaceId) => request(
@@ -124,6 +168,115 @@ export const api = {
   moveWorkItems: (ids, targetSpaceId) => request(
     '/work-items/bulk-move',
     json('POST', { ids, targetSpaceId })
+  ),
+
+  /** Moves work items into a sprint (null = backlog); `ids` is that list's complete new order. */
+  rankWorkItems: (ids, sprintId) => request(
+    '/work-items/rank',
+    json('POST', { ids, sprintId: sprintId || null })
+  ),
+
+  // Filters: TQL search, dropdown values, saved filters
+  searchWorkItems: ({ tql = '', page = 1, pageSize = 20 } = {}, options = {}) => request('/filters/search', {
+    ...json('POST', { tql, page, pageSize, timezoneOffset: new Date().getTimezoneOffset() }),
+    signal: options.signal
+  }),
+  getFilterMeta: () => request('/filters/meta'),
+  getSavedFilters: () => request('/filters/saved'),
+  getSavedFilter: (id) => request(`/filters/saved/${encodeURIComponent(id)}`),
+  createSavedFilter: (payload) => request('/filters/saved', json('POST', payload)),
+  updateSavedFilter: (id, payload) => request(`/filters/saved/${encodeURIComponent(id)}`, json('PATCH', payload)),
+  deleteSavedFilter: (id) => request(`/filters/saved/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  copySavedFilter: (id, name) => request(`/filters/saved/${encodeURIComponent(id)}/copy`, json('POST', name ? { name } : {})),
+
+  // Notifications (header bell)
+  getNotifications: ({ filter = 'all', limit = 30, offset = 0 } = {}) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (filter === 'unread') params.set('filter', 'unread');
+    if (offset) params.set('offset', String(offset));
+    return request(`/notifications?${params}`);
+  },
+  getUnreadNotificationCount: () => request('/notifications/unread-count'),
+  markNotificationRead: (id, isRead = true) => request(`/notifications/${encodeURIComponent(id)}`, json('PATCH', { isRead })),
+  markAllNotificationsRead: () => request('/notifications/read-all', { method: 'POST' }),
+
+  // Follow a work item (followers get "Task Updated" notifications)
+  getWatchStatus: (workItemId) => request(`/work-items/${encodeURIComponent(workItemId)}/watch`),
+  setWatching: (workItemId, watching) => request(`/work-items/${encodeURIComponent(workItemId)}/watch`, json('PUT', { watching })),
+  getWorkItem: (id) => request(`/work-items/${encodeURIComponent(id)}`),
+
+  // Files attached to work items
+  getAttachments: (spaceId) => request(`/attachments${spaceId ? `?spaceId=${encodeURIComponent(spaceId)}` : ''}`),
+
+  /** Uploads one file to a work item. Resolves to { attachment, workItem }. */
+  uploadAttachment: (workItemId, file, source = 'work_item') => request(
+    `/work-items/${encodeURIComponent(workItemId)}/attachments`,
+    {
+      method: 'POST',
+      body: file,
+      headers: {
+        'Content-Type': 'application/octet-stream',
+        'X-File-Name': encodeURIComponent(file.name),
+        ...(source === 'comment' ? { 'X-Attachment-Source': 'comment' } : {})
+      }
+    }
+  ),
+
+  /** Resolves to { workItem } with the updated attachment list. */
+  deleteAttachment: (id) => request(`/attachments/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+
+  /** URL to show a file inline (images, PDF) or to download it. */
+  attachmentUrl: (id, mode = 'content') => `${API_BASE_URL}/attachments/${encodeURIComponent(id)}/${mode === 'download' ? 'download' : 'content'}`,
+
+  // Users directory (signed-in users only)
+  getUsers: () => request('/users'),
+
+  // Teams (scoped to one Space)
+  getTeams: (spaceId) => request(`/spaces/${encodeURIComponent(spaceId)}/teams`),
+
+  /** data: { code, name, unit, description, members: [{ userId, role: 'lead' | 'member' }] } */
+  createTeam: (spaceId, data) => request(
+    `/spaces/${encodeURIComponent(spaceId)}/teams`,
+    json('POST', data)
+  ),
+
+  updateTeam: (id, data) => request(
+    `/teams/${encodeURIComponent(id)}`,
+    json('PATCH', data)
+  ),
+
+  deleteTeam: (id) => request(
+    `/teams/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
+  ),
+
+  // Sprints
+  getSprints: (spaceId) => request(`/spaces/${encodeURIComponent(spaceId)}/sprints`),
+
+  createSprint: (spaceId, data = {}) => request(
+    `/spaces/${encodeURIComponent(spaceId)}/sprints`,
+    json('POST', data)
+  ),
+
+  updateSprint: (id, data) => request(
+    `/sprints/${encodeURIComponent(id)}`,
+    json('PATCH', data)
+  ),
+
+  startSprint: (id, data) => request(
+    `/sprints/${encodeURIComponent(id)}/start`,
+    json('POST', data)
+  ),
+
+  /** moveTo: 'backlog' | 'new' | a future sprint id, for the work items that are not done. */
+  completeSprint: (id, moveTo) => request(
+    `/sprints/${encodeURIComponent(id)}/complete`,
+    json('POST', { moveTo })
+  ),
+
+  deleteSprint: (id) => request(
+    `/sprints/${encodeURIComponent(id)}`,
+    { method: 'DELETE' }
   ),
 
   getComments: (workItemId) => request(

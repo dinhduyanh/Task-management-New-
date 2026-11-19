@@ -1,0 +1,69 @@
+/* Widget results (tables, numbers; charts are drawn by recharts with theme tokens) */
+.wv-table-wrap {
+  max-height: 320px;
+  overflow: auto;
+  border: 1px solid var(--tf-border);
+  border-radius: 6px;
+}
+
+.wv-table {
+  width: 100%;
+  border-collapse: collapse;
+  color: var(--tf-text);
+  font-size: 12px;
+}
+
+.wv-table th {
+  position: sticky;
+  top: 0;
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--tf-border);
+  background: var(--tf-surface-muted);
+  color: var(--tf-text-muted);
+  font-weight: 700;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.wv-table td {
+  max-width: 280px;
+  overflow: hidden;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--tf-border);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.wv-null {
+  color: var(--tf-text-muted);
+  font-style: italic;
+}
+
+.wv-number {
+  display: grid;
+  min-height: 140px;
+  place-content: center;
+  gap: 4px;
+  text-align: center;
+}
+
+.wv-number strong {
+  color: var(--tf-text);
+  font-size: 44px;
+  font-weight: 700;
+  line-height: 1.1;
+}
+
+.wv-number span {
+  color: var(--tf-text-muted);
+  font-size: 13px;
+}
+
+.wv-empty {
+  display: grid;
+  gap: 10px;
+  padding: 20px 4px;
+  color: var(--tf-text-muted);
+  font-size: 13px;
+  text-align: center;
+}

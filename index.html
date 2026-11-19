@@ -5,6 +5,15 @@
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>task-management</title>
+    <script>
+      // Apply the saved theme before CSS paints to avoid a light flash (see src/theme/theme.js).
+      try {
+        document.documentElement.dataset.theme =
+          localStorage.getItem('taskflow.theme') === 'dark' ? 'dark' : 'light';
+      } catch (error) {
+        document.documentElement.dataset.theme = 'light';
+      }
+    </script>
   </head>
   <body>
     <div id="root"></div>

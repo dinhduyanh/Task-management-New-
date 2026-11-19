@@ -1,0 +1,24 @@
+/* Status badge, coloured by status family (see statusTone) */
+.tf-status-badge {
+  display: inline-block;
+  max-width: 110px;
+  flex-shrink: 0;
+  overflow: hidden;
+  padding: 2px 7px;
+  border: 1px solid var(--tf-bd-c1c7d0);
+  border-radius: 4px;
+  background: var(--tf-bg-f4f5f7);
+  color: var(--tf-fg-42526e);
+  font-size: 11px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tf-status-badge.tone-todo { border-color: var(--tf-bd-79e2f2); background: var(--tf-bg-e6fcff); color: var(--tf-fg-006b7a); }
+.tf-status-badge.tone-progress { border-color: var(--tf-bd-85b8ff); background: var(--tf-bg-e9f2ff); color: var(--tf-fg-0055cc); }
+.tf-status-badge.tone-review { border-color: var(--tf-bd-ffc400); background: var(--tf-bg-fff7d6); color: var(--tf-fg-974f0c); }
+.tf-status-badge.tone-blocked { border-color: var(--tf-bd-ff8f73); background: var(--tf-bg-ffebe6); color: var(--tf-fg-bf2600); }
+.tf-status-badge.tone-done { border-color: var(--tf-bd-57d9a3); background: var(--tf-bg-e3fcef); color: var(--tf-fg-006644); }
+.tf-status-badge.tone-cancel { border-color: var(--tf-bd-c1c7d0); background: var(--tf-bg-f4f5f7); color: var(--tf-fg-6b778c); }
+

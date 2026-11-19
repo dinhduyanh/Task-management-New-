@@ -7,14 +7,14 @@
 
 .priority-icon--high,
 .priority-icon--highest {
-  color: #ed777f;
+  color: var(--tf-fg-ed777f);
 }
 
 .priority-icon--low,
 .priority-icon--lowest {
-  color: #59b982;
+  color: var(--tf-fg-59b982);
 }
 
 .priority-icon--medium {
-  color: #368de2;
+  color: var(--tf-fg-368de2);
 }

@@ -8,7 +8,7 @@ const __dirname = path.dirname(__filename);
 const dataDirectory = path.resolve(__dirname, '../data');
 fs.mkdirSync(dataDirectory, { recursive: true });
 
-const databasePath = process.env.TASKFLOW_DB_PATH || path.join(dataDirectory, 'taskflow.sqlite');
+export const databasePath = process.env.TASKFLOW_DB_PATH || path.join(dataDirectory, 'taskflow.sqlite');
 export const db = new Database(databasePath);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
@@ -27,6 +27,74 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_auth_sessions_user ON auth_sessions(user_id);
 `);
+
+// ---- Migrations for databases created before system roles existed ----------------
+const userColumns = db.prepare('PRAGMA table_info(users)').all().map((column) => column.name);
+if (!userColumns.includes('role')) {
+  db.exec("ALTER TABLE users ADD COLUMN role TEXT NOT NULL DEFAULT 'user'");
+}
+// Google sign-in: the Google account id ("sub") linked to a user. One Google account per user.
+if (!userColumns.includes('google_sub')) {
+  db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT');
+}
+db.exec(`
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub) WHERE google_sub IS NOT NULL;
+  -- Short-lived OAuth sign-in attempts (state, PKCE verifier, nonce); removed once used or expired.
+  CREATE TABLE IF NOT EXISTS oauth_states (
+    state_hash TEXT PRIMARY KEY,
+    provider TEXT NOT NULL,
+    code_verifier TEXT NOT NULL,
+    nonce TEXT NOT NULL,
+    created_at TEXT NOT NULL,
+    expires_at TEXT NOT NULL
+  );
+`);
+
+/**
+ * Never leave the system without an administrator: if no active admin exists, the oldest
+ * active account becomes one. Runs at start-up; scripts/set-user-role.js changes roles.
+ */
+export function ensureAdminExists() {
+  const admins = db.prepare("SELECT COUNT(*) AS count FROM users WHERE role = 'admin' AND is_active = 1").get().count;
+  if (admins) return null;
+  const first = db.prepare('SELECT id, username FROM users WHERE is_active = 1 ORDER BY created_at, rowid LIMIT 1').get();
+  if (!first) return null;
+  db.prepare("UPDATE users SET role = 'admin' WHERE id = ?").run(first.id);
+  console.log(`No administrator found: ${first.username || first.id} is now an admin.`);
+  return first.id;
+}
+ensureAdminExists();
+
+// Default project roles (only when none exist yet).
+if (!db.prepare('SELECT COUNT(*) AS count FROM project_roles').get().count) {
+  const insertRole = db.prepare('INSERT INTO project_roles (id, name, description, position, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)');
+  const seededAt = new Date().toISOString();
+  [
+    ['Project Manager', 'Plans the work, manages members and project settings.'],
+    ['Developer', 'Builds and updates work items.'],
+    ['Tester', 'Verifies work items and reports bugs.'],
+    ['Viewer', 'Follows the project without changing it.']
+  ].forEach(([name, description], index) => insertRole.run(`prole_${index + 1}`, name, description, index, seededAt, seededAt));
+}
+
+// Built-in project roles used by project permissions (cannot be renamed or deleted).
+const roleColumns = db.prepare('PRAGMA table_info(project_roles)').all().map((column) => column.name);
+if (!roleColumns.includes('is_system')) {
+  db.exec('ALTER TABLE project_roles ADD COLUMN is_system INTEGER NOT NULL DEFAULT 0');
+}
+[
+  ['prole_admin_project', 'Admin Project', 'Project owner and administrators: always hold every project permission.', -2],
+  ['prole_all_member', 'All Member', 'Every member of the project (given automatically).', -1]
+].forEach(([id, name, description, position]) => {
+  const existing = db.prepare('SELECT id FROM project_roles WHERE name = ? COLLATE NOCASE').get(name);
+  if (existing) {
+    db.prepare('UPDATE project_roles SET name = ?, is_system = 1, position = ? WHERE id = ?').run(name, position, existing.id);
+  } else {
+    const at = new Date().toISOString();
+    db.prepare('INSERT INTO project_roles (id, name, description, position, is_system, created_at, updated_at) VALUES (?, ?, ?, ?, 1, ?, ?)')
+      .run(id, name, description, position, at, at);
+  }
+});
 
 export function parseJson(value, fallback = {}) {
   if (value === null || value === undefined || value === '') return fallback;

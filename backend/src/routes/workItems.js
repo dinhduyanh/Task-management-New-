@@ -1,8 +1,18 @@
 import { Router } from 'express';
-import { db, createId, nowIso, parseJson, workItemRowToObject, logActivity } from '../db.js';
-import { ISSUE_WORKFLOWS, initialStatus, normalizeIssueType } from '../workflows.js';
+import { db, createId, nowIso, parseJson, logActivity } from '../db.js';
+import { initialStatus, normalizeIssueType, workflowForIssueType } from '../workflows.js';
+import { mergeAttachmentList } from './attachments.js';
+import { canAccessSpace, requireSpaceAccess, spaceFilter, spaceIdOf } from '../access.js';
+import { allowed, presentItem, reviewItemCreate, reviewItemUpdate, userRecord } from '../workItemPermissions.js';
+import { denied } from '../projectPermissions.js';
+import { isWatching, notifyComment, notifyWorkItemChanges, setWatching } from '../notifications.js';
 
 const router = Router();
+
+/** Notifications must never break the change that triggered them. */
+function safely(label, fn) {
+  try { fn(); } catch (error) { console.error(`[notifications] ${label}:`, error.message); }
+}
 
 const PARENT_TYPES_BY_CHILD = {
   Story: ['Epic', 'Feature'],
@@ -26,6 +36,22 @@ function nextKey(space) {
   return `${prefix}-${Math.max(0, ...numbers) + 1}`;
 }
 
+/** Error message when sprintId cannot hold work items of this Space, '' when valid (null = backlog). */
+function sprintError(spaceId, sprintId) {
+  if (sprintId === null || sprintId === undefined || sprintId === '') return '';
+  const sprint = db.prepare('SELECT space_id, status FROM sprints WHERE id = ?').get(String(sprintId));
+  if (!sprint || sprint.space_id !== spaceId) return 'Sprint not found in this Space.';
+  if (sprint.status === 'completed') return 'Work items cannot be added to a completed sprint.';
+  return '';
+}
+
+function nextRank(spaceId, sprintId) {
+  const row = sprintId
+    ? db.prepare("SELECT MAX(CAST(json_extract(data_json, '$.rank') AS REAL)) AS max FROM work_items WHERE json_extract(data_json, '$.sprintId') = ?").get(String(sprintId))
+    : db.prepare("SELECT MAX(CAST(json_extract(data_json, '$.rank') AS REAL)) AS max FROM work_items WHERE space_id = ? AND json_extract(data_json, '$.sprintId') IS NULL").get(spaceId);
+  return (row.max ?? -1) + 1;
+}
+
 function syncLinks(workItemId, links) {
   db.prepare('DELETE FROM work_item_links WHERE source_work_item_id = ?').run(workItemId);
   for (const link of Array.isArray(links) ? links : []) {
@@ -39,20 +65,53 @@ function syncLinks(workItemId, links) {
   }
 }
 
+/** Rows for the given ids, or an error status when any is missing or not accessible. */
+function accessibleItems(req, ids) {
+  const rows = ids.map((id) => db.prepare('SELECT * FROM work_items WHERE id = ?').get(id));
+  if (rows.some((row) => !row || !canAccessSpace(req.user, row.space_id))) return null;
+  return rows;
+}
+
+const itemAccess = requireSpaceAccess((req) => spaceIdOf.workItem(req.params.id), 'Work item not found.');
+
 router.get('/', (req, res) => {
+  if (req.query.spaceId && !canAccessSpace(req.user, String(req.query.spaceId))) return res.json([]);
+  const filter = spaceFilter(req.user, 'space_id');
   const rows = req.query.spaceId
     ? db.prepare('SELECT * FROM work_items WHERE space_id = ? ORDER BY created_at DESC').all(String(req.query.spaceId))
-    : db.prepare('SELECT * FROM work_items ORDER BY created_at DESC').all();
-  res.json(rows.map(workItemRowToObject));
+    : db.prepare(`SELECT * FROM work_items WHERE ${filter.sql} ORDER BY created_at DESC`).all(...filter.params);
+  res.json(rows.map((row) => presentItem(req, row)));
 });
 
 router.get('/search', (req, res) => {
   const key = String(req.query.key || '').trim();
   if (!key) return res.json([]);
+  const filter = spaceFilter(req.user, 'wi.space_id');
   const rows = db.prepare(`SELECT wi.*, s.name AS space_name, s.code AS space_code
     FROM work_items wi JOIN spaces s ON s.id = wi.space_id
-    WHERE lower(wi.issue_key) = lower(?) ORDER BY s.name`).all(key);
-  res.json(rows.map((row) => ({ ...workItemRowToObject(row), spaceName: row.space_name, spaceCode: row.space_code })));
+    WHERE lower(wi.issue_key) = lower(?) AND ${filter.sql} ORDER BY s.name`).all(key, ...filter.params);
+  res.json(rows.map((row) => ({ ...presentItem(req, row), spaceName: row.space_name, spaceCode: row.space_code })));
+});
+
+// Moves work items into a sprint (or the backlog with sprintId null) and sets their order.
+// Body: { sprintId, ids } where ids is the complete new order of that sprint/backlog.
+router.post('/rank', (req, res, next) => {
+  try {
+    const ids = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String))] : [];
+    const sprintId = req.body?.sprintId ? String(req.body.sprintId) : null;
+    if (!ids.length) return res.status(400).json({ error: 'At least one Work Item ID is required.' });
+    const rows = accessibleItems(req, ids);
+    if (!rows) return res.status(404).json({ error: 'Work item not found.' });
+    const spaceId = rows[0].space_id;
+    if (rows.some((row) => row.space_id !== spaceId)) return res.status(400).json({ error: 'Work items must belong to the same Space.' });
+    const error = sprintError(spaceId, sprintId);
+    if (error) return res.status(400).json({ error });
+    if (rows.some((row) => !allowed(req, spaceId, 'task.move', row))) return denied(res, 'task.move');
+    const now = nowIso();
+    const update = db.prepare("UPDATE work_items SET data_json = json_set(data_json, '$.sprintId', json(?), '$.rank', ?, '$.updatedAt', ?), updated_at = ? WHERE id = ?");
+    db.transaction(() => ids.forEach((id, index) => update.run(JSON.stringify(sprintId), index, now, now, id)))();
+    res.json(ids.map((id) => presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(id))));
+  } catch (error) { next(error); }
 });
 
 router.post('/', (req, res, next) => {
@@ -60,10 +119,16 @@ router.post('/', (req, res, next) => {
     const body = req.body || {};
     const spaceId = String(body.spaceId || body.projectId || '');
     const space = db.prepare('SELECT * FROM spaces WHERE id = ?').get(spaceId);
-    if (!space) return res.status(400).json({ error: 'A valid Project/Space is required.' });
+    if (!space || !canAccessSpace(req.user, space.id)) return res.status(400).json({ error: 'A valid Project/Space is required.' });
     const issueType = issueTypeOf(body);
     const title = String(body.title || body.summary || '').trim();
     if (!title) return res.status(400).json({ error: 'Title is required.' });
+    // A clone names its source (cloneOf) and needs "Clone task" on it instead of "Create task".
+    const source = body.cloneOf ? db.prepare('SELECT * FROM work_items WHERE id = ?').get(String(body.cloneOf)) : null;
+    if (body.cloneOf && (!source || source.space_id !== spaceId)) return res.status(400).json({ error: 'The work item to clone was not found in this Project/Space.' });
+    const refusal = reviewItemCreate(req, spaceId, body, source);
+    if (refusal) return res.status(refusal.status).json({ error: refusal.error, permission: refusal.permission });
+    const creator = userRecord(req.user);
 
     const parentId = body.parentId || body.parent?.id || null;
     if (issueType === 'Sub-task' && !parentId) return res.status(400).json({ error: 'Parent is required for a Sub-task.' });
@@ -77,12 +142,21 @@ router.post('/', (req, res, next) => {
       }
     }
 
+    const sprintId = body.sprintId ? String(body.sprintId) : null;
+    const sprintProblem = sprintError(space.id, sprintId);
+    if (sprintProblem) return res.status(400).json({ error: sprintProblem });
+
     const id = createId('issue');
     const key = nextKey(space);
     const now = nowIso();
     const status = String(body.status || initialStatus(issueType));
     const data = {
       ...body,
+      cloneOf: undefined,
+      assignee: body.assignee && typeof body.assignee === 'object' ? { ...body.assignee, isCurrentUser: undefined } : (body.assignee ?? null),
+      // The creator is always the signed-in user; comments and work logs start empty.
+      creator, creatorId: creator.id,
+      comments: [], workLogs: [],
       id, key, code: key,
       title, summary: title,
       type: issueType, issueType,
@@ -91,6 +165,10 @@ router.post('/', (req, res, next) => {
       spaceId, projectId: spaceId,
       spaceCode: space.code,
       parentId,
+      sprintId,
+      rank: nextRank(space.id, sprintId),
+      // Files are uploaded separately (POST /work-items/:id/attachments) once the item exists.
+      attachments: mergeAttachmentList(id, body.attachments),
       createdAt: now, updatedAt: now
     };
 
@@ -100,7 +178,7 @@ router.post('/', (req, res, next) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
         .run(id, spaceId, key, issueType, title, status, data.priority, parentId,
           body.assignee?.id || body.assigneeId || null,
-          body.creator?.id || body.creatorId || null,
+          creator.id,
           body.team?.id || body.teamId || null,
           body.release?.id || body.releaseId || null,
           JSON.stringify(Array.isArray(body.labels) ? body.labels : []),
@@ -108,35 +186,51 @@ router.post('/', (req, res, next) => {
       syncLinks(id, body.links);
       db.prepare(`INSERT INTO work_item_status_history (id, work_item_id, from_status, to_status, actor_name, created_at)
         VALUES (?, ?, NULL, ?, ?, ?)`)
-        .run(createId('status'), id, status, 'You', now);
-      logActivity({ spaceId, workItemId: id, description: `created ${issueType} ${key}` });
+        .run(createId('status'), id, status, creator.fullName, now);
+      logActivity({ spaceId, workItemId: id, actorName: creator.fullName, description: `created ${issueType} ${key}` });
+      setWatching(id, req.user.id, true); // the creator follows the work item
     })();
+    safely('create', () => {
+      const created = db.prepare('SELECT * FROM work_items WHERE id = ?').get(id);
+      notifyWorkItemChanges({ actor: req.user, before: null, after: { row: created, data: parseJson(created.data_json, {}) } });
+    });
 
-    res.status(201).json(workItemRowToObject(db.prepare('SELECT * FROM work_items WHERE id = ?').get(id)));
+    res.status(201).json(presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(id)));
   } catch (error) { next(error); }
 });
 
-router.get('/:id', (req, res) => {
+router.get('/:id', itemAccess, (req, res) => {
   const row = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
   if (!row) return res.status(404).json({ error: 'Work item not found.' });
-  res.json(workItemRowToObject(row));
+  res.json(presentItem(req, row));
 });
 
-router.patch('/:id', (req, res, next) => {
+router.patch('/:id', itemAccess, (req, res, next) => {
   try {
     const row = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
     if (!row) return res.status(404).json({ error: 'Work item not found.' });
-    const updates = req.body || {};
+    const review = reviewItemUpdate(req, row, req.body);
+    if (review.error) return res.status(review.status).json({ error: review.error, permission: review.permission });
+    const updates = review.updates;
     const currentData = parseJson(row.data_json, {});
     const nextData = { ...currentData, ...updates, updatedAt: nowIso() };
     const title = String(nextData.title || nextData.summary || row.title).trim();
     const status = String(nextData.status || row.status);
     const priority = String(nextData.priority || row.priority);
     const parentId = nextData.parentId ?? nextData.parent?.id ?? null;
+    // Stored files are owned by the attachments table; a client may only drop legacy entries.
+    if (Object.prototype.hasOwnProperty.call(updates, 'attachments')) {
+      nextData.attachments = mergeAttachmentList(row.id, updates.attachments);
+    }
+    if (Object.prototype.hasOwnProperty.call(updates, 'sprintId')) {
+      const sprintProblem = sprintError(row.space_id, updates.sprintId);
+      if (sprintProblem) return res.status(400).json({ error: sprintProblem });
+      nextData.sprintId = updates.sprintId || null;
+    }
 
     // Enforce the approved Issue Type workflow on the server, not only in React.
     if (status !== row.status) {
-      const workflow = ISSUE_WORKFLOWS[row.issue_type] || ISSUE_WORKFLOWS.Task;
+      const workflow = workflowForIssueType(row.issue_type);
       const allowedTargets = workflow.transitions[row.status] || [];
       if (!allowedTargets.includes(status)) {
         return res.status(400).json({ error: `Transition from ${row.status} to ${status} is not allowed for ${row.issue_type}.` });
@@ -166,7 +260,7 @@ router.patch('/:id', (req, res, next) => {
         WHERE id = ?`)
         .run(title, status, priority, parentId,
           nextData.assignee?.id || nextData.assigneeId || null,
-          nextData.creator?.id || nextData.creatorId || null,
+          row.creator_id,
           nextData.team?.id || nextData.teamId || null,
           nextData.release?.id || nextData.releaseId || null,
           JSON.stringify(Array.isArray(nextData.labels) ? nextData.labels : []),
@@ -175,58 +269,144 @@ router.patch('/:id', (req, res, next) => {
       if (status !== row.status) {
         db.prepare(`INSERT INTO work_item_status_history (id, work_item_id, from_status, to_status, actor_name, created_at)
           VALUES (?, ?, ?, ?, ?, ?)`)
-          .run(createId('status'), row.id, row.status, status, 'You', nextData.updatedAt);
+          .run(createId('status'), row.id, row.status, status, req.user.fullName || 'You', nextData.updatedAt);
       }
-      logActivity({ spaceId: row.space_id, workItemId: row.id, description: `updated ${Object.keys(updates).join(', ') || 'work item'}` });
+      logActivity({ spaceId: row.space_id, workItemId: row.id, actorName: req.user.fullName || 'You', description: `updated ${Object.keys(updates).join(', ') || 'work item'}` });
     })();
 
-    res.json(workItemRowToObject(db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.id)));
+    const saved = db.prepare('SELECT * FROM work_items WHERE id = ?').get(row.id);
+    safely('update', () => notifyWorkItemChanges({
+      actor: req.user,
+      before: { row, data: currentData },
+      after: { row: saved, data: parseJson(saved.data_json, {}) }
+    }));
+    res.json(presentItem(req, saved));
   } catch (error) { next(error); }
 });
 
 router.delete('/bulk', (req, res) => {
   const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
   if (!ids.length) return res.status(400).json({ error: 'At least one Work Item ID is required.' });
+  const rows = accessibleItems(req, ids);
+  if (!rows) return res.status(404).json({ error: 'Work item not found.' });
+  if (rows.some((row) => !allowed(req, row.space_id, 'task.delete', row))) return denied(res, 'task.delete');
   const placeholders = ids.map(() => '?').join(',');
   const result = db.prepare(`DELETE FROM work_items WHERE id IN (${placeholders})`).run(...ids);
   res.json({ deletedCount: result.changes });
 });
 
+// Moves work items to another project. Each item gets a key of the target project and
+// goes to the end of its backlog; sprint, team and release (project-specific) are cleared.
+// Sub-tasks move with their parent; other children left behind lose the parent link.
 router.post('/bulk-move', (req, res, next) => {
   try {
-    const ids = Array.isArray(req.body?.ids) ? req.body.ids.map(String) : [];
+    const requested = Array.isArray(req.body?.ids) ? [...new Set(req.body.ids.map(String))] : [];
     const targetSpaceId = String(req.body?.targetSpaceId || '');
-    const targetSpace = db.prepare('SELECT id, code FROM spaces WHERE id = ?').get(targetSpaceId);
-    if (!ids.length || !targetSpace) return res.status(400).json({ error: 'Work Items and a valid target Project are required.' });
-    const update = db.prepare('UPDATE work_items SET space_id = ?, updated_at = ?, data_json = json_set(data_json, "$.spaceId", ?, "$.projectId", ?, "$.spaceCode", ?) WHERE id = ?');
+    const targetSpace = db.prepare('SELECT * FROM spaces WHERE id = ?').get(targetSpaceId);
+    if (!requested.length || !targetSpace || !canAccessSpace(req.user, targetSpace.id)) return res.status(400).json({ error: 'Work Items and a valid target Project are required.' });
+    const rows = accessibleItems(req, requested);
+    if (!rows) return res.status(404).json({ error: 'Work item not found.' });
+    if (rows.some((row) => !allowed(req, row.space_id, 'task.move', row))) return denied(res, 'task.move');
+    if (!allowed(req, targetSpace.id, 'task.create')) return denied(res, 'task.create');
+
+    // Add sub-tasks of the moved items (recursively) so they stay with their parent.
+    const moving = new Map(rows.filter((row) => row.space_id !== targetSpace.id).map((row) => [row.id, row]));
+    if (!moving.size) return res.status(400).json({ error: 'The selected work items are already in this project.' });
+    const queue = [...moving.keys()];
+    while (queue.length) {
+      const parentId = queue.shift();
+      for (const child of db.prepare("SELECT * FROM work_items WHERE parent_id = ? AND issue_type = 'Sub-task'").all(parentId)) {
+        if (moving.has(child.id)) continue;
+        moving.set(child.id, child);
+        queue.push(child.id);
+      }
+    }
+
     const now = nowIso();
-    db.transaction(() => ids.forEach((id) => update.run(targetSpaceId, now, targetSpaceId, targetSpaceId, targetSpace.code, id)))();
-    res.json({ movedCount: ids.length });
+    const actor = req.user.fullName || req.user.username;
+    const sources = new Map();
+    db.transaction(() => {
+      // Parents first, so their new place is known when children are written.
+      const ordered = [...moving.values()].sort((left, right) => (left.parent_id && moving.has(left.parent_id) ? 1 : 0) - (right.parent_id && moving.has(right.parent_id) ? 1 : 0));
+      for (const row of ordered) {
+        const data = parseJson(row.data_json, {});
+        const key = nextKey(targetSpace);
+        const parentId = row.parent_id && moving.has(row.parent_id) ? row.parent_id : null;
+        const from = db.prepare('SELECT name, code FROM spaces WHERE id = ?').get(row.space_id);
+        sources.set(row.space_id, from);
+        const history = Array.isArray(data.history) ? data.history : [];
+        const next = {
+          ...data,
+          spaceId: targetSpace.id, projectId: targetSpace.id, spaceCode: targetSpace.code,
+          key, code: key, previousKey: row.issue_key,
+          sprintId: null, rank: nextRank(targetSpace.id, null),
+          parentId, parent: null, team: null, teamId: null, release: null, releaseId: null,
+          updatedAt: now,
+          history: [...history, { id: createId('history'), action: 'Moved', detail: `${row.issue_key} → ${key} (${from?.name || 'project'} → ${targetSpace.name})`, actor, createdAt: now }]
+        };
+        db.prepare(`UPDATE work_items SET space_id = ?, issue_key = ?, parent_id = ?, team_id = NULL, release_id = NULL, updated_at = ?, data_json = ? WHERE id = ?`)
+          .run(targetSpace.id, key, parentId, now, JSON.stringify(next), row.id);
+        db.prepare('UPDATE work_item_files SET space_id = ? WHERE work_item_id = ?').run(targetSpace.id, row.id);
+        logActivity({ spaceId: targetSpace.id, workItemId: row.id, actorName: actor, description: `moved ${row.issue_key} here as ${key}` });
+        logActivity({ spaceId: row.space_id, actorName: actor, description: `moved ${row.issue_key} to ${targetSpace.name}` });
+      }
+      // Children that stay behind cannot keep a parent in another project.
+      const ids = [...moving.keys()];
+      const placeholders = ids.map(() => '?').join(',');
+      for (const child of db.prepare(`SELECT id, data_json FROM work_items WHERE parent_id IN (${placeholders}) AND id NOT IN (${placeholders})`).all(...ids, ...ids)) {
+        const data = parseJson(child.data_json, {});
+        db.prepare('UPDATE work_items SET parent_id = NULL, updated_at = ?, data_json = ? WHERE id = ?')
+          .run(now, JSON.stringify({ ...data, parentId: null, parent: null, updatedAt: now }), child.id);
+      }
+    })();
+
+    const items = [...moving.keys()].map((id) => presentItem(req, db.prepare('SELECT * FROM work_items WHERE id = ?').get(id)));
+    res.json({ movedCount: items.length, items, targetSpaceId: targetSpace.id });
   } catch (error) { next(error); }
 });
 
-router.delete('/:id', (req, res) => {
+router.delete('/:id', itemAccess, (req, res) => {
+  const row = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
+  if (!allowed(req, row.space_id, 'task.delete', row)) return denied(res, 'task.delete');
   const result = db.prepare('DELETE FROM work_items WHERE id = ?').run(req.params.id);
   if (!result.changes) return res.status(404).json({ error: 'Work item not found.' });
   res.status(204).end();
 });
 
-router.get('/:id/comments', (req, res) => {
+router.get('/:id/comments', itemAccess, (req, res) => {
+  const item = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
+  if (!allowed(req, item.space_id, 'comment.view', item)) return denied(res, 'comment.view');
   const rows = db.prepare('SELECT * FROM comments WHERE work_item_id = ? AND deleted_at IS NULL ORDER BY created_at').all(req.params.id);
   res.json(rows.map((row) => ({ ...parseJson(row.data_json, {}), id: row.id, parentCommentId: row.parent_comment_id, authorId: row.author_id, author: row.author_name, body: row.body, createdAt: row.created_at, updatedAt: row.updated_at })));
 });
 
-router.post('/:id/comments', (req, res) => {
-  const issue = db.prepare('SELECT id FROM work_items WHERE id = ?').get(req.params.id);
+router.post('/:id/comments', itemAccess, (req, res) => {
+  const issue = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
   if (!issue) return res.status(404).json({ error: 'Work item not found.' });
+  if (!allowed(req, issue.space_id, 'comment.add', issue)) return denied(res, 'comment.add');
   const body = String(req.body?.body || '').trim();
   if (!body) return res.status(400).json({ error: 'Comment cannot be empty.' });
   const id = createId('comment'); const now = nowIso();
-  const authorName = String(req.body?.authorName || 'You');
+  const authorName = req.user.fullName || req.user.username;
   db.prepare(`INSERT INTO comments (id, work_item_id, parent_comment_id, author_id, author_name, body, created_at, updated_at, data_json)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`)
-    .run(id, issue.id, req.body?.parentCommentId || null, req.body?.authorId || null, authorName, body, now, now, JSON.stringify(req.body?.metadata || {}));
-  res.status(201).json({ id, workItemId: issue.id, parentCommentId: req.body?.parentCommentId || null, authorId: req.body?.authorId || null, author: authorName, body, createdAt: now, updatedAt: now });
+    .run(id, issue.id, req.body?.parentCommentId || null, req.user.id, authorName, body, now, now, JSON.stringify(req.body?.metadata || {}));
+  safely('comment', () => {
+    const parent = req.body?.parentCommentId ? db.prepare('SELECT author_id FROM comments WHERE id = ? AND work_item_id = ?').get(String(req.body.parentCommentId), issue.id) : null;
+    notifyComment({ actor: req.user, item: issue, comment: { id, text: body }, parentAuthorId: parent?.author_id || null });
+  });
+  res.status(201).json({ id, workItemId: issue.id, parentCommentId: req.body?.parentCommentId || null, authorId: req.user.id, author: authorName, body, createdAt: now, updatedAt: now });
+});
+
+// Follow / unfollow: followers get "Task Updated" notifications.
+router.get('/:id/watch', itemAccess, (req, res) => {
+  res.json({ watching: isWatching(req.params.id, req.user.id) });
+});
+
+router.put('/:id/watch', itemAccess, (req, res) => {
+  const watching = req.body?.watching !== false;
+  setWatching(req.params.id, req.user.id, watching);
+  res.json({ watching });
 });
 
 export default router;

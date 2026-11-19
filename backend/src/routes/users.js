@@ -14,6 +14,7 @@ function publicUser(row) {
   return {
     id: row.id, username: row.username, email: row.email,
     fullName: row.full_name, avatarUrl: row.avatar_url,
+    role: row.role === 'admin' ? 'admin' : 'user',
     createdAt: row.created_at, updatedAt: row.updated_at
   };
 }
@@ -25,8 +26,15 @@ async function hashPassword(password) {
 
 router.use(requireAuth);
 
+// User directory (used to pick team members). Active users only, no private fields.
+router.get('/', (_req, res) => {
+  const rows = db.prepare(`SELECT id, username, email, full_name, avatar_url, role, created_at, updated_at
+    FROM users WHERE is_active = 1 ORDER BY lower(full_name), lower(username)`).all();
+  res.json(rows.map(publicUser));
+});
+
 router.get('/me', (req, res) => {
-  const row = db.prepare(`SELECT id, username, email, full_name, avatar_url, created_at, updated_at
+  const row = db.prepare(`SELECT id, username, email, full_name, avatar_url, role, created_at, updated_at
     FROM users WHERE id = ?`).get(req.user.id);
   if (!row) return res.status(404).json({ error: 'User not found.' });
   res.json({ user: publicUser(row) });
@@ -39,7 +47,7 @@ router.patch('/me', (req, res, next) => {
     if (fullName.length > 120) return res.status(400).json({ error: 'Full name must be 120 characters or fewer.' });
     const now = nowIso();
     db.prepare('UPDATE users SET full_name = ?, updated_at = ? WHERE id = ?').run(fullName, now, req.user.id);
-    const row = db.prepare(`SELECT id, username, email, full_name, avatar_url, created_at, updated_at
+    const row = db.prepare(`SELECT id, username, email, full_name, avatar_url, role, created_at, updated_at
       FROM users WHERE id = ?`).get(req.user.id);
     res.json({ user: publicUser(row) });
   } catch (error) { next(error); }

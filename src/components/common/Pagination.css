@@ -1,0 +1,56 @@
+/* Shared table pagination */
+.pg-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px 14px;
+  color: var(--tf-fg-42526e);
+  font-size: 13px;
+}
+
+.pg-pager {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pg-pager button {
+  width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: var(--tf-fg-42526e);
+  cursor: pointer;
+  font-size: 16px;
+}
+
+.pg-pager button:disabled {
+  color: var(--tf-fg-c1c7d0);
+  cursor: not-allowed;
+}
+
+.pg-page {
+  display: inline-grid;
+  min-width: 28px;
+  height: 28px;
+  place-items: center;
+  border: 1px solid var(--tf-bd-0052cc);
+  border-radius: 4px;
+  color: var(--tf-fg-0052cc);
+  font-weight: 600;
+}
+
+.pg-pager select {
+  height: 30px;
+  padding: 0 6px;
+  border: 1px solid var(--tf-bd-dfe1e6);
+  border-radius: 4px;
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-42526e);
+  font: inherit;
+  font-size: 12px;
+}
+

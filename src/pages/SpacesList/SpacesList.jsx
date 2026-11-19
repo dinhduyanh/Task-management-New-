@@ -2,22 +2,26 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
+import DatePicker from '../../components/common/DatePicker';
 import PriorityIcon from '../../components/common/PriorityIcon';
 import { getInitialStatus, getIssueStatus, getTransitionOptions, validateIssueTransition } from './workflows';
 import TaskDetailDrawer from './TaskDetailDrawer';
+import {
+  ISSUE_TYPES, STATUSES, PRIORITIES, ORDER_PRESETS,
+  issueKey, issueSummary, issueType, issueTypeOf, assigneeName, dateValue,
+  formatDateTime, toDateInputValue, formatDateOnly, getInitials, iconForType,
+  matchesIssueFilters, sortIssues
+} from './issueHelpers';
+import { ExtraFilterControls, MoreFilters, MultiFilter, OrderFilter } from './IssueFilters';
+import ProjectHeader from './ProjectHeader';
+import { useAppShell } from '../../context/appShellContext';
+import { canInSpace, useProjectPermissions, userAsPerson } from '../../services/projectPermissions';
+import { api } from '../../services/api';
+import { FILE_ACCEPT, formatBytes, validateUploadFile } from '../../services/fileTypes';
 import './SpacesList.css';
 import './GlobalCreateSearch.css';
 
-const ISSUE_TYPES = ['Epic', 'Task', 'Bug', 'Improvement', 'Story', 'Sub-task', 'Feature'];
-const CHILD_TYPES_BY_PARENT = {
-  Epic: ['Story', 'Task', 'Bug', 'Improvement'],
-  Feature: ['Story', 'Task', 'Bug', 'Improvement'],
-  Story: ['Sub-task'],
-  Task: ['Bug', 'Sub-task'],
-  Bug: ['Sub-task'],
-  Improvement: ['Sub-task'],
-  'Sub-task': []
-};
 const PARENT_TYPES_BY_CHILD = {
   Story: ['Epic', 'Feature'],
   Task: ['Epic', 'Feature'],
@@ -25,131 +29,14 @@ const PARENT_TYPES_BY_CHILD = {
   Improvement: ['Epic', 'Feature'],
   'Sub-task': ['Story', 'Task', 'Bug', 'Improvement']
 };
-const STATUSES = ['Backlog', 'To Do', 'In Progress', 'In Review', 'Blocked', 'Done', 'Cancel'];
-const PRIORITIES = ['High', 'Highest', 'Low', 'Lowest', 'Medium'];
-const ORDER_OPTIONS = ['All', 'Newest created', 'Oldest created', 'Most recently updated', 'Least recently updated', 'Highest priority first', 'Lowest priority first', 'Latest start date', 'Earliest start date', 'Latest due date', 'Earliest due date'];
-const EXTRA_FIELDS = ['Priority', 'Start Date', 'End Date', 'Create Date', 'Updated Date'];
-const PRIORITY_RANK = { Highest: 1, High: 2, Medium: 3, Low: 4, Lowest: 5 };
 
-function issueKey(issue) { return issue.key || issue.code || issue.taskCode || '—'; }
-function issueSummary(issue) { return issue.summary || issue.title || issue.name || 'Untitled work item'; }
-function issueType(issue) {
-  const raw = issue.issueType || issue.type || 'Task';
-  return ISSUE_TYPES.find((type) => type.toLowerCase() === String(raw).toLowerCase()) || String(raw);
-}
-function issueTypeOf(issue) { return issueType(issue); }
-function assigneeName(issue) {
-  if (!issue?.assignee) return '';
-  return typeof issue.assignee === 'string' ? issue.assignee : issue.assignee.name || issue.assignee.fullName || '';
-}
-function dateValue(issue, field) {
-  const names = {
-    createdAt: ['createdAt', 'createdDate', 'createDate', 'created'],
-    updatedAt: ['updatedAt', 'updatedDate', 'lastUpdated'],
-    startDate: ['startDate', 'start'],
-    dueDate: ['dueDate', 'endDate', 'due', 'end']
-  }[field] || [field];
-  for (const name of names) if (issue?.[name] !== undefined && issue?.[name] !== null && issue?.[name] !== '') return issue[name];
-  return null;
-}
-function toDate(value) {
-  if (!value) return null;
-  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
-  if (typeof value === 'number') return new Date(value);
-  const text = String(value).trim();
-  const match = text.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})(?:\s+(\d{1,2}):(\d{2})(?::(\d{2}))?)?$/);
-  if (match) return new Date(+match[3], +match[2] - 1, +match[1], +(match[4] || 0), +(match[5] || 0), +(match[6] || 0));
-  const parsed = new Date(text);
-  return Number.isNaN(parsed.getTime()) ? null : parsed;
-}
-function formatDateTime(value) {
-  const date = toDate(value);
-  if (!date) return 'None';
-  const pad = (number) => String(number).padStart(2, '0');
-  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
-}
-function toDateInputValue(value) {
-  const date = toDate(value);
-  if (!date) return '';
-  const pad = (number) => String(number).padStart(2, '0');
-  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
-}
-function formatDateOnly(value) {
-  const date = toDate(value);
-  if (!date) return 'None';
-  const pad = (number) => String(number).padStart(2, '0');
-  return `${pad(date.getDate())}-${pad(date.getMonth() + 1)}-${date.getFullYear()}`;
-}
-function getInitials(value) {
-  const parts = String(value || '').trim().split(/\s+/).filter(Boolean);
-  return parts.length > 1 ? `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase() : (parts[0] || '—').slice(0, 2).toUpperCase();
-}
-function iconForType(type) {
-  const icons = {
-    Epic: 'epic',
-    Feature: 'feature',
-    Task: 'tasks',
-    Improvement: 'improvement',
-    Bug: 'bug',
-    Story: 'story',
-    'Sub-task': 'subTask'
-  };
-  return icons[type] || 'tasks';
-}
-
-function MultiFilter({ label, options, selected, onChange, width = 190, showPriorityIcons = false }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const shown = options.filter((option) => option.toLowerCase().includes(query.toLowerCase()));
-  return (
-    <div className="slv-filter-wrap">
-      <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((value) => !value); setQuery(''); }}>
-        <span>{label}</span><b>{selected.length ? selected.length : 'All'}</b><Icon name="chevron" size={13} />
-      </button>
-      {open && <div className="slv-popover" style={{ width }}>
-        <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-        <div className="slv-popover-options">
-          {shown.length ? shown.map((option) => <label className="slv-option" key={option}><input type="checkbox" checked={selected.includes(option)} onChange={() => onChange(selected.includes(option) ? selected.filter((item) => item !== option) : [...selected, option])} />{showPriorityIcons && <PriorityIcon priority={option} size={16} />}<span>{option}</span></label>) : <div className="slv-no-options">No options found</div>}
-        </div>
-        <div className="slv-popover-footer"><button type="button" onClick={() => onChange([])}>Clear</button><button type="button" className="primary-link" onClick={() => setOpen(false)}>Done</button></div>
-      </div>}
-    </div>
-  );
-}
-
-function OrderFilter({ value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const shown = ORDER_OPTIONS.filter((item) => item.toLowerCase().includes(query.toLowerCase()));
-  return <div className="slv-filter-wrap">
-    <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((v) => !v); setQuery(''); }}><span>Order by</span><b>{value}</b><Icon name="chevron" size={13} /></button>
-    {open && <div className="slv-popover slv-order-popover">
-      <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-      <div className="slv-popover-options">{shown.map((item) => <button type="button" key={item} className={`slv-single-option ${value === item ? 'selected' : ''}`} onClick={() => { onChange(item); setOpen(false); }}>{item}{value === item && <Icon name="check" size={14} />}</button>)}</div>
-    </div>}
-  </div>;
-}
-
-function MoreFilters({ selected, onChange }) {
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState('');
-  const shown = EXTRA_FIELDS.filter((field) => field.toLowerCase().includes(query.toLowerCase()));
-  return <div className="slv-filter-wrap">
-    <button type="button" className={`slv-filter-pill ${open ? 'is-open' : ''}`} onClick={() => { setOpen((v) => !v); setQuery(''); }}>More filters{selected.length > 0 && <b className="slv-count">{selected.length}</b>}<Icon name="chevron" size={13} /></button>
-    {open && <div className="slv-popover slv-more-popover">
-      <div className="slv-popover-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search fields" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
-      <div className="slv-popover-options">{shown.map((field) => <label className="slv-option" key={field}><input type="checkbox" checked={selected.includes(field)} onChange={() => onChange(selected.includes(field) ? selected.filter((item) => item !== field) : [...selected, field])} /><span>{field}</span></label>)}</div>
-      <div className="slv-popover-footer"><button type="button" onClick={() => onChange([])}>Clear</button><button type="button" className="primary-link" onClick={() => setOpen(false)}>Done</button></div>
-    </div>}
-  </div>;
-}
 
 function SortHeading({ label, field, sort, onSort }) {
   const active = sort.field === field;
   return <button type="button" className={`slv-sort-heading ${active ? 'active' : ''}`} onClick={() => onSort(field)}><span>{label}</span><svg viewBox="0 0 12 14" width="12" height="14" aria-hidden="true"><path d="M6 1 3 4h6L6 1Z" fill={active && sort.direction === 'asc' ? '#0052CC' : '#A5ADBA'} /><path d="m6 13 3-3H3l3 3Z" fill={active && sort.direction === 'desc' ? '#0052CC' : '#A5ADBA'} /></svg></button>;
 }
 
-function PriorityCell({ value, onChange }) {
+export function PriorityCell({ value, onChange, disabled = false }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 176 });
   const rootRef = useRef(null);
@@ -193,6 +80,7 @@ function PriorityCell({ value, onChange }) {
         type="button"
         className={`slv-priority-trigger ${open ? 'is-open' : ''}`}
         onClick={toggleMenu}
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Change priority, current priority ${priority}`}
@@ -230,7 +118,7 @@ function PriorityCell({ value, onChange }) {
   );
 }
 
-function StatusCell({ issue, allIssues = [], onChange }) {
+export function StatusCell({ issue, allIssues = [], onChange, disabled = false }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 220 });
   const rootRef = useRef(null);
@@ -276,6 +164,7 @@ function StatusCell({ issue, allIssues = [], onChange }) {
         type="button"
         className={`slv-status ${statusClass}`}
         onClick={toggleMenu}
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={`Change status, current status ${status}`}
@@ -330,13 +219,12 @@ function optionLabel(item) {
   return item?.name || item?.fullName || item?.title || item?.label || item?.email || '';
 }
 
-const CURRENT_USER = {
-  id: 'current-user',
-  name: 'You',
-  fullName: 'You',
-  initials: 'YO',
-  isCurrentUser: true
-};
+/** The signed-in user as a person record (the "Current User" option in user pickers). */
+function useCurrentUserRecord() {
+  const { user } = useAppShell();
+  const person = userAsPerson(user) || { id: '', name: 'You', fullName: 'You', email: '' };
+  return { ...person, initials: getInitials(person.name), isCurrentUser: true };
+}
 
 function getUserId(user) {
   return String(user?.id ?? user?.email ?? user?.username ?? optionLabel(user));
@@ -344,10 +232,11 @@ function getUserId(user) {
 
 // Inline assignee selector. It remains available after assignment so the
 // user can reopen it and change or clear the assignee at any time.
-function AssigneeCell({ value, members, onAssign }) {
+export function AssigneeCell({ value, members, onAssign, disabled = false }) {
+  const CURRENT_USER = useCurrentUserRecord();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
-  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 232 });
+  const [menuPosition, setMenuPosition] = useState({ top: 0, left: 0, width: 260 });
   const rootRef = useRef(null);
 
   function toggleMenu(event) {
@@ -356,7 +245,7 @@ function AssigneeCell({ value, members, onAssign }) {
       return;
     }
     const rect = event.currentTarget.getBoundingClientRect();
-    const width = 232;
+    const width = 260;
     const estimatedHeight = Math.min(330, 105 + (Array.isArray(members) ? members.length : 0) * 43);
     const top = window.innerHeight - rect.bottom < estimatedHeight + 8
       ? Math.max(8, rect.top - estimatedHeight - 4)
@@ -404,17 +293,17 @@ function AssigneeCell({ value, members, onAssign }) {
     ? currentUser
     : otherUsers.find((member) => getUserId(member) === selectedId) || value || null;
   const selectedName = selectedUser
-    ? (selectedId === CURRENT_USER.id ? 'You' : optionLabel(selectedUser) || String(selectedUser))
+    ? (selectedId === CURRENT_USER.id ? optionLabel(currentUser) : optionLabel(selectedUser) || String(selectedUser))
     : 'Unassigned';
 
   function choose(user) {
     onAssign(user ? {
       id: getUserId(user),
-      name: getUserId(user) === CURRENT_USER.id ? 'You' : optionLabel(user),
-      fullName: getUserId(user) === CURRENT_USER.id ? 'You' : (user.fullName || optionLabel(user)),
+      // Store the real name: "You" is only how the signed-in user sees themself.
+      name: optionLabel(user),
+      fullName: user.fullName || optionLabel(user),
       email: user?.email || '',
-      initials: user?.initials || getInitials(optionLabel(user)),
-      isCurrentUser: getUserId(user) === CURRENT_USER.id
+      initials: getInitials(optionLabel(user))
     } : null);
     setOpen(false);
     setQuery('');
@@ -426,11 +315,14 @@ function AssigneeCell({ value, members, onAssign }) {
         type="button"
         className={`slv-assignee-trigger ${open ? 'is-open' : ''} ${selectedUser ? 'has-assignee' : 'is-unassigned'}`}
         onClick={(event) => { setQuery(''); toggleMenu(event); }}
+        disabled={disabled}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-label={selectedUser ? `Change assignee, currently ${selectedName}` : 'Assign work item'}
       >
-        {selectedUser && <span className="slv-assignee-avatar">{selectedId === CURRENT_USER.id ? 'YO' : getInitials(selectedName)}</span>}
+        {selectedUser
+          ? <PersonAvatar person={selectedId === CURRENT_USER.id ? CURRENT_USER : selectedUser} className="slv-assignee-avatar" />
+          : <span className="slv-assignee-avatar is-empty" aria-hidden="true"><Icon name="user" size={12} /></span>}
         <span className="slv-assignee-name">{selectedName}</span>
         <span className="slv-assignee-action"><Icon name={selectedUser ? 'chevron' : 'plus'} size={13} /></span>
       </button>
@@ -462,8 +354,8 @@ function AssigneeCell({ value, members, onAssign }) {
               onClick={() => choose(currentUser)}
             >
               <span className="slv-assignee-check">{selectedId === CURRENT_USER.id && <Icon name="check" size={11} />}</span>
-              <span className="slv-assignee-current-icon"><Icon name="user" size={13} /></span>
-              <span className="slv-assignee-option-label">Current User</span>
+              <PersonAvatar person={currentUser} className="slv-assignee-avatar" />
+              <span className="slv-assignee-option-label slv-current-label" title={`${optionLabel(currentUser)} (Current user)`}><span className="slv-current-name">{optionLabel(currentUser)}</span><small className="slv-current-tag">(Current user)</small></span>
               {selectedId === CURRENT_USER.id && <Icon name="check" size={14} />}
             </button>
           )}
@@ -482,7 +374,7 @@ function AssigneeCell({ value, members, onAssign }) {
                 onClick={() => choose(member)}
               >
                 <span className="slv-assignee-check">{selected && <Icon name="check" size={11} />}</span>
-                <span className="slv-assignee-avatar">{getInitials(name)}</span>
+                <PersonAvatar person={member} className="slv-assignee-avatar" />
                 <span className="slv-assignee-option-label" title={`${name}${member.email ? ` – ${member.email}` : ''}`}>{name}</span>
                 {selected && <Icon name="check" size={14} />}
               </button>
@@ -502,23 +394,28 @@ function AssigneeCell({ value, members, onAssign }) {
 }
 
 
-function EditableDateCell({ value, onChange, label }) {
+export function EditableDateCell({ value, onChange, label, disabled = false }) {
   const inputValue = toDateInputValue(value);
+  if (disabled) return <span className="slv-inline-date is-readonly">{formatDateOnly(value)}</span>;
   return (
-    <label className="slv-inline-date" title={`Choose ${label}`}>
-      <span>{formatDateOnly(value)}</span>
-      <Icon name="calendar" size={13} />
-      <input
-        type="date"
-        value={inputValue}
-        onChange={(event) => onChange(event.target.value || null)}
-        aria-label={`Choose ${label}`}
-      />
-    </label>
+    <DatePicker
+      value={inputValue}
+      onChange={(next) => onChange(next || null)}
+      ariaLabel={label}
+      renderTrigger={({ ref, open, toggle }) => (
+        <span ref={ref} className="slv-inline-date-wrap">
+          <button type="button" className={`slv-inline-date ${open ? 'is-open' : ''}`} onClick={toggle} title={`Choose ${label}`} aria-label={`Choose ${label}`} aria-haspopup="dialog" aria-expanded={open}>
+            <span>{formatDateOnly(value)}</span>
+            <Icon name="calendar" size={13} />
+          </button>
+        </span>
+      )}
+    />
   );
 }
 
 function SearchableUserField({ label, value, onChange, members, placeholder, required = false }) {
+  const CURRENT_USER = useCurrentUserRecord();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef(null);
@@ -581,7 +478,7 @@ function SearchableUserField({ label, value, onChange, members, placeholder, req
         >
           <span className={selectedUser ? '' : 'placeholder'}>
             {selectedUser
-              ? (value === CURRENT_USER.id ? 'Current User' : optionLabel(selectedUser))
+              ? (value === CURRENT_USER.id ? optionLabel(currentUser) : optionLabel(selectedUser))
               : placeholder}
           </span>
           <Icon name="chevron" size={14} />
@@ -608,10 +505,10 @@ function SearchableUserField({ label, value, onChange, members, placeholder, req
                 className={`slv-user-option current-user ${value === CURRENT_USER.id ? 'selected' : ''}`}
                 onClick={() => choose(currentUser)}
               >
-                <span className="slv-user-avatar">YO</span>
+                <PersonAvatar person={currentUser} className="slv-user-avatar" />
                 <span className="slv-user-option-text">
-                  <strong>Current User</strong>
-                  <small>{optionLabel(currentUser)}</small>
+                  <strong>{optionLabel(currentUser)}</strong>
+                  <small>Current user</small>
                 </span>
                 {value === CURRENT_USER.id && <Icon name="check" size={15} />}
               </button>
@@ -629,7 +526,7 @@ function SearchableUserField({ label, value, onChange, members, placeholder, req
                   key={id}
                   onClick={() => choose(user)}
                 >
-                  <span className="slv-user-avatar">{getInitials(optionLabel(user))}</span>
+                  <PersonAvatar person={user} className="slv-user-avatar" />
                   <span className="slv-user-option-text">
                     <strong>{optionLabel(user)}</strong>
                     {user.email && <small>{user.email}</small>}
@@ -659,9 +556,13 @@ function SearchableUserField({ label, value, onChange, members, placeholder, req
 }
 
 
-function resolveAssigneeRecord(userId, members = []) {
+function resolveAssigneeRecord(userId, members = [], currentUser = null) {
   if (!userId) return null;
-  if (String(userId) === CURRENT_USER.id) return { ...CURRENT_USER };
+  if (currentUser?.id && String(userId) === currentUser.id) {
+    const record = { ...currentUser };
+    delete record.isCurrentUser; // a per-viewer flag, never stored
+    return record;
+  }
   const member = (Array.isArray(members) ? members : []).find((item) => getUserId(item) === String(userId));
   if (!member) return null;
   const name = optionLabel(member);
@@ -676,7 +577,9 @@ function resolveAssigneeRecord(userId, members = []) {
   };
 }
 
-function StartTransitionModal({ issues, members, assigneeId, onAssigneeChange, onClose, onConfirm }) {
+/** Asks for an assignee before unassigned work items move to In Progress. Calls onConfirm(assigneeRecord). */
+export function StartTransitionModal({ issues, members, assigneeId, onAssigneeChange, onClose, onConfirm }) {
+  const CURRENT_USER = useCurrentUserRecord();
   const isBulk = issues.length > 1;
   return (
     <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
@@ -700,7 +603,7 @@ function StartTransitionModal({ issues, members, assigneeId, onAssigneeChange, o
         </div>
         <div className="slv-modal-foot">
           <button type="button" className="slv-btn secondary" onClick={onClose}>Cancel</button>
-          <button type="button" className="slv-btn primary" disabled={!assigneeId} onClick={onConfirm}>Update</button>
+          <button type="button" className="slv-btn primary" disabled={!assigneeId} onClick={() => { const assignee = resolveAssigneeRecord(assigneeId, members, CURRENT_USER); if (assignee) onConfirm(assignee); }}>Update</button>
         </div>
       </div>
     </div>
@@ -891,7 +794,6 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
     description: '',
     priority: 'Medium',
     assigneeId: '',
-    creatorId: '',
     teamId: '',
     releaseId: '',
     labels: [],
@@ -904,17 +806,27 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
     attachments: []
   });
   const [error, setError] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  // Set when the work item was created but some files failed to upload; the form then only closes.
+  const [createdWithErrors, setCreatedWithErrors] = useState(false);
+  const { replaceWorkItem } = useAppShell();
+  const CURRENT_USER = useCurrentUserRecord();
+  // The new work item will have the signed-in user as its Creator ("User in Field" rules).
+  const { can: canInActiveSpace } = useProjectPermissions(activeSpace);
+  const prospectiveItem = { creatorId: CURRENT_USER.id };
+  const mayAssign = canInActiveSpace('task.assign', prospectiveItem);
+  const mayLink = canInActiveSpace('task.link', prospectiveItem);
+  const mayAttach = canInActiveSpace('attachment.add', prospectiveItem);
+  const creatableSpaces = (Array.isArray(spaces) ? spaces : []).filter((item) => canInSpace(item, 'task.create', null, CURRENT_USER));
 
   const members = Array.isArray(activeSpace?.members) ? activeSpace.members : [];
-  const teams = Array.isArray(activeSpace?.teams) ? activeSpace.teams : [];
+  // Inactive project teams cannot be chosen for new work items.
+  const teams = (Array.isArray(activeSpace?.teams) ? activeSpace.teams : []).filter((team) => team?.status !== 'inactive');
   const releases = Array.isArray(activeSpace?.releases) ? activeSpace.releases : [];
   const memberById = new Map(members.map((member) => [getUserId(member), member]));
   const selectedAssignee = form.assigneeId === CURRENT_USER.id
     ? CURRENT_USER
     : memberById.get(String(form.assigneeId)) || null;
-  const selectedCreator = form.creatorId === CURRENT_USER.id
-    ? CURRENT_USER
-    : memberById.get(String(form.creatorId)) || null;
   const selectedTeam = teams.find((item) => String(item.id ?? item) === String(form.teamId));
   const selectedRelease = releases.find((item) => String(item.id ?? item) === String(form.releaseId));
   const parentIssue = scopedIssues.find((issue) => String(issue.id) === String(form.parentId));
@@ -974,7 +886,8 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
       priority: form.priority,
       status: getInitialStatus(issueType),
       assignee: selectedAssignee || null,
-      creator: selectedCreator || CURRENT_USER,
+      // The server records the signed-in user as Creator.
+      creator: CURRENT_USER,
       team: selectedTeam || null,
       labels: form.labels,
       release: selectedRelease || null,
@@ -985,17 +898,35 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
       links: form.linkedIssueId
         ? [{ type: form.linkType, issueId: form.linkedIssueId }]
         : [],
-      attachments: form.attachments,
+      // Files are uploaded to the created work item below, not sent as JSON.
+      attachments: [],
       spaceId: activeSpace.id,
       spaceCode: activeSpace.code
     };
 
+    setSubmitting(true);
     try {
       const created = await onCreate(payload);
       if (created === false || created === null) return;
+      const failed = [];
+      for (const file of form.attachments) {
+        try {
+          const result = await api.uploadAttachment(created.id, file);
+          replaceWorkItem(result.workItem);
+        } catch (uploadError) {
+          failed.push(`${file.name} (${uploadError.message})`);
+        }
+      }
+      if (failed.length) {
+        setCreatedWithErrors(true);
+        setError(`${created.key || 'The work item'} was created, but ${failed.length} file${failed.length === 1 ? '' : 's'} could not be uploaded: ${failed.join(', ')}. You can add them from the work item details.`);
+        return;
+      }
       onClose();
     } catch (createError) {
       setError(createError?.message || 'Unable to create Work Item. Please try again.');
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -1005,7 +936,7 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
     const allowedParentTypes = PARENT_TYPES_BY_CHILD[issueType] || [];
     return !allowedParentTypes.length || allowedParentTypes.includes(issueTypeOf(issue));
   });
-  const allowedFileTypes = '.pdf,.xlsx,.xls,.doc,.docx,.jpg,.jpeg,.png';
+  const allowedFileTypes = FILE_ACCEPT;
 
   return (
     <div className="slv-create-backdrop" onMouseDown={(event) => {
@@ -1028,12 +959,12 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
                   <span><b>*</b> Project</span>
                   {allowProjectSelection ? (
                     <ProjectSearchSelect
-                      spaces={Array.isArray(spaces) ? spaces : []}
+                      spaces={creatableSpaces}
                       value={selectedSpaceId}
                       onChange={(nextId) => {
                         setSelectedSpaceId(nextId);
                         setIssueType('');
-                        setForm({ title: '', description: '', priority: 'Medium', assigneeId: '', creatorId: '', teamId: '', releaseId: '', labels: [], labelDraft: '', startDate: '', dueDate: '', linkType: 'Blocks', linkedIssueId: '', parentId: '', attachments: [] });
+                        setForm({ title: '', description: '', priority: 'Medium', assigneeId: '', teamId: '', releaseId: '', labels: [], labelDraft: '', startDate: '', dueDate: '', linkType: 'Blocks', linkedIssueId: '', parentId: '', attachments: [] });
                         setError('');
                       }}
                     />
@@ -1118,20 +1049,26 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
                 <>
                     <section className="slv-create-section">
                       <h3>Assignment &amp; details</h3>
-                      <SearchableUserField
-                        label="Assignee"
-                        value={form.assigneeId}
-                        onChange={(value) => setField('assigneeId', value)}
-                        members={members}
-                        placeholder="Unassigned"
-                      />
-                      <SearchableUserField
-                        label="Creator"
-                        value={form.creatorId}
-                        onChange={(value) => setField('creatorId', value)}
-                        members={members}
-                        placeholder="Select Creator"
-                      />
+                      {mayAssign ? (
+                        <SearchableUserField
+                          label="Assignee"
+                          value={form.assigneeId}
+                          onChange={(value) => setField('assigneeId', value)}
+                          members={members}
+                          placeholder="Unassigned"
+                        />
+                      ) : (
+                        <label className="slv-field">
+                          <span>Assignee</span>
+                          <input value="Unassigned" readOnly aria-label="Assignee" />
+                          <small className="slv-field-hint">You do not have the Assign issue permission in this project.</small>
+                        </label>
+                      )}
+                      <label className="slv-field">
+                        <span>Creator</span>
+                        <input value={CURRENT_USER.name} readOnly aria-label="Creator" />
+                        <small className="slv-field-hint">Set automatically to the person who creates the work item.</small>
+                      </label>
                       <label className="slv-field">
                         <span>Team</span>
                         <select value={form.teamId} onChange={(event) => setField('teamId', event.target.value)}>
@@ -1171,17 +1108,17 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
                           ))}
                         </select>
                       </label>
-                      <label className="slv-field">
+                      <div className="slv-field">
                         <span>Start Date</span>
-                        <input type="date" value={form.startDate} onChange={(event) => setField('startDate', event.target.value)} />
-                      </label>
-                      <label className="slv-field">
+                        <DatePicker value={form.startDate} max={form.dueDate || undefined} onChange={(value) => setField('startDate', value)} ariaLabel="Start Date" />
+                      </div>
+                      <div className="slv-field">
                         <span>Due Date</span>
-                        <input type="date" value={form.dueDate} onChange={(event) => setField('dueDate', event.target.value)} />
-                      </label>
+                        <DatePicker value={form.dueDate} min={form.startDate || undefined} onChange={(value) => setField('dueDate', value)} ariaLabel="Due Date" />
+                      </div>
                     </section>
 
-                    <section className="slv-create-section">
+                    {mayLink && <section className="slv-create-section">
                       <h3>Link work items</h3>
                       <div className="slv-link-row">
                         <select value={form.linkType} onChange={(event) => setField('linkType', event.target.value)} aria-label="Link type">
@@ -1197,9 +1134,9 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
                         </select>
                       </div>
                       {!linkedIssueOptions.length && <p className="slv-field-hint">No other work items are available in this Space yet.</p>}
-                    </section>
+                    </section>}
 
-                    <section className="slv-create-section">
+                    {mayAttach && <section className="slv-create-section">
                       <h3>Attachments</h3>
                       <label className="slv-upload-zone">
                         <input
@@ -1208,25 +1145,28 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
                           accept={allowedFileTypes}
                           onChange={(event) => {
                             const files = Array.from(event.target.files || []);
-                            if (files.length) setField('attachments', [...form.attachments, ...files]);
+                            const problems = files.map(validateUploadFile).filter(Boolean);
+                            const valid = files.filter((file) => !validateUploadFile(file));
+                            if (valid.length) setField('attachments', [...form.attachments, ...valid]);
+                            setError(problems.join(' '));
                             event.target.value = '';
                           }}
                         />
                         <Icon name="upload" size={25} />
                         <span>Click or drag files to this area to upload</span>
-                        <small>Support PDF, XLSX, DOC, JPG/JPEG, PNG</small>
+                        <small>PDF, Word, Excel, PowerPoint, TXT, CSV, ZIP and images (JPG, PNG, GIF, WEBP), up to 10 MB each</small>
                       </label>
                       {form.attachments.length > 0 && (
                         <div className="slv-attachment-list">
                           {form.attachments.map((file, index) => (
                             <div key={`${file.name}-${file.size}-${index}`}>
-                              <span>{file.name}</span>
+                              <span>{file.name} <small>({formatBytes(file.size)})</small></span>
                               <button type="button" onClick={() => setField('attachments', form.attachments.filter((_, fileIndex) => fileIndex !== index))} aria-label={`Remove ${file.name}`}>×</button>
                             </div>
                           ))}
                         </div>
                       )}
-                    </section>
+                    </section>}
                 </>
               </>
             )}
@@ -1237,22 +1177,39 @@ export function IssueModal({ space = {}, spaces = [], allowProjectSelection = fa
 
         <footer className="slv-create-footer">
           <span className="slv-create-footer-hint">{isSubTask ? 'Parent is required for Sub-task.' : 'Fields marked with * are required.'}</span>
-          <button type="submit" className="slv-btn primary" disabled={!activeSpace || !issueType}>
-            Create work item
-          </button>
+          {createdWithErrors ? (
+            <button type="button" className="slv-btn primary" onClick={onClose}>Close</button>
+          ) : (
+            <button type="submit" className="slv-btn primary" disabled={!activeSpace || !issueType || submitting}>
+              {submitting ? (form.attachments.length ? 'Creating and uploading…' : 'Creating…') : 'Create work item'}
+            </button>
+          )}
         </footer>
       </form>
     </div>
   );
 }
-function MoveModal({ spaces, currentSpace, onClose, onMove }) {
+/** Choose the project to move work items to (only projects where the user may create work items). */
+export function MoveModal({ spaces, currentSpace, count = 1, onClose, onMove }) {
   const [target, setTarget] = useState('');
-  const options = spaces.filter((space) => space.id !== currentSpace.id);
-  return <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-    <div className="slv-modal slv-confirm-modal">
-      <div className="slv-modal-head"><h2>Move work items</h2><button type="button" onClick={onClose} aria-label="Close">×</button></div>
-      <div className="slv-modal-content">{options.length ? <label className="slv-field"><span>Destination Space</span><select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Select a Space</option>{options.map((item) => <option key={item.id} value={item.id}>{item.name || item.code}</option>)}</select></label> : <p className="slv-confirm-text">There are no other Spaces available.</p>}</div>
-      <div className="slv-modal-foot"><button type="button" className="slv-btn secondary" onClick={onClose}>Cancel</button><button type="button" className="slv-btn primary" disabled={!target} onClick={() => onMove(target)}>Move</button></div>
+  const [busy, setBusy] = useState(false);
+  const CURRENT_USER = useCurrentUserRecord();
+  const options = spaces.filter((space) => String(space.id) !== String(currentSpace?.id) && canInSpace(space, 'task.create', null, CURRENT_USER));
+  async function submit() {
+    setBusy(true);
+    await onMove(target);
+    setBusy(false);
+  }
+  return <div className="slv-modal-backdrop is-top" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+    <div className="slv-modal slv-confirm-modal" role="dialog" aria-modal="true" aria-label="Move work items">
+      <div className="slv-modal-head"><h2>Move {count === 1 ? 'work item' : `${count} work items`}</h2><button type="button" onClick={onClose} aria-label="Close">×</button></div>
+      <div className="slv-modal-content">
+        {options.length ? <>
+          <label className="slv-field"><span>Destination project</span><select value={target} onChange={(event) => setTarget(event.target.value)}><option value="">Select a project</option>{options.map((item) => <option key={item.id} value={item.id}>{item.name || item.code}</option>)}</select></label>
+          <p className="slv-field-hint">Moved work items get a key of the destination project and go to its backlog. Sprint, team and release are cleared; sub-tasks move with their parent.</p>
+        </> : <p className="slv-confirm-text">There is no other project where you can create work items.</p>}
+      </div>
+      <div className="slv-modal-foot"><button type="button" className="slv-btn secondary" onClick={onClose}>Cancel</button><button type="button" className="slv-btn primary" disabled={!target || busy} onClick={submit}>{busy ? 'Moving…' : 'Move'}</button></div>
     </div>
   </div>;
 }
@@ -1281,7 +1238,8 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
   const pageSize = 20;
 
   const autoOpenedTaskRequestRef = useRef(null);
-  const spaceName = space.name || space.code || 'Untitled Space';
+  const { can } = useProjectPermissions(space);
+  const mayCreate = can('task.create');
 
   const inSpace = useMemo(() => {
     const id = String(space.id ?? '');
@@ -1315,53 +1273,17 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
   const assigneeOptions = useMemo(() => [...new Set(inSpace.map(assigneeName).filter(Boolean))].sort(), [inSpace]);
 
   const filtered = useMemo(() => {
-    const keyword = searchApplied.trim().toLowerCase();
-    const rows = inSpace.filter((issue) => {
-      const values = [issueKey(issue), issueSummary(issue), issueType(issue), assigneeName(issue)];
-      const textMatch = !keyword || values.some((value) => String(value || '').toLowerCase().includes(keyword));
-      const typeMatch = !selectedTypes.length || selectedTypes.includes(issueType(issue));
-      const name = assigneeName(issue) || 'Unassigned';
-      const assigneeMatch = !selectedAssignees.length || selectedAssignees.includes(name);
-      const statusMatch = !selectedStatuses.length || selectedStatuses.includes(getIssueStatus(issue));
-      const priorityMatch = !priorityFilter.length || priorityFilter.includes(issue.priority || 'Medium');
-      if (!textMatch || !typeMatch || !assigneeMatch || !statusMatch || !priorityMatch) return false;
-      for (const field of moreFields) {
-        if (field === 'Priority') continue;
-        const dateKey = { 'Start Date': 'startDate', 'End Date': 'dueDate', 'Create Date': 'createdAt', 'Updated Date': 'updatedAt' }[field];
-        const date = toDate(dateValue(issue, dateKey));
-        const range = dateRanges[field] || {};
-        if (range.from && (!date || date < new Date(`${range.from}T00:00:00`))) return false;
-        if (range.to && (!date || date > new Date(`${range.to}T23:59:59`))) return false;
-      }
-      return true;
-    });
-
-    const preset = {
-      'Newest created': ['createdAt', 'desc'], 'Oldest created': ['createdAt', 'asc'],
-      'Most recently updated': ['updatedAt', 'desc'], 'Least recently updated': ['updatedAt', 'asc'],
-      'Highest priority first': ['priority', 'asc'], 'Lowest priority first': ['priority', 'desc'],
-      'Latest start date': ['startDate', 'desc'], 'Earliest start date': ['startDate', 'asc'],
-      'Latest due date': ['dueDate', 'desc'], 'Earliest due date': ['dueDate', 'asc']
-    };
-    const activeSort = sort.field ? [sort.field, sort.direction] : (preset[orderBy] || []);
-    if (activeSort.length) {
-      const [field, direction] = activeSort;
-      rows.sort((a, b) => {
-        if (field === 'priority') {
-          const delta = (PRIORITY_RANK[a.priority] || 99) - (PRIORITY_RANK[b.priority] || 99);
-          return direction === 'asc' ? delta : -delta;
-        }
-        const dateFields = ['createdAt', 'updatedAt', 'startDate', 'dueDate'];
-        if (dateFields.includes(field)) {
-          const av = toDate(dateValue(a, field))?.getTime() ?? (direction === 'asc' ? Number.MAX_SAFE_INTEGER : 0);
-          const bv = toDate(dateValue(b, field))?.getTime() ?? (direction === 'asc' ? Number.MAX_SAFE_INTEGER : 0);
-          return direction === 'asc' ? av - bv : bv - av;
-        }
-        const value = (item) => field === 'assignee' ? assigneeName(item) : field === 'status' ? getIssueStatus(item) : field === 'type' ? issueType(item) : field === 'key' ? issueKey(item) : issueSummary(item);
-        return String(value(a) || '').localeCompare(String(value(b) || '')) * (direction === 'asc' ? 1 : -1);
-      });
-    }
-    return rows;
+    const rows = inSpace.filter((issue) => matchesIssueFilters(issue, {
+      keyword: searchApplied,
+      types: selectedTypes,
+      assignees: selectedAssignees,
+      statuses: selectedStatuses,
+      priorities: priorityFilter,
+      moreFields,
+      dateRanges
+    }));
+    const [field, direction] = sort.field ? [sort.field, sort.direction] : (ORDER_PRESETS[orderBy] || []);
+    return sortIssues(rows, field, direction);
   }, [inSpace, searchApplied, selectedTypes, selectedAssignees, selectedStatuses, priorityFilter, moreFields, dateRanges, orderBy, sort]);
 
   const pageCount = Math.max(1, Math.ceil(filtered.length / pageSize));
@@ -1400,9 +1322,10 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
     setSelected([]);
     setBulkStatus('');
   }
-  function moveSelected(targetId) {
+  async function moveSelected(targetId) {
     const target = spaces.find((item) => String(item.id) === String(targetId));
-    if (target) onMoveTasks(selectedInSpace, target);
+    const moved = target ? await onMoveTasks(selectedInSpace, target) : null;
+    if (moved && detailIssueId !== null && moved.some((item) => String(item.id) === String(detailIssueId))) setDetailIssueId(null);
     setSelected([]); setMoveOpen(false);
   }
   async function createIssue(payload) {
@@ -1425,10 +1348,8 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
     setStartRequest(null);
     setStartAssigneeId('');
   }
-  function confirmStartRequest() {
-    if (!startRequest || !startAssigneeId) return;
-    const assignee = resolveAssigneeRecord(startAssigneeId, space.members);
-    if (!assignee) return;
+  function confirmStartRequest(assignee) {
+    if (!startRequest || !assignee) return;
     const needsAssignment = new Set(startRequest.issues.filter((issue) => !assigneeName(issue)).map((issue) => issue.id));
     startRequest.issues.forEach((issue) => {
       const changes = { status: startRequest.targetStatus };
@@ -1438,32 +1359,29 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
     if (startRequest.issues.length > 1) setSelected([]);
     closeStartRequest();
   }
-  function navigateTab(tab) {
-    if (tab === 'Summary') onNavigate('space', { id: space.id, name: spaceName });
-    else if (tab === 'List') onNavigate('spaceList', { id: space.id, name: spaceName });
-    else onNavigate('spaceTab', { id: space.id, name: spaceName, tab });
-  }
-
   return <div className="app-shell spaces-list-shell">
     <Header spaces={spaces} tasks={tasks} onGlobalCreate={onGlobalCreate} onOpenTask={onOpenTask} />
     <Sidebar activeSection="Spaces" activeSpaceId={space.id} spaces={spaces} onCreateSpace={onCreateSpace} onNavigate={onNavigate} onOpenSpaceSettings={onOpenSpaceSettings} onDeleteSpace={onDeleteSpace} />
     <main className="spaces-list-main">
-      <div className="slv-project-heading"><div className="slv-breadcrumb"><span>Projects</span><span>/</span><strong>{spaceName}</strong></div><h1>{spaceName}</h1></div>
-      <nav className="slv-tabs" aria-label="Project navigation">
-        { [['Summary','dashboard'],['Timeline','calendar'],['Board','tasks'],['List','file'],['Backlog','spaces'],['Active Sprints','check'],['Teams','users']].map(([label, icon]) => <button key={label} type="button" className={`slv-tab ${label === 'List' ? 'active' : ''}`} onClick={() => navigateTab(label)}><Icon name={icon} size={15} /><span>{label}</span></button>) }
-      </nav>
+      <ProjectHeader space={space} activeTab="List" onNavigate={onNavigate} />
       <section className="slv-toolbar">
         <form className="slv-search" onSubmit={applySearch}><Icon name="search" size={15} /><input placeholder="Search" value={searchText} onChange={(event) => setSearchText(event.target.value)} aria-label="Search work items" />{searchText && <button type="button" onClick={() => { setSearchText(''); setSearchApplied(''); }} aria-label="Clear search">×</button>}</form>
         <MultiFilter label="Issue Type" options={ISSUE_TYPES} selected={selectedTypes} onChange={setSelectedTypes} />
         <MultiFilter label="Assignee" options={['Unassigned', ...assigneeOptions]} selected={selectedAssignees} onChange={setSelectedAssignees} width={210} />
         <MultiFilter label="Status" options={STATUSES} selected={selectedStatuses} onChange={setSelectedStatuses} />
         <OrderFilter value={orderBy} onChange={(value) => { setOrderBy(value); setSort({ field: '', direction: 'asc' }); }} />
-        {moreFields.filter((field) => field !== 'Priority').map((field) => <div className="slv-date-filter" key={field}><span>{field}</span><input type="date" value={dateRanges[field]?.from || ''} aria-label={`${field} from`} onChange={(event) => setDateRanges((current) => ({ ...current, [field]: { ...current[field], from: event.target.value } }))} /><span>to</span><input type="date" value={dateRanges[field]?.to || ''} aria-label={`${field} to`} onChange={(event) => setDateRanges((current) => ({ ...current, [field]: { ...current[field], to: event.target.value } }))} /><button type="button" onClick={() => updateExtraFields(moreFields.filter((item) => item !== field))} aria-label={`Remove ${field}`}>×</button></div>)}
-        {moreFields.includes('Priority') && <div className="slv-priority-filter"><MultiFilter label="Priority" options={PRIORITIES} selected={priorityFilter} onChange={setPriorityFilter} showPriorityIcons /><button type="button" onClick={() => updateExtraFields(moreFields.filter((item) => item !== 'Priority'))} aria-label="Remove priority filter">×</button></div>}
+        <ExtraFilterControls
+          moreFields={moreFields}
+          dateRanges={dateRanges}
+          onDateRangesChange={setDateRanges}
+          priorities={priorityFilter}
+          onPrioritiesChange={setPriorityFilter}
+          onRemoveField={(field) => updateExtraFields(moreFields.filter((item) => item !== field))}
+        />
         <MoreFilters selected={moreFields} onChange={updateExtraFields} />
       </section>
 
-      {selectedInSpace.length > 0 && <section className="slv-bulk-bar"><strong>{selectedInSpace.length} selected</strong><label><input type="checkbox" checked={selectedInSpace.length === filtered.length && filtered.length > 0} onChange={(event) => setSelected(event.target.checked ? filtered.map((issue) => issue.id) : [])} /> Select all</label><button type="button" onClick={() => setMoveOpen(true)}><Icon name="spaces" size={14} /> Move issue</button><label className="slv-bulk-status">Change status <select value={bulkStatus} onChange={(event) => applyBulkStatus(event.target.value)} disabled={!bulkStatusOptions.length}><option value="">{bulkStatusOptions.length ? 'Select status' : 'No common transition'}</option>{bulkStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label><button type="button" className="delete-action" onClick={() => setDeleteOpen(true)}><Icon name="trash" size={14} /> Delete</button></section>}
+      {selectedInSpace.length > 0 && <section className="slv-bulk-bar"><strong>{selectedInSpace.length} selected</strong><label><input type="checkbox" checked={selectedInSpace.length === filtered.length && filtered.length > 0} onChange={(event) => setSelected(event.target.checked ? filtered.map((issue) => issue.id) : [])} /> Select all</label>{selectedInSpace.every((issue) => can('task.move', issue)) && <button type="button" onClick={() => setMoveOpen(true)}><Icon name="spaces" size={14} /> Move issue</button>}<label className="slv-bulk-status">Change status <select value={bulkStatus} onChange={(event) => applyBulkStatus(event.target.value)} disabled={!bulkStatusOptions.length || !selectedInSpace.every((issue) => can('task.move', issue))}><option value="">{bulkStatusOptions.length ? 'Select status' : 'No common transition'}</option>{bulkStatusOptions.map((status) => <option key={status} value={status}>{status}</option>)}</select></label>{selectedInSpace.every((issue) => can('task.delete', issue)) && <button type="button" className="delete-action" onClick={() => setDeleteOpen(true)}><Icon name="trash" size={14} /> Delete</button>}</section>}
 
       <section className="slv-table-card">
         <div className="slv-table-scroll"><table className="slv-table"><colgroup>
@@ -1478,28 +1396,28 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
         </colgroup><thead><tr>
           <th className="slv-check-col"><input type="checkbox" checked={allPageSelected} onChange={togglePage} disabled={!pageRows.length} aria-label="Select all visible rows" /></th>
           <th className="slv-work-col"><SortHeading label="Work" field="summary" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Assignee" field="assignee" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Priority" field="priority" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Status" field="status" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Create Date" field="createdAt" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="Start Date" field="startDate" sort={sort} onSort={changeSort} /></th>
-          <th><SortHeading label="End Date" field="dueDate" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Assignee" field="assignee" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Priority" field="priority" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Status" field="status" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Create Date" field="createdAt" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="Start Date" field="startDate" sort={sort} onSort={changeSort} /></th>
+          <th className="is-center"><SortHeading label="End Date" field="dueDate" sort={sort} onSort={changeSort} /></th>
         </tr></thead><tbody>
           {pageRows.length ? pageRows.map((issue) => {
             const type = issueType(issue); const assignee = assigneeName(issue);
             return <tr key={issue.id} className={selected.includes(issue.id) ? 'row-selected' : ''}>
               <td className="slv-check-col"><input type="checkbox" checked={selected.includes(issue.id)} onChange={() => setSelected((current) => current.includes(issue.id) ? current.filter((id) => id !== issue.id) : [...current, issue.id])} aria-label={`Select ${issueKey(issue)}`} /></td>
               <td><div className="slv-work-cell"><span className={`slv-type-icon type-${type.toLowerCase().replace(/[^a-z]+/g, '-')}`}><Icon name={iconForType(type)} size={15} /></span><button type="button" onClick={() => setDetailIssueId(issue.id)} className="slv-key" title={`Open ${issueKey(issue)} details`}>{issueKey(issue)}</button><span className="slv-summary" title={issueSummary(issue)}>{issueSummary(issue)}</span></div></td>
-              <td><AssigneeCell value={issue.assignee} members={space.members} onAssign={(member) => onUpdateTask(issue.id, { assignee: member })} /></td>
-              <td><PriorityCell value={issue.priority} onChange={(value) => onUpdateTask(issue.id, { priority: value })} /></td>
-              <td><StatusCell issue={issue} allIssues={inSpace} onChange={(value) => changeStatus(issue, value)} /></td>
-              <td className="slv-date-cell">{formatDateTime(dateValue(issue, 'createdAt'))}</td>
-              <td className="slv-date-cell"><EditableDateCell value={dateValue(issue, 'startDate')} label="Start Date" onChange={(value) => onUpdateTask(issue.id, { startDate: value })} /></td>
-              <td className="slv-date-cell"><EditableDateCell value={dateValue(issue, 'dueDate')} label="Due Date" onChange={(value) => onUpdateTask(issue.id, { dueDate: value })} /></td>
+              <td className="is-center"><AssigneeCell value={issue.assignee} members={space.members} disabled={!can('task.assign', issue)} onAssign={(member) => onUpdateTask(issue.id, { assignee: member })} /></td>
+              <td className="is-center"><PriorityCell value={issue.priority} disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { priority: value })} /></td>
+              <td className="is-center"><StatusCell issue={issue} allIssues={inSpace} disabled={!can('task.move', issue)} onChange={(value) => changeStatus(issue, value)} /></td>
+              <td className="slv-date-cell is-center">{formatDateTime(dateValue(issue, 'createdAt'))}</td>
+              <td className="slv-date-cell is-center"><EditableDateCell value={dateValue(issue, 'startDate')} label="Start Date" disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { startDate: value })} /></td>
+              <td className="slv-date-cell is-center"><EditableDateCell value={dateValue(issue, 'dueDate')} label="Due Date" disabled={!can('task.update', issue)} onChange={(value) => onUpdateTask(issue.id, { dueDate: value })} /></td>
             </tr>;
-          }) : <tr><td colSpan="8" className="slv-empty"><div><Icon name="file" size={28} /><strong>{inSpace.length ? 'No work items match your filters' : 'No work items yet'}</strong><span>{inSpace.length ? 'Try changing your search or filters.' : 'Work items created in this Space will appear here.'}</span>{!inSpace.length && <button type="button" onClick={() => { setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); setCreateOpen(true); }}><Icon name="plus" size={14} /> Create</button>}</div></td></tr>}
+          }) : <tr><td colSpan="8" className="slv-empty"><div><Icon name="file" size={28} /><strong>{inSpace.length ? 'No work items match your filters' : 'No work items yet'}</strong><span>{inSpace.length ? 'Try changing your search or filters.' : 'Work items created in this Space will appear here.'}</span>{!inSpace.length && mayCreate && <button type="button" onClick={() => { setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); setCreateOpen(true); }}><Icon name="plus" size={14} /> Create</button>}</div></td></tr>}
         </tbody></table></div>
-        <footer className="slv-footer"><button type="button" className="slv-create-button" onClick={() => { setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); setCreateOpen(true); }}><Icon name="plus" size={15} /> Create</button><div className="slv-pagination"><button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label="Previous page">‹</button><strong>{pageRows.length} of {filtered.length}</strong><button type="button" className="slv-refresh" onClick={() => { setSelected([]); onRefresh(); }} title="Refresh" aria-label="Refresh"><Icon name="refresh" size={14} /></button><button type="button" disabled={currentPage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} aria-label="Next page">›</button></div><span className="slv-total-count">{filtered.length} work items</span></footer>
+        <footer className="slv-footer">{mayCreate ? <button type="button" className="slv-create-button" onClick={() => { setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); setCreateOpen(true); }}><Icon name="plus" size={15} /> Create</button> : <span />}<div className="slv-pagination"><button type="button" disabled={currentPage <= 1} onClick={() => setPage((value) => Math.max(1, value - 1))} aria-label="Previous page">‹</button><strong>{pageRows.length} of {filtered.length}</strong><button type="button" className="slv-refresh" onClick={() => { setSelected([]); onRefresh(); }} title="Refresh" aria-label="Refresh"><Icon name="refresh" size={14} /></button><button type="button" disabled={currentPage >= pageCount} onClick={() => setPage((value) => Math.min(pageCount, value + 1))} aria-label="Next page">›</button></div><span className="slv-total-count">{filtered.length} work items</span></footer>
       </section>
     </main>
     {detailIssueId !== null && inSpace.some((issue) => String(issue.id) === String(detailIssueId)) && (
@@ -1517,11 +1435,12 @@ export default function SpacesList({ space = {}, tasks = [], spaces = [], onNavi
           setCreateOpen(true);
         }}
         onOpenIssue={(issueId) => setDetailIssueId(issueId)}
+        onMoveTask={(issue) => { setSelected([issue.id]); setMoveOpen(true); }}
       />
     )}
     {createOpen && <IssueModal space={space} existingIssues={inSpace} initialIssueType={createDefaults.issueType} initialParentId={createDefaults.parentId} allowedIssueTypes={createDefaults.allowedIssueTypes} onClose={() => { setCreateOpen(false); setCreateDefaults({ issueType: '', parentId: '', allowedIssueTypes: null }); }} onCreate={createIssue} />}
     {startRequest && <StartTransitionModal issues={startRequest.issues} members={space.members} assigneeId={startAssigneeId} onAssigneeChange={setStartAssigneeId} onClose={closeStartRequest} onConfirm={confirmStartRequest} />}
-    {moveOpen && <MoveModal spaces={spaces} currentSpace={space} onClose={() => setMoveOpen(false)} onMove={moveSelected} />}
+    {moveOpen && <MoveModal spaces={spaces} currentSpace={space} count={selectedInSpace.length} onClose={() => setMoveOpen(false)} onMove={moveSelected} />}
     {deleteOpen && <div className="slv-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteOpen(false); }}><div className="slv-modal slv-confirm-modal"><div className="slv-modal-head"><h2>Delete work items?</h2><button type="button" onClick={() => setDeleteOpen(false)} aria-label="Close">×</button></div><div className="slv-modal-content"><p className="slv-confirm-text">Are you sure you want to delete {selectedInSpace.length} selected work item(s)?</p></div><div className="slv-modal-foot"><button type="button" className="slv-btn secondary" onClick={() => setDeleteOpen(false)}>Cancel</button><button type="button" className="slv-btn danger" onClick={() => { onDeleteTasks(selectedInSpace); setSelected([]); setDeleteOpen(false); }}>Delete</button></div></div></div>}
   </div>;
 }

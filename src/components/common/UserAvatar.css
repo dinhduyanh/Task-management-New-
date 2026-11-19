@@ -1,0 +1,24 @@
+.tf-user-avatar {
+  display: inline-grid;
+  flex: 0 0 auto;
+  place-items: center;
+  overflow: hidden;
+  border-radius: 50%;
+  background: var(--tf-avatar-bg);
+  color: var(--tf-fg-ffffff);
+  font-weight: 700;
+  line-height: 1;
+  user-select: none;
+}
+
+.tf-user-avatar { position: relative; }
+/* The picture covers the initials once it has loaded. */
+.tf-user-avatar img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0;
+}
+.tf-user-avatar img.is-loaded { opacity: 1; }

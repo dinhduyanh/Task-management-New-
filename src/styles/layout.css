@@ -1,0 +1,27 @@
+/* Shared layout sizes. The sidebar width drives the sidebar itself and the left
+   offset of every page's main area, so collapsing the sidebar resizes both together. */
+:root {
+  --tf-sidebar-w: 236px;
+  --tf-sidebar-speed: 0.22s ease;
+}
+
+@media (max-width: 1100px) {
+  :root { --tf-sidebar-w: 210px; }
+}
+
+@media (max-width: 760px) {
+  :root { --tf-sidebar-w: 64px; }
+}
+
+/* Set on <html> by the sidebar toggle (remembered per browser). */
+html.tf-sidebar-collapsed {
+  --tf-sidebar-w: 68px;
+}
+
+@media (max-width: 760px) {
+  html.tf-sidebar-collapsed { --tf-sidebar-w: 64px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  :root { --tf-sidebar-speed: 0s; }
+}

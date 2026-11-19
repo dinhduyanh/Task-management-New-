@@ -1,8 +1,8 @@
 .table-card {
   overflow: hidden;
-  border: 1px solid #e7ecf3;
+  border: 1px solid var(--tf-bd-e7ecf3);
   border-radius: 10px;
-  background: #fff;
+  background: var(--tf-bg-ffffff);
   box-shadow: 0 2px 8px rgba(28, 55, 90, 0.025);
 }
 
@@ -12,28 +12,28 @@
   align-items: center;
   justify-content: space-between;
   padding: 17px 21px;
-  border-bottom: 1px solid #edf0f4;
+  border-bottom: 1px solid var(--tf-bd-edf0f4);
 }
 
 .table-card-header h2 {
   margin: 0 0 6px;
-  color: #293548;
+  color: var(--tf-fg-293548);
   font-size: 15px;
   font-weight: 700;
 }
 
 .table-card-header p {
   margin: 0;
-  color: #98a2b3;
+  color: var(--tf-fg-98a2b3);
   font-size: 11px;
 }
 
 .task-count {
   padding: 6px 10px;
-  border: 1px solid #e4eaf2;
+  border: 1px solid var(--tf-bd-e4eaf2);
   border-radius: 20px;
-  background: #f8fafc;
-  color: #64748b;
+  background: var(--tf-bg-f8fafc);
+  color: var(--tf-fg-64748b);
   font-size: 11px;
   white-space: nowrap;
 }
@@ -54,9 +54,9 @@
 .task-table th {
   height: 45px;
   padding: 0 14px;
-  border-bottom: 1px solid #e9edf3;
-  background: #fafbfd;
-  color: #667085;
+  border-bottom: 1px solid var(--tf-bd-e9edf3);
+  background: var(--tf-bg-fafbfd);
+  color: var(--tf-fg-667085);
   font-size: 11px;
   font-weight: 600;
   white-space: nowrap;
@@ -65,23 +65,23 @@
 .task-table td {
   height: 59px;
   padding: 0 14px;
-  border-bottom: 1px solid #eef1f5;
-  color: #475467;
+  border-bottom: 1px solid var(--tf-bd-eef1f5);
+  color: var(--tf-fg-475467);
   font-size: 12px;
   white-space: nowrap;
   transition: background 0.15s;
 }
 
 .task-table tbody tr:nth-child(even) td {
-  background: #fcfdff;
+  background: var(--tf-bg-fcfdff);
 }
 
 .task-table tbody tr:hover td {
-  background: #f5f8fd;
+  background: var(--tf-bg-f5f8fd);
 }
 
 .task-table tbody tr.selected-row td {
-  background: #f0f6ff;
+  background: var(--tf-bg-f0f6ff);
 }
 
 .task-table tbody tr:last-child td {
@@ -96,7 +96,7 @@
 .task-table input[type='checkbox'] {
   width: 15px;
   height: 15px;
-  accent-color: #0755c9;
+  accent-color: var(--tf-fg-0755c9);
   cursor: pointer;
   vertical-align: middle;
 }
@@ -127,28 +127,28 @@
 }
 
 .work-type-icon.task {
-  background: #edf5ff;
-  color: #2780e8;
+  background: var(--tf-bg-edf5ff);
+  color: var(--tf-fg-2780e8);
 }
 
 .work-type-icon.bug {
-  background: #fff0f1;
-  color: #e46a73;
+  background: var(--tf-bg-fff0f1);
+  color: var(--tf-fg-e46a73);
 }
 
 .task-code {
-  color: #4381d4;
+  color: var(--tf-fg-4381d4);
   font-size: 11px;
 }
 
 .task-name {
-  color: #344054;
+  color: var(--tf-fg-344054);
   font-size: 12px;
   font-weight: 500;
 }
 
 .assignee-cell {
-  color: #536176;
+  color: var(--tf-fg-536176);
 }
 
 .assignee-avatar {
@@ -159,8 +159,8 @@
   align-items: center;
   justify-content: center;
   border-radius: 50%;
-  background: #eaf1fc;
-  color: #3269b4;
+  background: var(--tf-bg-eaf1fc);
+  color: var(--tf-fg-3269b4);
   font-size: 9px;
   font-weight: 700;
 }
@@ -169,7 +169,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: #596579;
+  color: var(--tf-fg-596579);
   font-size: 12px;
   font-weight: 500;
 }
@@ -187,33 +187,33 @@
 }
 
 .status-to-do {
-  background: #eaf3ff;
-  color: #286ac3;
+  background: var(--tf-bg-eaf3ff);
+  color: var(--tf-fg-286ac3);
 }
 
 .status-done {
-  background: #e7f6ed;
-  color: #198754;
+  background: var(--tf-bg-e7f6ed);
+  color: var(--tf-fg-198754);
 }
 
 .status-pending {
-  background: #fff5dc;
-  color: #a66c0b;
+  background: var(--tf-bg-fff5dc);
+  color: var(--tf-fg-a66c0b);
 }
 
 .status-reject {
-  background: #ffebed;
-  color: #cf4e59;
+  background: var(--tf-bg-ffebed);
+  color: var(--tf-fg-cf4e59);
 }
 
 .date-cell {
-  color: #667085 !important;
+  color: var(--tf-fg-667085) !important;
   font-size: 11px !important;
 }
 
 .empty-state {
   height: 200px !important;
-  color: #98a2b3 !important;
+  color: var(--tf-fg-98a2b3) !important;
   text-align: center;
 }
 
@@ -225,7 +225,7 @@
 }
 
 .empty-state strong {
-  color: #475467;
+  color: var(--tf-fg-475467);
   font-size: 13px;
 }
 
@@ -239,8 +239,138 @@
   align-items: center;
   justify-content: space-between;
   padding: 0 20px;
-  border-top: 1px solid #edf0f4;
-  background: #fff;
-  color: #98a2b3;
+  border-top: 1px solid var(--tf-bd-edf0f4);
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-98a2b3);
   font-size: 11px;
+}
+
+/* Interactive rows (shared cells from the project List view) */
+.task-table td { white-space: nowrap; }
+.mt-title {
+  max-width: 340px;
+  overflow: hidden;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--tf-fg-172b4d);
+  cursor: pointer;
+  font: inherit;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mt-title:hover { color: var(--tf-fg-0052cc); text-decoration: underline; }
+.mt-project {
+  display: inline-block;
+  max-width: 160px;
+  overflow: hidden;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--tf-bg-f4f5f7);
+  color: var(--tf-fg-42526e);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  vertical-align: middle;
+  white-space: nowrap;
+}
+.mt-bulk {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--tf-bd-dfe1e6);
+  background: var(--tf-bg-e9f2ff);
+  color: var(--tf-fg-172b4d);
+  font-size: 13px;
+}
+.mt-bulk button {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 6px;
+  padding: 0 12px;
+  border: 1px solid var(--tf-bd-c1c7d0);
+  border-radius: 4px;
+  background: var(--tf-bg-ffffff);
+  color: var(--tf-fg-172b4d);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+}
+.mt-bulk button.danger { color: var(--tf-fg-bf2600); }
+.mt-bulk-hint { color: var(--tf-fg-5e6c84); font-size: 12px; }
+.mt-scope {
+  display: inline-flex;
+  margin: 0 0 12px;
+  padding: 3px;
+  border: 1px solid var(--tf-bd-dfe1e6);
+  border-radius: 8px;
+  background: var(--tf-bg-ffffff);
+  gap: 2px;
+}
+.mt-scope button {
+  height: 30px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tf-fg-42526e);
+  cursor: pointer;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+}
+.mt-scope button[aria-pressed="true"] { background: var(--tf-bg-e9f2ff); color: var(--tf-fg-0052cc); }
+.mt-scope button span { margin-left: 6px; color: var(--tf-fg-6b778c); font-size: 11px; font-weight: 600; }
+
+/* Work: the title takes the remaining width and ends with "…" on one line (full title on hover). */
+.task-table .work-column { width: 34%; }
+.task-table .work-cell { min-width: 0; max-width: 420px; }
+.task-table .work-cell .mt-title { min-width: 0; max-width: none; flex: 1 1 auto; }
+
+/* Project: the badge starts under the "Project" title and never spills out of its column. */
+.task-table td .mt-project { display: inline-block; max-width: 100%; margin: 0; vertical-align: middle; }
+.task-table th:nth-child(3), .task-table td:nth-child(3) { max-width: 160px; }
+
+.mt-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Sortable column headers (Filters). The button keeps the header's text style. */
+.mt-sort {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  letter-spacing: inherit;
+  text-transform: inherit;
+  cursor: pointer;
+}
+
+.mt-sort:hover,
+.mt-sort.is-active {
+  color: var(--tf-primary);
+}
+
+.mt-sort-icon {
+  font-size: 11px;
+  opacity: 0.55;
+}
+
+.mt-sort.is-active .mt-sort-icon {
+  opacity: 1;
+}
+
+.task-table tbody.is-loading {
+  opacity: 0.55;
+  transition: opacity 0.15s;
 }
