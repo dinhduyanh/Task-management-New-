@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import Icon from '../../components/common/Icon';
 import UserAvatar from '../../components/common/UserAvatar';
 import { useAppShell } from '../../context/appShellContext';
@@ -45,22 +46,28 @@ function RoleChecklist({ roles, value, onChange, disabled = false, idPrefix }) {
   );
 }
 
-/** Matching users (not yet in the project) for the "Add people" search, fetched as the user types. */
-function useCandidateSearch(spaceId, query) {
-  const [state, setState] = useState({ query: '', results: [], error: '' });
+/**
+ * Suggestions for the "Add people" picker (people not in the project yet): fetched while the list
+ * is open, for the typed text (empty = everyone). The server puts the signed-in user first, sorts
+ * the rest A -> Z and returns at most 10, leaving out the people already picked (`excludeIds`).
+ */
+function useCandidateSearch(spaceId, query, enabled, excludeIds) {
+  const [state, setState] = useState({ key: '', results: [], error: '' });
   const needle = query.trim();
+  const exclude = excludeIds.join(',');
+  const key = `${needle}|${exclude}`;
   useEffect(() => {
-    if (!needle) return undefined;
+    if (!enabled) return undefined;
     let active = true;
     const timer = setTimeout(() => {
-      api.searchMemberCandidates(spaceId, needle)
-        .then((rows) => { if (active) setState({ query: needle, results: rows || [], error: '' }); })
-        .catch((loadError) => { if (active) setState({ query: needle, results: [], error: loadError.message }); });
-    }, 180);
+      api.searchMemberCandidates(spaceId, needle, exclude ? exclude.split(',') : [])
+        .then((rows) => { if (active) setState({ key, results: rows || [], error: '' }); })
+        .catch((loadError) => { if (active) setState({ key, results: [], error: loadError.message }); });
+    }, needle ? 160 : 0);
     return () => { active = false; clearTimeout(timer); };
-  }, [spaceId, needle]);
-  const loading = Boolean(needle) && state.query !== needle;
-  return { results: needle && !loading ? state.results : [], loading, error: needle ? state.error : '' };
+  }, [spaceId, needle, exclude, key, enabled]);
+  const loading = enabled && state.key !== key;
+  return { results: loading ? [] : state.results, loading, error: loading ? '' : state.error };
 }
 
 /** "Add people": find people by typing (autocomplete), pick several as chips, tick one or more roles. */
@@ -73,9 +80,28 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
   const inputRef = useRef(null);
-  const { results, loading, error: searchError } = useCandidateSearch(space.id, query);
-  const options = results.filter((user) => !selected.some((item) => item.id === user.id));
-  const showDropdown = open && query.trim().length > 0;
+  const { results, loading, error: searchError } = useCandidateSearch(space.id, query, open, selected.map((user) => user.id));
+  const options = results.filter((user) => !selected.some((item) => item.id === user.id)).slice(0, 10);
+  const showDropdown = open; // opens on click, filters as you type
+  // The list is drawn in a portal with fixed positioning so the dialog body never clips it.
+  const fieldRef = useRef(null);
+  const [listPos, setListPos] = useState(null);
+  const placeList = useCallback(() => {
+    const rect = fieldRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const below = window.innerHeight - rect.bottom - 12;
+    const above = rect.top - 12;
+    const up = below < 220 && above > below;
+    const maxHeight = Math.max(160, Math.min(456, up ? above : below));
+    setListPos({ left: rect.left, width: rect.width, maxHeight, ...(up ? { bottom: window.innerHeight - rect.top + 2 } : { top: rect.bottom + 2 }) });
+  }, []);
+  useLayoutEffect(() => { if (showDropdown) placeList(); }, [showDropdown, placeList, selected.length]);
+  useEffect(() => {
+    if (!showDropdown) return undefined;
+    window.addEventListener('resize', placeList);
+    window.addEventListener('scroll', placeList, true);
+    return () => { window.removeEventListener('resize', placeList); window.removeEventListener('scroll', placeList, true); };
+  }, [showDropdown, placeList]);
   const activeIndex = Math.min(active, Math.max(options.length - 1, 0));
   const allRolesChecked = roles.length > 0 && roles.every((item) => chosenRoles.includes(item.name));
 
@@ -84,6 +110,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
     setQuery('');
     setActive(0);
     setError('');
+    setOpen(false); // the list would cover the roles; click or type to add more people
     inputRef.current?.focus();
   }
 
@@ -139,7 +166,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
         <div className="sp-field">
           <span id="sp-people-label">User <b className="sp-required">*</b></span>
           <div className="sp-combo">
-            <div className={`sp-tag-input ${showDropdown ? 'is-open' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) { event.preventDefault(); inputRef.current?.focus(); } }}>
+            <div ref={fieldRef} className={`sp-tag-input ${showDropdown ? 'is-open' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget || event.target.closest('.sp-tag-chevron')) { event.preventDefault(); inputRef.current?.focus(); setOpen(true); } }}>
               {selected.map((user) => (
                 <span className="sp-chip" key={user.id}>
                   <UserAvatar user={user} size={20} />
@@ -152,7 +179,7 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
                 autoFocus
                 value={query}
                 onChange={(event) => { setQuery(event.target.value); setOpen(true); setActive(0); }}
-                onFocus={() => setOpen(true)}
+                onMouseDown={() => setOpen(true)}
                 onBlur={() => setOpen(false)}
                 onKeyDown={onKeyDown}
                 placeholder={selected.length ? 'Add more…' : 'Select'}
@@ -165,14 +192,16 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
               />
               <Icon name="chevron" size={14} className="sp-tag-chevron" />
             </div>
-            {showDropdown && (
-              <ul className="sp-dropdown" id={listId} role="listbox" aria-label="Matching people" onMouseDown={(event) => event.preventDefault()}>
+            {showDropdown && listPos && createPortal(
+              <ul className="sp-dropdown is-floating" id={listId} role="listbox" aria-label="Matching people" style={listPos} onMouseDown={(event) => event.preventDefault()}>
                 {loading && <li className="sp-dropdown-status"><span className="sp-spinner" aria-hidden="true" /> Searching…</li>}
                 {!loading && searchError && <li className="sp-dropdown-status is-error">{searchError}</li>}
                 {!loading && !searchError && !options.length && (
                   <li className="sp-dropdown-status is-empty" role="status">
                     <Icon name="user" size={16} />
-                    <span><strong>User not found</strong><small>No one outside this project matches “{query.trim()}”.</small></span>
+                    {query.trim()
+                      ? <span><strong>User not found</strong><small>No one outside this project matches “{query.trim()}”.</small></span>
+                      : <span><strong>No one to add</strong><small>Everyone is already in this project.</small></span>}
                   </li>
                 )}
                 {!loading && options.map((user, index) => (
@@ -187,13 +216,14 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
                   >
                     <UserAvatar user={user} size={28} />
                     <span className="sp-user-text">
-                      <strong>{user.fullName || user.username}</strong>
+                      <strong>{user.fullName || user.username}{user.isCurrentUser && <span className="sp-current-tag">Current user</span>}</strong>
                       <small>@{user.username}{user.email ? ` · ${user.email}` : ''}</small>
                     </span>
                     <Icon name="plus" size={14} />
                   </li>
                 ))}
-              </ul>
+              </ul>,
+              document.body
             )}
           </div>
           <small className="sp-hint">{selected.length ? `${selected.length} selected · ` : ''}Type a name, username or email to find people who are not in this project yet.</small>

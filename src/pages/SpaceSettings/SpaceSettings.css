@@ -702,3 +702,7 @@
 .sp-role-desc::before { margin-right: 6px; }
 .sp-select-all { gap: 6px; font-size: 11.5px; }
 .sp-optional { color: var(--tf-fg-8993a4); font-size: 11px; font-weight: 400; }
+/* "Current user" tag next to the signed-in user in the Add people suggestions. */
+.sp-current-tag { margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: var(--tf-bg-e9f2ff); color: var(--tf-fg-0055cc); font-size: 10px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }
+/* Add people suggestions float above the dialog (portal), never clipped by its body. */
+.sp-dropdown.is-floating { position: fixed; z-index: 3000; right: auto; border-top: 1px solid var(--tf-bd-4c9aff); border-radius: 8px; overflow-y: auto; }

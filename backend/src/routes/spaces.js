@@ -247,28 +247,33 @@ function searchable(value) {
   return String(value || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'D').toLowerCase();
 }
 
-// "Add people" search: active users who are not members yet, matching name, username or email.
-// GET /:spaceId/member-candidates?q=anh&limit=8
+// "Add people" suggestions: active users who are not members yet, matching name, username or
+// email (case and accent insensitive; an empty query lists everyone). The signed-in user comes
+// first (isCurrentUser), the rest A -> Z (Vietnamese collation), at most `limit` (default 10).
+// `exclude` = comma-separated ids already picked in the dialog, so they do not use up the limit.
+// GET /:spaceId/member-candidates?q=anh&limit=10&exclude=u1,u2
+const nameCollator = new Intl.Collator('vi', { sensitivity: 'base' });
 router.get('/:spaceId/member-candidates', (req, res, next) => {
   try {
     const { spaceId } = req.params;
     if (!canAccessSpace(req.user, spaceId)) return res.status(404).json({ error: 'Space not found.' });
     if (!can(req.user, spaceId, 'project.setting')) return denied(res, 'project.setting');
     const words = searchable(req.query.q).split(/\s+/).filter(Boolean);
-    if (!words.length) return res.json([]);
-    const limit = Math.min(Math.max(Number(req.query.limit) || 8, 1), 25);
+    const limit = Math.min(Math.max(Number(req.query.limit) || 10, 1), 25);
+    const excluded = new Set(String(req.query.exclude || '').split(',').map((id) => id.trim()).filter(Boolean));
     const memberIds = new Set(db.prepare('SELECT user_id FROM space_members WHERE space_id = ?').all(spaceId).map((row) => row.user_id));
     const owner = db.prepare('SELECT owner_id FROM spaces WHERE id = ?').get(spaceId)?.owner_id;
     if (owner) memberIds.add(owner);
-    const rows = db.prepare('SELECT id, username, email, full_name, avatar_url FROM users WHERE is_active = 1 ORDER BY lower(full_name), lower(username)').all();
-    const matches = rows
-      .filter((user) => !memberIds.has(user.id))
+    const label = (user) => user.full_name || user.username || '';
+    const matches = db.prepare('SELECT id, username, email, full_name, avatar_url FROM users WHERE is_active = 1').all()
+      .filter((user) => !memberIds.has(user.id) && !excluded.has(user.id))
       .filter((user) => {
         const text = searchable(`${user.full_name} ${user.username} ${user.email}`);
         return words.every((word) => text.includes(word));
       })
+      .sort((a, b) => (b.id === req.user.id) - (a.id === req.user.id) || nameCollator.compare(label(a), label(b)))
       .slice(0, limit)
-      .map((user) => ({ id: user.id, username: user.username, email: user.email, fullName: user.full_name, avatarUrl: user.avatar_url }));
+      .map((user) => ({ id: user.id, username: user.username, email: user.email, fullName: user.full_name, avatarUrl: user.avatar_url, isCurrentUser: user.id === req.user.id }));
     res.json(matches);
   } catch (error) { next(error); }
 });

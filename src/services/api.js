@@ -82,7 +82,7 @@ export const api = {
 
   /** Saves (pinned: true) or removes a project from the sidebar Spaces list (max 5). */
   setSpaceFeatures: (id, features) => request(`/spaces/${encodeURIComponent(id)}/features`, json('PUT', { features })),
-  searchMemberCandidates: (spaceId, query) => request(`/spaces/${encodeURIComponent(spaceId)}/member-candidates?q=${encodeURIComponent(query)}`),
+  searchMemberCandidates: (spaceId, query, exclude = []) => request(`/spaces/${encodeURIComponent(spaceId)}/member-candidates?${new URLSearchParams({ q: query, limit: '10', exclude: exclude.join(',') })}`),
   getSpaceWorkflows: (spaceId) => request(`/spaces/${encodeURIComponent(spaceId)}/workflows`),
   pinSpace: (id, pinned) => request(`/spaces/${encodeURIComponent(id)}/pin`, json('PUT', { pinned })),
 
