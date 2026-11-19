@@ -706,3 +706,17 @@
 .sp-current-tag { margin-left: 6px; padding: 1px 6px; border-radius: 8px; background: var(--tf-bg-e9f2ff); color: var(--tf-fg-0055cc); font-size: 10px; font-weight: 600; white-space: nowrap; vertical-align: 1px; }
 /* Add people suggestions float above the dialog (portal), never clipped by its body. */
 .sp-dropdown.is-floating { position: fixed; z-index: 3000; right: auto; border-top: 1px solid var(--tf-bd-4c9aff); border-radius: 8px; overflow-y: auto; }
+
+/* Header "collapse sidebar" button: the settings menu becomes an icon rail too. */
+.space-settings-sidebar,
+.space-settings-main { transition: width var(--tf-sidebar-speed), margin-left var(--tf-sidebar-speed); }
+@media (min-width: 651px) {
+  html.tf-sidebar-collapsed .space-settings-sidebar { width: var(--tf-sidebar-w); padding-right: 10px; padding-left: 10px; overflow-x: hidden; }
+  html.tf-sidebar-collapsed .space-settings-main { margin-left: var(--tf-sidebar-w); }
+  html.tf-sidebar-collapsed .settings-back-link,
+  html.tf-sidebar-collapsed .settings-nav-item { justify-content: center; padding-right: 0; padding-left: 0; }
+  html.tf-sidebar-collapsed .settings-back-link span,
+  html.tf-sidebar-collapsed .settings-nav-item span,
+  html.tf-sidebar-collapsed .settings-space-identity > div { display: none; }
+  html.tf-sidebar-collapsed .settings-space-identity { justify-content: center; padding-right: 0; padding-left: 0; }
+}

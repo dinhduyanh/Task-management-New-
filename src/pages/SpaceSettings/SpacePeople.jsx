@@ -266,8 +266,10 @@ function AddPeopleModal({ space, roles, onAdd, onClose }) {
 }
 
 function MemberRow({ member, space, roles, canManage, isProjectAdmin, onAdd, onRemove }) {
-  const { user: currentUser } = useAppShell();
+  const { user: currentUser, users = [] } = useAppShell();
   const userId = member.userId || member.id;
+  // The account of the member (from the user directory) carries their uploaded picture.
+  const account = String(currentUser?.id) === String(userId) ? currentUser : users.find((item) => String(item.id) === String(userId));
   const isOwner = Boolean(space.ownerId) && space.ownerId === userId;
   const current = memberRoles(member);
   // Only project admins may change or remove another project admin.
@@ -291,7 +293,7 @@ function MemberRow({ member, space, roles, canManage, isProjectAdmin, onAdd, onR
   return (
     <div className="sp-member">
       <div className="sp-member-main">
-        <UserAvatar user={{ fullName: name }} size={34} />
+        <UserAvatar user={{ ...account, fullName: name }} size={34} />
         <div className="sp-member-name">
           <strong>
             {name}

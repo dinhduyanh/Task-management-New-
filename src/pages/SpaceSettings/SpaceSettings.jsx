@@ -99,12 +99,12 @@ function SettingsDateField({ id, label, value, onChange, required = false, error
 function SettingsSidebar({ space, activeTab, onTabChange, onBack }) {
   return (
     <aside className="space-settings-sidebar">
-      <button type="button" className="settings-back-link" onClick={onBack}>
+      <button type="button" className="settings-back-link" onClick={onBack} title="Back">
         <Icon name="arrowLeft" size={17} />
         <span>Space settings</span>
       </button>
 
-      <div className="settings-space-identity">
+      <div className="settings-space-identity" title={space.name || space.code || ''}>
         {space.icon ? <img src={space.icon} alt="" /> : <span>{(space.name || space.code || 'S').charAt(0).toUpperCase()}</span>}
         <div>
           <strong>{space.name || 'Untitled Space'}</strong>
@@ -120,6 +120,7 @@ function SettingsSidebar({ space, activeTab, onTabChange, onBack }) {
             className={`settings-nav-item ${activeTab === item.label ? 'active' : ''}`}
             onClick={() => onTabChange(item.label)}
             aria-current={activeTab === item.label ? 'page' : undefined}
+            title={item.label}
           >
             <Icon name={item.icon} size={16} />
             <span>{item.label}</span>
