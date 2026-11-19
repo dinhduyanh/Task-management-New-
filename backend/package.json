@@ -17,6 +17,6 @@
     "better-sqlite3": "^12.2.0",
     "cors": "^2.8.5",
     "express": "^5.1.0",
-    "nodemailer": "^7.0.13"
+    "nodemailer": "^10.6.0"
   }
 }
