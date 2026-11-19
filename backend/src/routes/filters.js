@@ -1,12 +1,11 @@
 // Filters: search work items with TQL, the values for the filter dropdowns and
-// auto-complete, saved filters (CRUD) and natural language -> TQL.
+// auto-complete, and saved filters (CRUD).
 import { Router } from 'express';
 import { db, createId, nowIso, parseJson } from '../db.js';
 import { isAdmin, spaceFilter } from '../access.js';
 import { presentItem } from '../workItemPermissions.js';
 import { searchWorkItems } from '../tqlQuery.js';
 import { TqlError, configToTql, tqlToConfig, validate } from '../../../shared/tql.js';
-import { naturalLanguageToTql } from '../ai/tqlAssistant.js';
 
 const router = Router();
 
@@ -97,20 +96,6 @@ router.get('/meta', (req, res) => {
     labels: [...labels].sort((a, b) => a.localeCompare(b)),
     users
   });
-});
-
-// POST /api/filters/ai { text, timezoneOffset } -> { tql, explanation, provider }
-router.post('/ai', async (req, res, next) => {
-  try {
-    const text = String(req.body?.text || '').trim();
-    if (!text) return res.status(400).json({ error: 'Describe what you are looking for.' });
-    if (text.length > 500) return res.status(400).json({ error: 'Please keep the request under 500 characters.' });
-    const access = spaceFilter(req.user, 'id');
-    const projects = db.prepare(`SELECT code, name FROM spaces WHERE ${access.sql}`).all(...access.params);
-    const statuses = db.prepare('SELECT DISTINCT name FROM workflow_states').all().map((row) => row.name);
-    const result = await naturalLanguageToTql(text, { projects, statuses, types: ['Epic', 'Feature', 'Story', 'Task', 'Bug', 'Improvement', 'Sub-task'] });
-    res.json(result);
-  } catch (error) { next(error); }
 });
 
 /* -------------------------------------------------------- saved filters */

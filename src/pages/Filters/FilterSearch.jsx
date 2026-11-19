@@ -94,10 +94,6 @@ export default function FilterSearch({
   const [refreshKey, setRefreshKey] = useState(0);
   const [toast, setToast] = useState(null);
   const [saveRequest, setSaveRequest] = useState(null); // { kind: 'new' | 'copy' | 'edit' }
-  const [aiOpen, setAiOpen] = useState(false);
-  const [aiText, setAiText] = useState('');
-  const [aiBusy, setAiBusy] = useState(false);
-  const [aiNote, setAiNote] = useState('');
   const [helpOpen, setHelpOpen] = useState(false);
   const [selectedId, setSelectedId] = useState(null); // split view
   const [detailTaskId, setDetailTaskId] = useState(null); // list view drawer
@@ -299,28 +295,6 @@ export default function FilterSearch({
     }
   }
 
-  async function askAi(event) {
-    event.preventDefault();
-    if (!aiText.trim()) return;
-    setAiBusy(true);
-    setAiNote('');
-    try {
-      const answer = await api.tqlFromText(aiText.trim());
-      if (!answer.tql) { setAiNote(answer.explanation || 'No conditions recognised.'); return; }
-      setMode('tql');
-      writePref(MODE_KEY, 'tql');
-      setTqlDraft(answer.tql);
-      setAppliedTql(answer.tql);
-      setPage(1);
-      setAiNote(answer.explanation || '');
-      setNotice('');
-    } catch (error) {
-      setAiNote(error.message || 'The assistant is not available right now.');
-    } finally {
-      setAiBusy(false);
-    }
-  }
-
   /* ---------------------------------------------------------- task actions */
 
   const tasksOf = (space) => (space ? allTasks.filter((task) => isInSpace(task, space)) : []);
@@ -370,7 +344,6 @@ export default function FilterSearch({
       {tqlDraft && <button type="button" className="tql-icon" onClick={() => { setTqlDraft(''); runTql(''); }} aria-label="Clear query" title="Clear"><Icon name="close" size={13} /></button>}
       <button type="button" className="tql-icon" onClick={async () => { try { await navigator.clipboard.writeText(tqlDraft); setToast({ type: 'success', message: 'Query copied.' }); } catch { setToast({ type: 'error', message: 'Copy is not available.' }); } }} aria-label="Copy query" title="Copy query"><Icon name="copy" size={14} /></button>
       <button type="button" className={`tql-icon ${helpOpen ? 'is-active' : ''}`} onClick={() => setHelpOpen((open) => !open)} aria-label="TQL help" title="TQL syntax" aria-expanded={helpOpen}><Icon name="info" size={14} /></button>
-      <button type="button" className={`tql-ai ${aiOpen ? 'is-active' : ''}`} onClick={() => setAiOpen((open) => !open)} aria-expanded={aiOpen}><Icon name="sparkles" size={14} /> AI</button>
       <button type="button" className="tql-run" onClick={() => runTql()} aria-label="Search" title="Search (Enter)"><Icon name="search" size={15} /></button>
     </div>
   );
@@ -457,14 +430,6 @@ export default function FilterSearch({
               placeholder='e.g. project = "PRJ-01" AND assignee = currentUser() AND status IN ("To Do", "In Progress") ORDER BY dueDate ASC'
               actions={tqlActions}
             />
-            {aiOpen && (
-              <form className="tql-ai-panel" onSubmit={askAi}>
-                <Icon name="sparkles" size={15} />
-                <input autoFocus value={aiText} onChange={(event) => setAiText(event.target.value)} placeholder="Describe what you are looking for, e.g. “Tìm các task ưu tiên cao của tôi sắp hết hạn trong tuần này”" aria-label="Describe the search for the AI" maxLength={500} />
-                <button type="submit" className="slv-btn primary" disabled={aiBusy || !aiText.trim()}>{aiBusy ? 'Writing…' : 'Generate TQL'}</button>
-                {aiNote && <p className="tql-ai-note" role="status">{aiNote}</p>}
-              </form>
-            )}
             {helpOpen && (
               <div className="tql-help" role="region" aria-label="TQL syntax">
                 <div><strong>Fields</strong><p>project, key, summary, description, status, statusCategory, priority, type, assignee, creator, sprint, labels, created, updated, startDate, dueDate</p></div>

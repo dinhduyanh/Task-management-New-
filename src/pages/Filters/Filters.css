@@ -708,28 +708,6 @@
   color: var(--tf-primary);
 }
 
-.tql-ai {
-  display: inline-flex;
-  height: 30px;
-  align-items: center;
-  gap: 5px;
-  margin: 0 2px;
-  padding: 0 10px;
-  border: 0;
-  border-radius: 6px;
-  background: color-mix(in srgb, var(--tf-primary) 12%, transparent);
-  color: var(--tf-primary);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 700;
-  cursor: pointer;
-}
-
-.tql-ai:hover,
-.tql-ai.is-active {
-  background: color-mix(in srgb, var(--tf-primary) 20%, transparent);
-}
-
 .tql-run {
   background: var(--tf-primary);
   color: var(--tf-on-primary);
@@ -813,43 +791,6 @@
 
 .tql-error-pos {
   color: var(--tf-text-muted);
-}
-
-.tql-ai-panel {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  padding: 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--tf-primary) 30%, var(--tf-border));
-  border-radius: 8px;
-  background: color-mix(in srgb, var(--tf-primary) 5%, var(--tf-surface));
-  color: var(--tf-primary);
-}
-
-.tql-ai-panel input {
-  min-width: 200px;
-  height: 32px;
-  flex: 1;
-  padding: 0 10px;
-  border: 1px solid var(--tf-border);
-  border-radius: 6px;
-  background: var(--tf-surface);
-  color: var(--tf-text);
-  font: inherit;
-  font-size: 13px;
-}
-
-.tql-ai-panel input:focus {
-  border-color: var(--tf-primary);
-  outline: none;
-}
-
-.tql-ai-note {
-  width: 100%;
-  margin: 0;
-  color: var(--tf-text-muted);
-  font-size: 12.5px;
 }
 
 .tql-help {
