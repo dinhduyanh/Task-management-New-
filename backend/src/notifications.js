@@ -86,6 +86,26 @@ function buildMessage(type, actorName, item, data) {
   return `${actorName} đã cập nhật công việc ${task}`;
 }
 
+/* ------------------------------------------------------- email addresses */
+
+// Reserved names that never receive mail (RFC 2606 / 6761), e.g. demo accounts.
+const RESERVED_DOMAIN = /(^|\.)(example\.(com|net|org)|example|test|invalid|localhost|local)$/i;
+const EMAIL_PATTERN = /^[^\s@"<>(),;:\\[\]]+@([a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i;
+
+/**
+ * Whether notifications may be emailed to this address: a well-formed address on a real
+ * domain. Users without one still get in-app notifications, just no email.
+ * (MAIL_ALLOW_RESERVED_DOMAINS=true lets test setups send to example.com etc.)
+ */
+export function isDeliverableEmail(value) {
+  const email = String(value || '').trim();
+  if (!email || email.length > 254 || !EMAIL_PATTERN.test(email)) return false;
+  const [local, domain] = [email.slice(0, email.lastIndexOf('@')), email.slice(email.lastIndexOf('@') + 1)];
+  if (local.length > 64 || local.startsWith('.') || local.endsWith('.') || local.includes('..')) return false;
+  if (process.env.MAIL_ALLOW_RESERVED_DOMAINS !== 'true' && RESERVED_DOMAIN.test(domain)) return false;
+  return true;
+}
+
 /* --------------------------------------------------------------- notify */
 
 /**
@@ -110,7 +130,7 @@ export function notify({ type, actor, item, recipients, data = {} }) {
     if (!recipient || !recipient.is_active) continue;
     if (!canAccessSpace({ id: recipient.id, role: recipient.role }, item.space_id)) continue;
     insert.run(createId('ntf'), recipient.id, actorId, actorName, type, item.id, item.space_id, item.issue_key, item.title, message,
-      JSON.stringify(data), now, recipient.email ? 'pending' : 'skipped');
+      JSON.stringify(data), now, isDeliverableEmail(recipient.email) ? 'pending' : 'skipped');
     created += 1;
   }
   if (created) mailQueue.kick();
@@ -332,7 +352,10 @@ export const mailQueue = {
 
   async deliver(row, mode) {
     const mark = db.prepare('UPDATE notifications SET email_status = ?, email_attempts = ?, email_error = ?, emailed_at = ? WHERE id = ?');
-    if (mode === 'off' || !row.recipient_email) return mark.run('skipped', row.email_attempts, null, null, row.id);
+    // The address is checked again: it may have changed since the notification was queued.
+    if (mode === 'off' || !isDeliverableEmail(row.recipient_email)) {
+      return mark.run('skipped', row.email_attempts, mode === 'off' ? null : 'No valid email address', null, row.id);
+    }
     const email = renderEmail(row);
     const from = process.env.MAIL_FROM || process.env.SMTP_USER || 'TASKFLOW <no-reply@taskflow.local>';
     const to = row.recipient_name ? `"${String(row.recipient_name).replace(/"/g, '')}" <${row.recipient_email}>` : row.recipient_email;
@@ -346,7 +369,9 @@ export const mailQueue = {
       mark.run('sent', row.email_attempts + 1, null, nowIso(), row.id);
     } catch (error) {
       const attempts = row.email_attempts + 1;
-      const status = attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
+      // A mailbox the server refuses (5xx, e.g. "no such user") is not retried.
+      const permanent = error.code === 'EENVELOPE' || (error.responseCode >= 500 && error.responseCode < 600 && error.command !== 'AUTH PLAIN' && error.code !== 'EAUTH');
+      const status = permanent || attempts >= MAX_ATTEMPTS ? 'failed' : 'pending';
       const delay = retryDelay(attempts);
       mark.run(status, attempts, String(error.message || error).slice(0, 500), null, row.id);
       if (status === 'pending') db.prepare('UPDATE notifications SET email_next_at = ? WHERE id = ?').run(new Date(Date.now() + delay).toISOString(), row.id);
