@@ -1,14 +1,7 @@
 /* =========================================================================================
-   Shared table headers: in every list/table the header row is centred.
-   Cell contents keep their own alignment.
-   (My Tasks and the project List centre their value columns too: see .is-center in SpacesList.css.)
+   Shared table alignment: every list/table is left aligned, and each header title starts
+   exactly where the values below it start (same left edge), so columns read as one line.
 ========================================================================================= */
-:is(.si-table, .dc-table, .ss-table, .wf-table, .swi-table, .wv-table, .td-mini-table, .tt-table, .dbx-table, .summary-work-table) thead th {
-  text-align: center !important;
-}
-
-/* Sort buttons and other content inside header cells sit in the middle too. */
-:is(.si-table, .dc-table, .ss-table, .wf-table, .swi-table, .wv-table, .td-mini-table, .tt-table, .dbx-table, .summary-work-table) thead th > * {
-  margin-inline: auto;
-  justify-content: center;
+:is(.si-table, .dc-table, .ss-table, .wf-table, .swi-table, .wv-table, .td-mini-table, .tt-table, .dbx-table, .summary-work-table, .slv-table, .task-table) :is(th, td) {
+  text-align: left !important;
 }

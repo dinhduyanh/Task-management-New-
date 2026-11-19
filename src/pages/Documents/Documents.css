@@ -509,3 +509,6 @@
   .dc-preview { height: 100vh; border-radius: 0; }
   .dc-preview-actions button:first-of-type { display: none; }
 }
+
+/* The type icon starts under the "Attached To" title (its 15px glyph sits in an 18px box). */
+.dc-table .dc-attached .slv-type-icon { margin-left: -1.5px; }

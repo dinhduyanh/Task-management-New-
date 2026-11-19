@@ -472,3 +472,4 @@
 .td-workflow-button{display:inline-grid;width:32px;height:32px;place-items:center;padding:0;border:1px solid var(--tf-bd-dfe1e6);border-radius:5px;background:var(--tf-bg-ffffff);color:var(--tf-fg-42526e);cursor:pointer;transition:background .15s,color .15s,border-color .15s}
 .td-workflow-button:hover{border-color:var(--tf-bd-4c9aff);background:var(--tf-bg-e9f2ff);color:var(--tf-fg-0c66e4)}
 .td-workflow-button:focus-visible{outline:2px solid var(--tf-bd-4c9aff);outline-offset:2px}
+.td-mini-table .td-table-link{padding:0}

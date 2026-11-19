@@ -441,3 +441,6 @@
 :root[data-theme="dark"] .si-sort-icon path.is-on {
   fill: var(--tf-fg-579dff);
 }
+
+/* Star sits under the start of the "Actions" title. */
+.si-table td.si-actions .si-star { margin-left: -8px; }
