@@ -289,7 +289,8 @@ export function renderEmail(row) {
  * "off" (do not send emails).
  */
 function mailMode() {
-  const configured = String(process.env.MAIL_TRANSPORT || '').trim().toLowerCase();
+  // Only the first word counts, so a note copied after the value does not break it.
+  const configured = (String(process.env.MAIL_TRANSPORT || '').trim().toLowerCase().match(/^[a-z]+/) || [''])[0];
   if (configured) return configured;
   return process.env.SMTP_HOST ? 'smtp' : 'log';
 }
@@ -300,7 +301,7 @@ function createTransport(mode) {
     return nodemailer.createTransport({
       host: process.env.SMTP_HOST,
       port,
-      secure: process.env.SMTP_SECURE ? process.env.SMTP_SECURE === 'true' : port === 465,
+      secure: process.env.SMTP_SECURE ? /^true\b/i.test(process.env.SMTP_SECURE.trim()) : port === 465,
       auth: process.env.SMTP_USER ? { user: process.env.SMTP_USER, pass: String(process.env.SMTP_PASS || '').replace(/\s+/g, '') } : undefined,
       connectionTimeout: 10000,
       greetingTimeout: 10000,
