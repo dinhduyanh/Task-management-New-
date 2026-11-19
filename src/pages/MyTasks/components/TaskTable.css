@@ -325,3 +325,12 @@
 }
 .mt-scope button[aria-pressed="true"] { background: var(--tf-bg-e9f2ff); color: var(--tf-fg-0052cc); }
 .mt-scope button span { margin-left: 6px; color: var(--tf-fg-6b778c); font-size: 11px; font-weight: 600; }
+
+/* Work: the title takes the remaining width and ends with "…" on one line (full title on hover). */
+.task-table .work-column { width: 34%; }
+.task-table .work-cell { min-width: 0; max-width: 420px; }
+.task-table .work-cell .mt-title { min-width: 0; max-width: none; flex: 1 1 auto; }
+
+/* Project: the badge starts under the "Project" title and never spills out of its column. */
+.task-table td .mt-project { display: inline-block; max-width: 100%; margin: 0; vertical-align: middle; }
+.task-table th:nth-child(3), .task-table td:nth-child(3) { max-width: 160px; }

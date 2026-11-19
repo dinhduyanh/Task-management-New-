@@ -1513,3 +1513,19 @@ button.slv-inline-date:focus-visible {
 :is(.slv-table, .task-table) td.is-center .slv-inline-date { width: max-content; min-width: 0; max-width: none; padding-right: 18px; }
 :is(.slv-table, .task-table) td.is-center .slv-inline-date > svg { right: 3px; }
 :is(.slv-table, .task-table) td.is-center .slv-inline-date > span { flex: none; overflow: visible; text-overflow: clip; }
+
+/* =========================================
+   STATUS PILLS FIT THEIR TEXT (List and My Tasks)
+   Replaces the fixed 130px width: each pill is as wide as its label, same padding, one line.
+========================================= */
+:is(.slv-table, .task-table) .slv-status,
+:is(.slv-table, .task-table) td.is-center > .slv-status-picker > .slv-status {
+  position: static;
+  width: fit-content;
+  max-width: 100%;
+  gap: 6px;
+  padding: 0 10px;
+  white-space: nowrap;
+}
+:is(.slv-table, .task-table) .slv-status > span { overflow: visible; text-overflow: clip; }
+:is(.slv-table, .task-table) .slv-status > svg { position: static; flex: 0 0 auto; }
