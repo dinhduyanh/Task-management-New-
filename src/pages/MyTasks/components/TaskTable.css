@@ -374,3 +374,7 @@
   opacity: 0.55;
   transition: opacity 0.15s;
 }
+
+/* Filters: work items of projects the user is not a member of (view only). */
+.mt-project.is-read-only { display: inline-flex; align-items: center; gap: 4px; }
+.mt-project.is-read-only svg { flex: none; opacity: 0.7; }

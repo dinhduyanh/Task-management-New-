@@ -1421,3 +1421,8 @@
     grid-template-columns: 1fr;
   }
 }
+
+.fs-split-project svg {
+  margin-right: 3px;
+  vertical-align: -1px;
+}

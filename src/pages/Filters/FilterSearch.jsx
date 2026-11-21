@@ -297,7 +297,12 @@ export default function FilterSearch({
 
   /* ---------------------------------------------------------- task actions */
 
-  const tasksOf = (space) => (space ? allTasks.filter((task) => isInSpace(task, space)) : []);
+  const tasksOf = (space) => (space && !space.readOnly ? allTasks.filter((task) => isInSpace(task, space)) : []);
+  // Work items of projects the user is not a member of: viewed with a read-only project
+  // (no permissions), so every control stays disabled.
+  const spaceFor = (task) => spaceOfItem(spaces, task) || (task ? {
+    id: task.spaceId, name: task.project?.name || task.spaceCode || 'Project', code: task.project?.code || task.spaceCode, members: [], permissions: null, readOnly: true
+  } : null);
   function changeStatus(task, status) {
     const space = spaceOfItem(spaces, task);
     const check = validateIssueTransition(task, status, tasksOf(space));
@@ -316,7 +321,7 @@ export default function FilterSearch({
   const detailTask = detailTaskId ? latest.get(String(detailTaskId)) || rows.find((row) => String(row.id) === String(detailTaskId)) : null;
   const splitTask = view === 'split' && selectedId ? latest.get(String(selectedId)) || rows.find((row) => String(row.id) === String(selectedId)) : null;
   const drawerProps = (task, close) => {
-    const space = spaceOfItem(spaces, task);
+    const space = spaceFor(task);
     return {
       issue: task,
       allIssues: tasksOf(space),
@@ -504,7 +509,7 @@ export default function FilterSearch({
                         <span className="fs-split-meta">
                           <PersonAvatar person={task.assignee} className="fs-split-avatar" fallback={task.assignee ? null : '?'} />
                           <span>{assigneeName(task) || (task.assignee ? findUser(users, task.assignee)?.fullName : '') || 'Unassigned'}</span>
-                          <span className="fs-split-project">{spaceOfItem(spaces, task)?.name || task.spaceCode}</span>
+                          <span className="fs-split-project">{task.readOnly && <Icon name="lock" size={11} />}{spaceFor(task).name}</span>
                         </span>
                       </button>
                     </li>
@@ -514,7 +519,7 @@ export default function FilterSearch({
               </ul>
             </div>
             <div className="fs-split-detail">
-              {splitTask && spaceOfItem(spaces, splitTask)
+              {splitTask
                 ? <TaskDetailDrawer key={splitTask.id} embedded {...drawerProps(splitTask, () => setSelectedId(null))} />
                 : <div className="fs-split-placeholder"><Icon name="file" size={28} /><span>Select a work item to see its details.</span></div>}
             </div>
@@ -522,7 +527,7 @@ export default function FilterSearch({
         )}
       </main>
 
-      {view === 'list' && detailTask && spaceOfItem(spaces, detailTask) && (
+      {view === 'list' && detailTask && (
         <TaskDetailDrawer key={detailTask.id} {...drawerProps(detailTask, () => setDetailTaskId(null))} />
       )}
 

@@ -2,7 +2,7 @@
 // auto-complete, and saved filters (CRUD).
 import { Router } from 'express';
 import { db, createId, nowIso, parseJson } from '../db.js';
-import { isAdmin, spaceFilter } from '../access.js';
+import { accessibleSpaceIds, isAdmin } from '../access.js';
 import { presentItem } from '../workItemPermissions.js';
 import { searchWorkItems } from '../tqlQuery.js';
 import { TqlError, configToTql, tqlToConfig, validate } from '../../../shared/tql.js';
@@ -48,13 +48,22 @@ function queryError(res, error) {
 
 // POST /api/filters/search { tql | filters, page, pageSize, timezoneOffset }
 // `filters` is the Default-mode object; it is turned into TQL first.
+// Filters search every work item of the system. Items of projects the user is not a
+// member of come back with readOnly: true (and without comments): they can be viewed,
+// while changing them is still refused by the work item routes.
 router.post('/search', (req, res, next) => {
   try {
     const tql = typeof req.body?.tql === 'string' ? req.body.tql : req.body?.filters ? configToTql(req.body.filters) : '';
-    const result = searchWorkItems({ user: req.user, tql, page: req.body?.page, pageSize: req.body?.pageSize, tzOffset: tzOffsetOf(req) });
+    const result = searchWorkItems({ user: req.user, tql, page: req.body?.page, pageSize: req.body?.pageSize, tzOffset: tzOffsetOf(req), allProjects: true });
+    const memberOf = accessibleSpaceIds(req.user); // null = admin (every project)
+    const projectOf = db.prepare('SELECT id, code, name FROM spaces WHERE id = ?');
     res.json({
       tql,
-      items: result.rows.map((row) => presentItem(req, row)),
+      items: result.rows.map((row) => ({
+        ...presentItem(req, row),
+        project: projectOf.get(row.space_id) || null,
+        readOnly: memberOf !== null && !memberOf.includes(row.space_id)
+      })),
       total: result.total,
       page: result.page,
       pageSize: result.pageSize,
@@ -66,23 +75,20 @@ router.post('/search', (req, res, next) => {
   }
 });
 
-// Values for the dropdowns and TQL auto-complete (only from projects the user can open).
+// Values for the dropdowns and TQL auto-complete (every project of the system).
 router.get('/meta', (req, res) => {
-  const access = spaceFilter(req.user, 'id');
-  const projects = db.prepare(`SELECT id, code, name, task_key_prefix FROM spaces WHERE ${access.sql} ORDER BY name COLLATE NOCASE`).all(...access.params);
-  const itemAccess = spaceFilter(req.user, 'space_id');
+  const projects = db.prepare('SELECT id, code, name FROM spaces ORDER BY name COLLATE NOCASE').all();
   const statuses = [...new Set([
     ...db.prepare('SELECT DISTINCT name FROM workflow_states ORDER BY position').all().map((row) => row.name),
-    ...db.prepare(`SELECT DISTINCT status FROM work_items WHERE ${itemAccess.sql}`).all(...itemAccess.params).map((row) => row.status)
+    ...db.prepare('SELECT DISTINCT status FROM work_items').all().map((row) => row.status)
   ].filter(Boolean))];
   const types = [...new Set([
     'Epic', 'Feature', 'Story', 'Task', 'Bug', 'Improvement', 'Sub-task',
-    ...db.prepare(`SELECT DISTINCT issue_type FROM work_items WHERE ${itemAccess.sql}`).all(...itemAccess.params).map((row) => row.issue_type)
+    ...db.prepare('SELECT DISTINCT issue_type FROM work_items').all().map((row) => row.issue_type)
   ].filter(Boolean))];
-  const sprints = db.prepare(`SELECT s.id, s.name, s.status, sp.code AS project FROM sprints s JOIN spaces sp ON sp.id = s.space_id WHERE ${spaceFilter(req.user, 's.space_id').sql} ORDER BY sp.code, s.position`)
-    .all(...spaceFilter(req.user, 's.space_id').params);
+  const sprints = db.prepare('SELECT s.id, s.name, s.status, sp.code AS project FROM sprints s JOIN spaces sp ON sp.id = s.space_id ORDER BY sp.code, s.position').all();
   const labels = new Set();
-  db.prepare(`SELECT labels_json FROM work_items WHERE ${itemAccess.sql} AND labels_json <> '[]'`).all(...itemAccess.params)
+  db.prepare("SELECT labels_json FROM work_items WHERE labels_json <> '[]'").all()
     .forEach((row) => parseJson(row.labels_json, []).forEach((label) => { const name = typeof label === 'object' ? label?.name : label; if (name) labels.add(String(name)); }));
   const users = db.prepare('SELECT id, username, email, full_name, avatar_url FROM users WHERE is_active = 1 ORDER BY full_name COLLATE NOCASE').all()
     .map((user) => ({ id: user.id, username: user.username, email: user.email, fullName: user.full_name, name: user.full_name, avatarUrl: user.avatar_url || '' }));

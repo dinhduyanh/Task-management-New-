@@ -130,7 +130,7 @@ export default function TaskTable({
                       <button type="button" className="task-name mt-title" onClick={() => onOpenTask(task)} title={issueSummary(task)}>{issueSummary(task)}</button>
                     </div>
                   </td>
-                  <td className="is-center"><span className="mt-project" title={space?.name || ''}>{space?.name || task.spaceCode || '—'}</span></td>
+                  <td className="is-center"><span className={`mt-project ${task.readOnly ? 'is-read-only' : ''}`} title={task.readOnly ? 'You are not a member of this project: view only' : space?.name || ''}>{task.readOnly && <Icon name="lock" size={11} />}{space?.name || task.project?.name || task.spaceCode || '—'}</span></td>
                   <td className="is-center">
                     <AssigneeCell value={task.assignee} members={space?.members || []} disabled={!can('task.assign', task)} onAssign={(member) => onUpdateTask(task.id, { assignee: member })} />
                   </td>

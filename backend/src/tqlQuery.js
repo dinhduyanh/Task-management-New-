@@ -298,12 +298,12 @@ export function compileTql(tql, ctx) {
 }
 
 /**
- * Work items the user may see that match the query, one page at a time.
- * Returns { rows, total, orderBy }.
+ * Work items that match the query, one page at a time. Returns { rows, total, orderBy }.
+ * allProjects: search every project of the system (Filters), not only the user's projects.
  */
-export function searchWorkItems({ user, tql = '', page = 1, pageSize = 20, tzOffset = 0, now }) {
+export function searchWorkItems({ user, tql = '', page = 1, pageSize = 20, tzOffset = 0, now, allProjects = false }) {
   const { where, orderSql, orderBy } = compileTql(tql, { user, tzOffset, now });
-  const access = spaceFilter(user, 'w.space_id');
+  const access = allProjects ? { sql: '1 = 1', params: [] } : spaceFilter(user, 'w.space_id');
   const whereSql = `WHERE ${access.sql} AND ${where.sql}`;
   const params = [...access.params, ...where.params];
   const size = Math.min(Math.max(Number(pageSize) || 20, 1), 200);

@@ -966,6 +966,11 @@ export default function TaskDetailDrawer({
 
         <div className="td-body">
           <main className="td-main-column">
+            {space?.readOnly && (
+              <div className="td-permission-note td-read-only-note" role="note">
+                <Icon name="lock" size={15} /> You are not a member of {space.name || 'this project'}, so this work item is view only.
+              </div>
+            )}
             <div className="td-issue-heading">
               <div className={`td-issue-type type-${String(type).toLowerCase().replace(/[^a-z]+/g, '-')}`} title={type}><Icon name={iconForType(type)} size={16} /></div>
               <button type="button" className="td-key-button" onClick={() => copyText(key, 'Key copied')} title="Copy issue key">{key} <Icon name="copy" size={13} /></button>
@@ -982,7 +987,7 @@ export default function TaskDetailDrawer({
               </div>
               <div className="td-action-buttons">
                 <button type="button" className="td-action-button" title={!allow.createChild ? NO_PERMISSION : allowedChildTypes.length ? `Create child: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'} disabled={!allowedChildTypes.length || !allow.createChild} onClick={() => onCreateChild(issue, allowedChildTypes)}><Icon name="plus" size={16} /></button>
- <button type="button" className="td-action-button td-ai-button" title="Ask the AI Project Assistant about this work item" aria-label="AI Project Assistant" onClick={() => openAssistant({ spaceId: issue.spaceId ?? space.id, taskIds: [issue.id] })}><Icon name="sparkles" size={15} /></button>
+ {!space?.readOnly && <button type="button" className="td-action-button td-ai-button" title="Ask the AI Project Assistant about this work item" aria-label="AI Project Assistant" onClick={() => openAssistant({ spaceId: issue.spaceId ?? space.id, taskIds: [issue.id] })}><Icon name="sparkles" size={15} /></button>}
                 {watching !== null && <button type="button" className={`td-action-button td-watch-button ${watching ? 'is-active' : ''}`} title={watching ? 'Following: you get notified about changes. Click to stop following' : 'Follow to get notified about changes'} aria-label={watching ? 'Stop following' : 'Follow'} aria-pressed={watching} onClick={toggleWatching}><Icon name={watching ? 'eye' : 'eyeOff'} size={15} /></button>}
                 <button type="button" className="td-action-button" title="Copy link" onClick={() => copyText(`${window.location.origin}${window.location.pathname}?task=${encodeURIComponent(issue.id)}`, 'Link copied')}><Icon name="link" size={15} /></button>
                 {onMoveTask && <button type="button" className="td-action-button" title={allow.move ? 'Move to another project' : NO_PERMISSION} aria-label="Move to another project" disabled={!allow.move} onClick={() => onMoveTask(issue)}><Icon name="spaces" size={15} /></button>}
