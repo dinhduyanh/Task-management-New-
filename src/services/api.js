@@ -189,6 +189,12 @@ export const api = {
   deleteSavedFilter: (id) => request(`/filters/saved/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   copySavedFilter: (id, name) => request(`/filters/saved/${encodeURIComponent(id)}/copy`, json('POST', name ? { name } : {})),
 
+  // Log work
+  getWorkLogs: (workItemId) => request(`/work-items/${encodeURIComponent(workItemId)}/worklogs`),
+  createWorkLog: (workItemId, payload) => request(`/work-items/${encodeURIComponent(workItemId)}/worklogs`, json('POST', payload)),
+  deleteWorkLog: (id) => request(`/worklogs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
+  getDailyWorkTotals: (from, to) => request(`/worklogs/daily-totals?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
+
   // Notifications (header bell)
   getNotifications: ({ filter = 'all', limit = 30, offset = 0 } = {}) => {
     const params = new URLSearchParams({ limit: String(limit) });

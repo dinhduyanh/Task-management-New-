@@ -15,6 +15,8 @@ import { useProjectPermissions, userAsPerson } from '../../services/projectPermi
 import { api } from '../../services/api';
 import { FILE_ACCEPT, formatBytes, validateUploadFile } from '../../services/fileTypes';
 import WorkflowModal from '../../components/workflow/WorkflowModal';
+import LogWorkModal from '../../components/worklog/LogWorkModal';
+import { formatDay, formatDuration } from '../../../shared/worklog';
 import './TaskDetailDrawer.css';
 
 /** The signed-in user as a person record (assignee options, comment author). */
@@ -468,8 +470,18 @@ export default function TaskDetailDrawer({
   const [replyDraft, setReplyDraft] = useState('');
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editingCommentDraft, setEditingCommentDraft] = useState('');
-  const [workLogHours, setWorkLogHours] = useState('');
-  const [workLogNote, setWorkLogNote] = useState('');
+  // Work log entries (GET /work-items/:id/worklogs) and the Log work modal.
+  const [workLogData, setWorkLogData] = useState(null);
+  const [logWorkOpen, setLogWorkOpen] = useState(false);
+  useEffect(() => {
+    if (!issue?.id || space?.readOnly) return undefined;
+    let active = true;
+    api.getWorkLogs(issue.id).then((data) => { if (active) setWorkLogData(data); }).catch(() => { if (active) setWorkLogData({ entries: [], totalMinutes: 0 }); });
+    return () => { active = false; };
+  }, [issue?.id, space?.readOnly]);
+  async function deleteWorkLog(entry) {
+    try { setWorkLogData(await api.deleteWorkLog(entry.id)); } catch (error) { setCopied(error.message || 'Could not delete'); window.setTimeout(() => setCopied(''), 2200); }
+  }
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [pendingAssignee, setPendingAssignee] = useState(null);
   const [pendingStatus, setPendingStatus] = useState('In Progress');
@@ -489,7 +501,8 @@ export default function TaskDetailDrawer({
   const creator = issue.creator || null;
   const comments = Array.isArray(issue.comments) ? issue.comments : [];
   const history = Array.isArray(issue.history) ? issue.history : [];
-  const workLogs = Array.isArray(issue.workLogs) ? issue.workLogs : [];
+  const workLogs = Array.isArray(issue.workLogs) ? issue.workLogs : []; // entries saved before the Log work API
+  const legacyWorkLogMinutes = workLogs.reduce((sum, entry) => sum + Math.round((Number(entry.hours) || 0) * 60), 0);
   const attachments = Array.isArray(issue.attachments) ? issue.attachments : [];
   const children = allIssues.filter((candidate) => {
     if (String(candidate.id) === String(issue.id)) return false;
@@ -772,15 +785,7 @@ export default function TaskDetailDrawer({
     }
   }
 
-  function addWorkLog(event) {
-    event.preventDefault();
-    const hours = Number(workLogHours);
-    if (!Number.isFinite(hours) || hours <= 0) return;
-    const entry = { id: `worklog-${Date.now()}`, hours, note: workLogNote.trim(), author: 'You', createdAt: new Date().toISOString() };
-    patchIssue({ workLogs: [...workLogs, entry] }, 'Work logged', `${hours} hour(s)`);
-    setWorkLogHours('');
-    setWorkLogNote('');
-  }
+
 
   function addLink(event) {
     event.preventDefault();
@@ -1140,12 +1145,37 @@ export default function TaskDetailDrawer({
               {activeActivityTab === 'History' && (history.length ? <div className="td-history-list">{[...history].reverse().map((entry, index) => <div className="td-history-row" key={entry.id || index}><span className="td-history-dot" /><div><strong>{entry.actor || 'You'}</strong> {entry.action || 'updated this work item'}{entry.detail && <span> · {entry.detail}</span>}<time>{formatDate(entry.createdAt || entry.date, true)}</time></div></div>)}</div> : <EmptyPanel>No history yet</EmptyPanel>)}
 
               {activeActivityTab === 'Work log' && <>
-                {allow.worklog && <form className="td-worklog-form" onSubmit={addWorkLog}>
-                  <label>Time spent (hours)<input type="number" min="0.1" step="0.1" value={workLogHours} onChange={(event) => setWorkLogHours(event.target.value)} placeholder="e.g. 1.5" /></label>
-                  <label>Work description<input value={workLogNote} onChange={(event) => setWorkLogNote(event.target.value)} placeholder="What did you work on?" /></label>
-                  <button type="submit" className="td-primary-button" disabled={!workLogHours || Number(workLogHours) <= 0}>Log work</button>
-                </form>}
-                {workLogs.length ? <div className="td-worklog-list">{[...workLogs].reverse().map((entry, index) => <div key={entry.id || index}><strong>{entry.hours}h</strong><span>{entry.note || 'Work logged'}</span><small>{entry.author || 'You'} · {formatDate(entry.createdAt, true)}</small></div>)}</div> : <EmptyPanel>No work log entries</EmptyPanel>}
+                <div className="wl-head">
+                  <span className="wl-total"><Icon name="clock" size={14} /> Total logged <strong data-testid="worklog-total">{formatDuration((workLogData?.totalMinutes || 0) + legacyWorkLogMinutes)}</strong></span>
+                  {allow.worklog && !space?.readOnly && <button type="button" className="wl-add" onClick={() => setLogWorkOpen(true)}><Icon name="plus" size={13} /> Log work</button>}
+                </div>
+                {(workLogData?.entries?.length || workLogs.length) ? (
+                  <div className="wl-table-wrap">
+                    <table className="wl-table">
+                      <thead><tr><th>Description</th><th>Time</th><th>Work date</th><th>User</th><th aria-label="Actions" /></tr></thead>
+                      <tbody>
+                        {(workLogData?.entries || []).map((entry) => (
+                          <tr key={entry.id}>
+                            <td className="wl-desc">{entry.description}</td>
+                            <td className="wl-time">{formatDuration(entry.minutes)}</td>
+                            <td className="wl-date">{formatDay(entry.workDate)}</td>
+                            <td><span className="wl-user"><PersonAvatar person={entry.user} className="wl-avatar" />{entry.user?.fullName || '—'}</span></td>
+                            <td>{entry.permissions?.delete && <button type="button" className="wl-delete" onClick={() => deleteWorkLog(entry)} aria-label={`Delete work log of ${formatDay(entry.workDate)}`} title="Delete"><Icon name="trash" size={13} /></button>}</td>
+                          </tr>
+                        ))}
+                        {[...workLogs].reverse().map((entry, index) => (
+                          <tr key={entry.id || `legacy-${index}`}>
+                            <td className="wl-desc">{entry.note || 'Work logged'} <span className="wl-legacy">(earlier entry)</span></td>
+                            <td className="wl-time">{formatDuration(Math.round((Number(entry.hours) || 0) * 60))}</td>
+                            <td className="wl-date">{formatDate(entry.createdAt)}</td>
+                            <td>{entry.author || '—'}</td>
+                            <td />
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <EmptyPanel>No work log entries</EmptyPanel>}
               </>}
             </section>
           </main>
@@ -1168,6 +1198,19 @@ export default function TaskDetailDrawer({
           </div>
         </div>}
 
+        {logWorkOpen && (
+          <LogWorkModal
+            issue={issue}
+            space={space}
+            onClose={() => setLogWorkOpen(false)}
+            onSaved={(result) => {
+              setWorkLogData(result);
+              setLogWorkOpen(false);
+              setCopied(`Logged ${formatDuration(result.created?.minutesPerDay || 0)}${result.created?.days > 1 ? ` × ${result.created.days} days` : ''}`);
+              window.setTimeout(() => setCopied(''), 2200);
+            }}
+          />
+        )}
         {workflowOpen && <WorkflowModal spaceId={issue.spaceId ?? space.id} issueType={type} status={issue.status} issueKey={key} onClose={() => setWorkflowOpen(false)} />}
         {deleteConfirmOpen && <div className="td-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteConfirmOpen(false); }}>
           <div className="td-start-modal" role="dialog" aria-modal="true">

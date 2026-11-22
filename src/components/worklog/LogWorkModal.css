@@ -1,0 +1,463 @@
+/* Log work modal: cards on a soft background, like the rest of the task detail. */
+.lw-backdrop {
+  position: fixed;
+  z-index: 1300;
+  inset: 0;
+  display: grid;
+  padding: 16px;
+  place-items: center;
+  background: rgba(9, 30, 66, 0.45);
+}
+
+.lw-modal {
+  display: flex;
+  width: min(520px, 100%);
+  max-height: min(820px, calc(100vh - 32px));
+  flex-direction: column;
+  overflow: hidden;
+  border-radius: 12px;
+  background: var(--tf-surface);
+  box-shadow: 0 18px 48px rgba(9, 30, 66, 0.28);
+  color: var(--tf-text);
+}
+
+.lw-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 16px 10px;
+}
+
+.lw-head h2 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 700;
+}
+
+.lw-close {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  place-items: center;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tf-text-muted);
+  cursor: pointer;
+}
+
+.lw-close:hover {
+  background: var(--tf-surface-muted);
+}
+
+.lw-body {
+  display: grid;
+  gap: 10px;
+  overflow-y: auto;
+  padding: 2px 16px 14px;
+  background: var(--tf-surface);
+}
+
+.lw-card {
+  padding: 12px 14px;
+  border: 1px solid var(--tf-border);
+  border-radius: 9px;
+  background: var(--tf-surface);
+}
+
+.lw-card h3 {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.lw-card h3 small {
+  color: var(--tf-text-muted);
+  font-weight: 500;
+}
+
+.lw-info {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.lw-info dt {
+  margin-bottom: 3px;
+  color: var(--tf-text-muted);
+  font-size: 11.5px;
+}
+
+.lw-info dd {
+  margin: 0;
+  font-size: 13px;
+}
+
+.lw-info-wide {
+  grid-column: 1 / -1;
+}
+
+.lw-type {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lw-task-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.lw-task-name strong {
+  color: var(--tf-primary);
+  font-weight: 600;
+}
+
+.lw-segment {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  margin-bottom: 10px;
+  padding: 3px;
+  border-radius: 8px;
+  background: var(--tf-surface-muted);
+}
+
+.lw-segment button {
+  height: 30px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--tf-text-muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s, color 0.15s;
+}
+
+.lw-segment button.is-active {
+  background: var(--tf-surface);
+  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
+  color: var(--tf-primary);
+}
+
+.lw-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.lw-field {
+  display: grid;
+  min-width: 0;
+  gap: 5px;
+}
+
+.lw-label {
+  display: block;
+  color: var(--tf-text);
+  font-size: 12.5px;
+  font-weight: 600;
+}
+
+.lw-card > .lw-label {
+  margin-bottom: 5px;
+}
+
+.lw-required {
+  color: var(--tf-danger);
+}
+
+.lw-input {
+  box-sizing: border-box;
+  width: 100%;
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--tf-border);
+  border-radius: 7px;
+  background: var(--tf-surface);
+  color: var(--tf-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.lw-input:focus {
+  border-color: var(--tf-primary);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--tf-primary) 15%, transparent);
+  outline: none;
+}
+
+.lw-textarea {
+  height: auto;
+  min-height: 84px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.lw-invalid,
+.lw-invalid.dp-field {
+  border-color: var(--tf-danger) !important;
+}
+
+.lw-quick {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.lw-quick span {
+  margin-right: 2px;
+  color: var(--tf-text-muted);
+  font-size: 11.5px;
+}
+
+.lw-quick button {
+  min-width: 52px;
+  height: 26px;
+  flex: 1;
+  border: 1px solid var(--tf-border);
+  border-radius: 13px;
+  background: var(--tf-surface);
+  color: var(--tf-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.lw-quick button:hover,
+.lw-quick button.is-active {
+  border-color: var(--tf-primary);
+  background: color-mix(in srgb, var(--tf-primary) 8%, var(--tf-surface));
+  color: var(--tf-primary);
+}
+
+.lw-summary {
+  display: block;
+  line-height: 1.5;
+  margin: 10px 0 0;
+  padding: 7px 10px;
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--tf-primary) 7%, var(--tf-surface));
+  color: var(--tf-text);
+  font-size: 12.5px;
+}
+
+.lw-summary svg {
+  margin-right: 5px;
+  color: var(--tf-primary);
+  vertical-align: -2px;
+}
+
+.lw-hint,
+.lw-note {
+  margin: 7px 0 0;
+  color: var(--tf-text-muted);
+  font-size: 11.5px;
+}
+
+.lw-error {
+  margin: 7px 0 0;
+  color: var(--tf-danger);
+  font-size: 12.5px;
+}
+
+.lw-server-error {
+  margin: 0;
+  padding: 8px 10px;
+  border: 1px solid var(--tf-danger-border);
+  border-radius: 7px;
+  background: var(--tf-danger-bg);
+  color: var(--tf-danger-text);
+}
+
+.lw-foot {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  padding: 11px 16px;
+  border-top: 1px solid var(--tf-border);
+  background: var(--tf-surface);
+}
+
+.lw-button {
+  min-width: 76px;
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid var(--tf-border);
+  border-radius: 7px;
+  background: var(--tf-surface);
+  color: var(--tf-text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.lw-button:hover:not(:disabled) {
+  border-color: var(--tf-primary);
+}
+
+.lw-button.is-primary {
+  border-color: var(--tf-primary);
+  background: var(--tf-primary);
+  color: var(--tf-on-primary);
+}
+
+.lw-button.is-primary:hover:not(:disabled) {
+  filter: brightness(1.08);
+}
+
+.lw-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+
+@media (max-width: 480px) {
+  .lw-row,
+  .lw-info {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Work log tab of the task detail */
+.wl-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.wl-total {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--tf-text-muted);
+  font-size: 12px;
+}
+
+.wl-total strong {
+  color: var(--tf-text);
+  font-size: 13px;
+}
+
+.wl-add {
+  display: inline-flex;
+  height: 30px;
+  align-items: center;
+  gap: 5px;
+  padding: 0 12px;
+  border: 1px solid var(--tf-primary);
+  border-radius: 6px;
+  background: var(--tf-surface);
+  color: var(--tf-primary);
+  font: inherit;
+  font-size: 12.5px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.wl-add:hover {
+  background: color-mix(in srgb, var(--tf-primary) 8%, var(--tf-surface));
+}
+
+.wl-table-wrap {
+  overflow-x: auto;
+  margin-top: 10px;
+  border: 1px solid var(--tf-border);
+  border-radius: 8px;
+}
+
+.wl-table {
+  width: 100%;
+  min-width: 520px;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.wl-table th {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--tf-border);
+  background: var(--tf-surface-muted);
+  color: var(--tf-text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.wl-table td {
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--tf-border);
+  color: var(--tf-text);
+  vertical-align: top;
+}
+
+.wl-table tr:last-child td {
+  border-bottom: 0;
+}
+
+.wl-desc {
+  max-width: 280px;
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.wl-time {
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.wl-date {
+  white-space: nowrap;
+}
+
+.wl-user {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+.wl-avatar {
+  display: grid;
+  width: 22px;
+  height: 22px;
+  flex: none;
+  place-items: center;
+  border-radius: 50%;
+  background: var(--tf-avatar-bg);
+  color: rgb(255, 255, 255);
+  font-size: 9px;
+  font-weight: 700;
+}
+
+.wl-delete {
+  display: grid;
+  width: 26px;
+  height: 26px;
+  place-items: center;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--tf-text-muted);
+  cursor: pointer;
+}
+
+.wl-delete:hover {
+  background: var(--tf-danger-bg);
+  color: var(--tf-danger);
+}
+
+.wl-legacy {
+  color: var(--tf-text-muted);
+  font-size: 11px;
+}

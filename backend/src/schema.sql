@@ -386,3 +386,24 @@ CREATE TABLE IF NOT EXISTS saved_filters (
   FOREIGN KEY (owner_id) REFERENCES users(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_saved_filters_owner ON saved_filters(owner_id);
+
+-- Time logged on work items: one row per person, work item and day. A multi-day entry
+-- (From..To) is stored as one row per day sharing a batch_id. Minutes per person and
+-- day are limited to 12h across all work items (checked by the API).
+CREATE TABLE IF NOT EXISTS work_logs (
+  id TEXT PRIMARY KEY,
+  work_item_id TEXT NOT NULL,
+  space_id TEXT NOT NULL,
+  user_id TEXT NOT NULL,
+  user_name TEXT,
+  work_date TEXT NOT NULL,                 -- YYYY-MM-DD
+  minutes INTEGER NOT NULL CHECK (minutes > 0 AND minutes <= 720),
+  description TEXT NOT NULL DEFAULT '',
+  batch_id TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT NOT NULL,
+  FOREIGN KEY (work_item_id) REFERENCES work_items(id) ON DELETE CASCADE,
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_work_logs_item ON work_logs(work_item_id, work_date);
+CREATE INDEX IF NOT EXISTS idx_work_logs_user_day ON work_logs(user_id, work_date);
