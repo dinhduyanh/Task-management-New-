@@ -1,7 +1,7 @@
 // Log work rules, shared by the Log work modal and the API (the server checks again).
 //   - From (required) .. To (optional: empty = the From day only), one record per day
 //   - only days within one month up to today: from the same day last month to today
-//   - a duration per day of hours + minutes, more than 0 and at most 12h00m
+//   - a duration per day: hours (whole number 1..12) + minutes, at most 12h00m in total
 //   - together with what the person already logged that day: at most 12h per day
 //   - a description of the work
 
@@ -9,7 +9,7 @@ export const MAX_MINUTES_PER_DAY = 12 * 60;
 // Longest possible window: the same day last month .. today, both included (e.g. 22/10..22/11).
 export const MAX_RANGE_DAYS = 32;
 export const MAX_DESCRIPTION = 2000;
-export const DAILY_LIMIT_MESSAGE = 'Quá số giờ làm việc quy định (tối đa 12 giờ/ngày)';
+export const DAILY_LIMIT_MESSAGE = 'Exceeds the allowed working hours (max 12 hours/day)';
 
 const DATE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const DAY_MS = 86400000;
@@ -78,32 +78,46 @@ export function effectiveTo(from, to) {
 
 /** Range problem, or '' when From..To is valid. With `today`, days must be in logWindow(today). */
 export function validateRange(from, to, today = '') {
-  if (!from) return 'Chọn ngày From.';
+  if (!from) return 'Choose the From date.';
   const end = effectiveTo(from, to);
-  if (parseDay(from) === null || parseDay(end) === null) return 'Ngày không hợp lệ.';
-  if (parseDay(end) < parseDay(from)) return 'Ngày To phải bằng hoặc sau ngày From.';
+  if (parseDay(from) === null || parseDay(end) === null) return 'The date is not valid.';
+  if (parseDay(end) < parseDay(from)) return 'The To date must be on or after the From date.';
   if (today) {
     const allowed = logWindow(today);
-    if (parseDay(end) > parseDay(allowed.max)) return 'Không thể log work cho ngày trong tương lai.';
-    if (parseDay(from) < parseDay(allowed.min)) return `Chỉ được log work trong vòng 1 tháng tính đến hôm nay (từ ${formatDay(allowed.min)} đến ${formatDay(allowed.max)}).`;
+    if (parseDay(end) > parseDay(allowed.max)) return 'You cannot log work for a future date.';
+    if (parseDay(from) < parseDay(allowed.min)) return `You can only log work for the last month (${formatDay(allowed.min)} to ${formatDay(allowed.max)}).`;
   }
-  if (countDays(from, end) > MAX_RANGE_DAYS) return 'Khoảng thời gian tối đa 1 tháng.';
+  if (countDays(from, end) > MAX_RANGE_DAYS) return 'The date range can be at most one month.';
+  return '';
+}
+
+export const MAX_HOURS = 12;
+
+/** Hours problem, or ''. Hours are a whole number from 1 to 12. */
+export function validateHours(hours) {
+  const text = String(hours ?? '').trim();
+  if (!text) return 'Enter the hours (a whole number from 1 to 12).';
+  if (!/^\d+$/.test(text)) return 'Hours must be a whole number from 1 to 12.';
+  const value = Number(text);
+  if (value < 1 || value > MAX_HOURS) return 'Hours must be a whole number from 1 to 12.';
+  return '';
+}
+
+/** Minutes problem, or ''. Minutes are optional: a whole number, 0 or more (90 = 1h 30m). */
+export function validateMinutes(minutes) {
+  const text = String(minutes ?? '').trim();
+  if (!text) return '';
+  if (!/^\d+$/.test(text)) return 'Minutes must be a whole number (0 or more).';
   return '';
 }
 
 /**
- * Hours + minutes -> total minutes, or NaN for invalid input (negative, decimals in
- * minutes, not a number). Empty fields count as 0. Minutes above 59 are allowed and
- * carried into hours (90m = 1h 30m).
+ * Hours + minutes -> total minutes, or NaN when the hours or minutes are not valid
+ * (see validateHours / validateMinutes). Minutes above 59 are carried (90m = 1h 30m).
  */
 export function toMinutes(hours, minutes) {
-  const read = (value) => (value === '' || value === null || value === undefined ? 0 : Number(value));
-  const h = read(hours);
-  const m = read(minutes);
-  if (!Number.isFinite(h) || !Number.isFinite(m) || h < 0 || m < 0) return NaN;
-  if (!Number.isInteger(m)) return NaN;
-  if (!Number.isInteger(h * 4)) return NaN; // hours in steps of 15 minutes at most (e.g. 1.5, 0.25)
-  return Math.round(h * 60) + m;
+  if (validateHours(hours) || validateMinutes(minutes)) return NaN;
+  return Number(String(hours).trim()) * 60 + (String(minutes ?? '').trim() ? Number(String(minutes).trim()) : 0);
 }
 
 /** 90 -> { hours: 1, minutes: 30 } */
@@ -119,11 +133,12 @@ export function formatDuration(total) {
   return [hours ? `${hours}h` : '', minutes ? `${minutes}m` : ''].filter(Boolean).join(' ');
 }
 
-/** Duration problem for one day, or ''. */
-export function validateDuration(total) {
-  if (Number.isNaN(total)) return 'Giờ và phút phải là số không âm (phút là số nguyên).';
-  if (total <= 0) return 'Thời gian phải lớn hơn 0.';
-  if (total > MAX_MINUTES_PER_DAY) return `${DAILY_LIMIT_MESSAGE}. Bạn đang nhập ${formatDuration(total)}.`;
+/** Duration problem for one day (hours + minutes), or ''. */
+export function validateDuration(hours, minutes) {
+  const problem = validateHours(hours) || validateMinutes(minutes);
+  if (problem) return problem;
+  const total = toMinutes(hours, minutes);
+  if (total > MAX_MINUTES_PER_DAY) return `${DAILY_LIMIT_MESSAGE}. You entered ${formatDuration(total)}.`;
   return '';
 }
 
@@ -147,19 +162,19 @@ export function validateWorkLog({ fromDate, toDate, hours, minutes, description 
   const range = validateRange(fromDate, toDate, today);
   if (range) errors.range = range;
   const minutesPerDay = toMinutes(hours, minutes);
-  const duration = validateDuration(minutesPerDay);
+  const duration = validateDuration(hours, minutes);
   if (duration) errors.duration = duration;
   const dates = range ? [] : datesInRange(fromDate, toDate);
   if (!range && !duration) {
     const over = overLimitDays(dates, minutesPerDay, existing);
     if (over.length) {
-      const list = over.slice(0, 3).map((day) => `${formatDay(day.date)} (đã log ${formatDuration(day.existing)})`).join(', ');
-      errors.daily = `${DAILY_LIMIT_MESSAGE}: ${list}${over.length > 3 ? ` và ${over.length - 3} ngày khác` : ''}.`;
+      const list = over.slice(0, 3).map((day) => `${formatDay(day.date)} (already logged ${formatDuration(day.existing)})`).join(', ');
+      errors.daily = `${DAILY_LIMIT_MESSAGE}: ${list}${over.length > 3 ? ` and ${over.length - 3} more days` : ''}.`;
     }
   }
   const text = String(description ?? '').trim();
-  if (!text) errors.description = 'Nhập nội dung công việc đã thực hiện.';
-  else if (text.length > MAX_DESCRIPTION) errors.description = `Nội dung tối đa ${MAX_DESCRIPTION} ký tự.`;
+  if (!text) errors.description = 'Describe the work you did.';
+  else if (text.length > MAX_DESCRIPTION) errors.description = `The description can have at most ${MAX_DESCRIPTION} characters.`;
   return {
     ok: Object.keys(errors).length === 0,
     errors,
