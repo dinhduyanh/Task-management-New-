@@ -30,6 +30,7 @@ import DashboardsList from './pages/Dashboard/DashboardsList';
 import DashboardBuilder from './pages/Dashboard/DashboardBuilder';
 import FilterSearch from './pages/Filters/FilterSearch';
 import FiltersList from './pages/Filters/FiltersList';
+import Timesheet from './pages/Timesheet/Timesheet';
 import PlaceholderPage from './pages/Placeholder/PlaceholderPage';
 import UserProfile from './pages/UserProfile/UserProfile';
 import './App.css';
@@ -616,6 +617,8 @@ export default function App() {
     );
   } else if (currentRoute.page === 'filters') {
     pageContent = <FiltersList {...sharedNavigationProps} />;
+  } else if (currentRoute.page === 'timesheet') {
+    pageContent = <Timesheet {...sharedNavigationProps} />;
   } else if (currentRoute.page === 'space') {
     const selectedSpace = spaces.find((space) => space.id === currentRoute.data?.id) || currentRoute.data || {};
     pageContent = <SpacesSummary {...sharedNavigationProps} space={selectedSpace} />;

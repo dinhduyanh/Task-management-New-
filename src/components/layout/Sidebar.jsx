@@ -396,6 +396,17 @@ export function SidebarPanel({
             })}
           </div>
         )}
+
+        <button
+          type="button"
+          className={`nav-item nav-item-button ${activeSection === 'Timesheet' ? 'nav-item-active' : ''}`}
+          onClick={() => navigate('timesheet')}
+          aria-current={activeSection === 'Timesheet' ? 'page' : undefined}
+          data-tip="Timesheet"
+        >
+          <Icon name="clock" />
+          <span className="nav-label">Timesheet</span>
+        </button>
       </nav>
 
       <div className="sidebar-bottom">

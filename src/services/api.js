@@ -195,6 +195,18 @@ export const api = {
   deleteWorkLog: (id) => request(`/worklogs/${encodeURIComponent(id)}`, { method: 'DELETE' }),
   getDailyWorkTotals: (from, to) => request(`/worklogs/daily-totals?from=${encodeURIComponent(from)}&to=${encodeURIComponent(to)}`),
 
+  // Timesheet (logged work of everyone)
+  getTimesheet: ({ from, to, projects = [], users = [], teams = [], types = [], statuses = [] }) => {
+    const params = new URLSearchParams({ from, to });
+    if (projects.length) params.set('projects', projects.join(','));
+    if (users.length) params.set('users', users.join(','));
+    if (teams.length) params.set('teams', teams.join(','));
+    if (types.length) params.set('types', types.join(','));
+    if (statuses.length) params.set('statuses', statuses.join(','));
+    return request(`/timesheet?${params}`);
+  },
+  getTimesheetMeta: () => request('/timesheet/meta'),
+
   // Notifications (header bell)
   getNotifications: ({ filter = 'all', limit = 30, offset = 0 } = {}) => {
     const params = new URLSearchParams({ limit: String(limit) });
