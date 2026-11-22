@@ -1,76 +1,72 @@
-# TASKFLOW – Profile, Theme & Authentication
+# TASKFLOW – User menu, Profile, Theme & Sign out
 
-## Included
-- React Profile page, avatar upload (PNG/JPG/WEBP/GIF, 2MB), editable Full name, read-only Username/Email.
-- Password change with current-password verification and policy validation.
-- Light/Dark theme helper and CSS variables.
-- Express login/logout, HttpOnly cookie sessions, current-user APIs.
-- SQLite session table created automatically by `db.js`; core `schema.sql` and existing Spaces/Work Items routes remain intact.
-- Login screen updated to use the real API instead of demo display data.
+## Where things live
 
-## Backend installation
-Backend package currently contains Express, CORS and better-sqlite3 only. This implementation uses Node.js built-in `crypto` (scrypt), so no additional dependency is required. Node >=20.
+| Concern | File |
+| --- | --- |
+| Avatar button + dropdown (Your profile, Theme, Sign out) | `src/components/layout/UserProfileMenu.jsx` (rendered by `Header.jsx`) |
+| Avatar picture / initials | `src/components/common/UserAvatar.jsx` |
+| Session-wide values for the layout (user, theme, navigate, signOut) | `src/context/appShellContext.js`, provided in `src/App.jsx` |
+| Profile page (Profile picture / Account / Change password) | `src/pages/UserProfile/UserProfile.jsx` |
+| Login / logout, local session storage | `src/services/authService.js` |
+| Profile API calls + avatar & password validation rules | `src/services/userProfileService.js` |
+| Shared fetch helper (`request`, `ApiError` with HTTP status) | `src/services/api.js` |
+| Theme state (`taskflow.theme` in localStorage, `<html data-theme>`) | `src/theme/theme.js` |
+| Semantic theme tokens (`--tf-surface`, `--tf-text`, …) | `src/theme.css` |
+| Component colour tokens, light + dark (generated) | `src/theme/palette.css` |
 
-Copy:
-- `backend/src/db.js` over existing `src/db.js`
-- `backend/src/server.js` over existing `src/server.js`
-- `backend/src/middleware/auth.js`
-- `backend/src/routes/auth.js`
-- `backend/src/routes/users.js`
-- `backend/scripts/set-user-password.js`
+The `Header` reads the user and theme from `AppShellContext`, so pages only pass
+search/create props to it.
 
-Keep existing `src/routes/spaces.js`, `src/routes/workItems.js`, `src/workflows.js`, and `src/schema.sql`.
+## Theme
 
-Set `FRONTEND_ORIGIN` to the exact frontend origin in production (comma-separated if needed). Set `NODE_ENV=production` when using HTTPS so the session cookie gets `Secure`. Frontend and backend must be same-site for the `SameSite=Lax` cookie approach; otherwise configure a deliberate cross-site cookie + CSRF strategy before deployment.
+- Light is the default (sun icon selected). Clicking the moon sets
+  `<html data-theme="dark">`, which switches every CSS variable; the choice is
+  saved in `localStorage['taskflow.theme']` and restored before first paint
+  (`index.html`), so reloads keep it.
+- Component CSS uses role-based colour tokens: `--tf-bg-<hex>`, `--tf-fg-<hex>`,
+  `--tf-bd-<hex>`. Light values are the original design colours; dark values
+  are derived by `scripts/theme-palette.mjs`.
+- After adding hard-coded colours to any CSS file, run:
 
-## Initialize a user password
-The provided Login.jsx previously created display-only demo user data. It did not authenticate against the database. A matching user row must exist in SQLite first. Then run from backend directory:
-`node scripts/set-user-password.js <username-or-email> "<StrongPassword1!>"`
+  ```bash
+  npm run theme:palette
+  ```
 
-Password policy: >=6 chars, uppercase, lowercase, digit, special character. The script writes a salted scrypt hash.
+  It tokenizes the new colours and regenerates `src/theme/palette.css`.
 
-## Frontend integration
-Copy the files under `frontend/src` into the matching paths in your React app. Import `theme.css` and initialize theme once near app bootstrap:
+## Profile page
 
-```jsx
-import './theme.css';
-import { applyTheme, getInitialTheme } from './theme/theme';
+- **Profile picture** – PNG, JPG, WEBP or GIF up to 2 MB, validated in the browser
+  and again by the backend. Stored as a data URL in `users.avatar_url`.
+- **Account** – Full name is editable (required, ≤120 chars); Username and Email are read-only.
+- **Change password** – New password must have at least 6 characters, an uppercase
+  letter, a lowercase letter, a number and a special character, and match the
+  confirmation. The backend checks the current password, then revokes every
+  session, so the app returns to Sign In with a notice.
 
-const initialTheme = getInitialTheme();
-applyTheme(initialTheme);
+## Sign out
+
+`Sign out` calls `POST /api/auth/logout` (deletes the server session and the
+HttpOnly cookie), clears every local session key (`taskflow.user`,
+`taskflow.authenticated`, legacy token keys, sessionStorage) and shows the Sign
+In page. The local session is cleared even if the server is unreachable. A 401
+from `/api/users/me` on start-up also signs the user out.
+
+## Backend API
+
+- `POST /api/auth/login` `{ username, password }` · `POST /api/auth/logout`
+- `GET /api/users/me` · `PATCH /api/users/me` `{ fullName }`
+- `POST /api/users/me/avatar` `{ dataUrl }` · `DELETE /api/users/me/avatar`
+- `POST /api/users/change-password` `{ currentPassword, newPassword }`
+
+## Creating a user for local testing
+
+Insert a row into `users`, then set its password from `backend/`:
+
+```bash
+node scripts/set-user-password.js <username-or-email> "StrongPass1!"
 ```
 
-Maintain theme state in the app shell and pass `theme` and `onThemeChange={setTheme}` to `UserProfileMenu`.
-Example:
-```jsx
-<UserProfileMenu
-  user={user}
-  theme={theme}
-  onThemeChange={setTheme}
-  onNavigate={(page) => setCurrentPage(page)}
-  onLogout={async () => {
-    await userProfileService.logout();
-    setUser(null);
-    setCurrentPage('login');
-  }}
-/>
-```
-Render `<UserProfile user={user} onUserUpdated={setUser} onBack={() => setCurrentPage('home')} />` when the profile route/page is selected.
-
-Update the app's login callback to accept `{ user }` from the new Login component. The existing `Icon` component and `Login.css` are reused.
-
-## API
-- POST `/api/auth/login` `{ username, password }`
-- POST `/api/auth/logout`
-- GET `/api/users/me`
-- PATCH `/api/users/me` `{ fullName }`
-- POST `/api/users/me/avatar` `{ dataUrl }`
-- DELETE `/api/users/me/avatar`
-- POST `/api/users/change-password` `{ currentPassword, newPassword }`
-
-## Important notes
-- The uploaded `Login.jsx` was explicitly demo-only. This package replaces that behavior; login now requires a real user row and initialized password hash.
-- Avatar is stored as a data URL in `users.avatar_url`. For production at scale, move binary assets to object storage and store only a URL.
-- Profile APIs are authenticated. Existing Spaces/Work Items routes are intentionally unchanged and remain unprotected, matching the existing backend behavior; add authorization to those APIs separately before production.
-- No automatic registration or password-reset email flow is included.
-- Run `npm run check` after copying backend files. Also run the frontend build and test login/profile flows against a test database before deployment.
+`VITE_API_BASE_URL` may be given with or without the `/api` suffix.
+Frontend and backend must be same-site for the `SameSite=Lax` session cookie.

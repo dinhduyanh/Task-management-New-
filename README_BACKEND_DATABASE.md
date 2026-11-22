@@ -116,3 +116,32 @@ const tasks = Array.isArray(allTasks) ? allTasks : [];
 ```
 
 Do not change the filters or the rest of the component. This makes My Tasks use the Work Items loaded by the Backend instead of always showing an empty list.
+
+## 9. Sign up and Google sign-in
+
+The sign-in page offers email/password sign-in, an email **Sign up** form and **Continue with Google**.
+
+**Google setup (once):**
+
+1. In Google Cloud Console open *APIs & Services → OAuth consent screen* and configure it (External, add your email as a test user while the app is in testing).
+2. Open *APIs & Services → Credentials → Create credentials → OAuth client ID*, type **Web application**.
+3. Under **Authorized redirect URIs** add `http://localhost:4000/api/auth/google/callback` (in production: `https://<your-api-host>/api/auth/google/callback`).
+4. Put the values in `backend/.env` and restart the backend:
+
+```
+GOOGLE_CLIENT_ID=xxxxxxxx.apps.googleusercontent.com
+GOOGLE_CLIENT_SECRET=xxxxxxxx
+# Optional: GOOGLE_REDIRECT_URI (must match step 3), APP_URL (default: first FRONTEND_ORIGIN or http://localhost:5173)
+```
+
+The start-up log shows `Google sign-in: on (...)` when it is configured.
+
+**How it works:** the button sends the browser to `GET /api/auth/google/start`, which redirects to Google (authorization-code flow with PKCE, `state` bound to the browser by an HttpOnly cookie, and a `nonce`). Google returns to `/api/auth/google/callback`; the server exchanges the code, checks the ID token (issuer, audience, expiry, nonce, verified email) and then:
+
+- signs in the user already linked to that Google account, or
+- links the Google account to the existing user with the same email (password sign-in keeps working), or
+- creates a new user (role **user**, name, email and photo from Google, no password).
+
+It then sets the usual HttpOnly session cookie and redirects to the app (`APP_URL/?auth=google`), which loads the user and opens the home screen. Set `ALLOW_SIGNUP=false` to stop new accounts (email sign-up and unknown Google emails); existing users can still sign in with Google.
+
+Database: `users.google_sub` (unique) stores the linked Google account; `oauth_states` holds short-lived sign-in attempts.

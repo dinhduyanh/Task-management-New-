@@ -7,9 +7,11 @@
     "dev": "vite",
     "build": "vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "theme:palette": "node scripts/theme-palette.mjs"
   },
   "dependencies": {
+    "@xyflow/react": "12.10.2",
     "axios": "^1.21.0",
     "date-fns": "^4.4.0",
     "lucide-react": "^1.66.0",

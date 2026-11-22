@@ -1,5 +1,7 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
+import DatePicker from '../../components/common/DatePicker';
 import PriorityIcon from '../../components/common/PriorityIcon';
 import {
   getInitialStatus,
@@ -7,15 +9,21 @@ import {
   getTransitionOptions,
   validateIssueTransition
 } from './workflows';
+import { CHILD_TYPES_BY_PARENT } from './issueHelpers';
+import { useAppShell } from '../../context/appShellContext';
+import { useProjectPermissions, userAsPerson } from '../../services/projectPermissions';
+import { api } from '../../services/api';
+import { FILE_ACCEPT, formatBytes, validateUploadFile } from '../../services/fileTypes';
+import WorkflowModal from '../../components/workflow/WorkflowModal';
+import LogWorkModal from '../../components/worklog/LogWorkModal';
+import { formatDay, formatDuration } from '../../../shared/worklog';
 import './TaskDetailDrawer.css';
 
-const CURRENT_USER = {
-  id: 'current-user',
-  name: 'You',
-  fullName: 'You',
-  initials: 'YO',
-  isCurrentUser: true
-};
+/** The signed-in user as a person record (assignee options, comment author). */
+function currentUserRecord(user) {
+  const person = userAsPerson(user) || { id: '', name: 'You', fullName: 'You' };
+  return { ...person, initials: initials(person.name), isCurrentUser: true };
+}
 
 function userName(user) {
   if (!user) return '';
@@ -39,6 +47,11 @@ function issueKey(issue) {
   return issue?.key || issue?.code || issue?.taskCode || '—';
 }
 
+/** Project teams that can still be assigned (inactive teams are hidden from pickers). */
+function activeTeams(space) {
+  return (Array.isArray(space?.teams) ? space.teams : []).filter((team) => team?.status !== 'inactive');
+}
+
 function issueTitle(issue) {
   return issue?.summary || issue?.title || issue?.name || 'Untitled work item';
 }
@@ -47,15 +60,6 @@ function issueType(issue) {
   return issue?.issueType || issue?.type || 'Task';
 }
 
-const CHILD_TYPES_BY_PARENT = {
-  Epic: ['Story', 'Task', 'Bug', 'Improvement'],
-  Feature: ['Story', 'Task', 'Bug', 'Improvement'],
-  Story: ['Sub-task'],
-  Task: ['Bug', 'Sub-task'],
-  Bug: ['Sub-task'],
-  Improvement: ['Sub-task'],
-  'Sub-task': []
-};
 
 const PARENT_TYPES_BY_CHILD = {
   Story: ['Epic', 'Feature'],
@@ -117,9 +121,9 @@ function statusClass(status) {
   return `td-status-${String(status || '').toLowerCase().replace(/\s+/g, '-')}`;
 }
 
-function toUserRecord(value, members = []) {
+function toUserRecord(value, members = [], currentUser = null) {
   if (!value) return null;
-  if (String(userId(value)) === CURRENT_USER.id) return { ...CURRENT_USER };
+  if (currentUser?.id && String(userId(value)) === currentUser.id) return { ...currentUser };
   const member = typeof value === 'object'
     ? value
     : (Array.isArray(members) ? members : []).find((item) => userId(item) === String(value));
@@ -222,6 +226,8 @@ function SearchableOptionSelect({
 }
 
 function UserSelect({ members = [], value, onChange, placeholder = 'Select Assignee' }) {
+  const { user: signedInUser } = useAppShell();
+  const CURRENT_USER = currentUserRecord(signedInUser);
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState('');
   const rootRef = useRef(null);
@@ -239,22 +245,22 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
     };
   }, [open]);
 
-  const selectedUser = toUserRecord(value, members);
-  const others = useMemo(() => {
-    const seen = new Set([CURRENT_USER.id]);
-    return (Array.isArray(members) ? members : []).filter((member) => {
-      const id = userId(member);
-      if (!id || !userName(member) || seen.has(id)) return false;
-      seen.add(id);
-      return true;
-    });
-  }, [members]);
+  const selectedUser = toUserRecord(value, members, CURRENT_USER);
+  const seen = new Set([CURRENT_USER.id]);
+  const others = (Array.isArray(members) ? members : []).filter((member) => {
+    const id = userId(member);
+    if (!id || !userName(member) || seen.has(id)) return false;
+    seen.add(id);
+    return true;
+  });
   const filter = (user) => `${userName(user)} ${user?.email || ''} ${user?.username || ''}`.toLowerCase().includes(query.trim().toLowerCase());
   const showCurrentUser = filter(CURRENT_USER);
   const visibleUsers = others.filter(filter);
 
   const choose = (user) => {
-    onChange(user ? (user.id === CURRENT_USER.id ? { ...CURRENT_USER } : toUserRecord(userId(user), members)) : null);
+    const record = user ? (user.id === CURRENT_USER.id ? { ...CURRENT_USER } : toUserRecord(userId(user), members, CURRENT_USER)) : null;
+    if (record) delete record.isCurrentUser; // a per-viewer flag, never stored
+    onChange(record);
     setOpen(false);
     setQuery('');
   };
@@ -262,7 +268,7 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
   return (
     <div className="td-user-select" ref={rootRef}>
       <button type="button" className={`td-user-select-trigger ${open ? 'open' : ''}`} onClick={() => { setOpen((current) => !current); setQuery(''); }} aria-expanded={open}>
-        {selectedUser ? <><span className={`td-avatar ${selectedUser.isCurrentUser ? 'current' : ''}`}>{selectedUser.initials || initials(userName(selectedUser))}</span><span>{selectedUser.isCurrentUser ? 'You' : userName(selectedUser)}</span></> : <span className="td-placeholder">{placeholder}</span>}
+        {selectedUser ? <><PersonAvatar person={userId(selectedUser) === CURRENT_USER.id ? CURRENT_USER : selectedUser} className={`td-avatar ${userId(selectedUser) === CURRENT_USER.id ? 'current' : ''}`} /><span>{userId(selectedUser) === CURRENT_USER.id ? userName(CURRENT_USER) : userName(selectedUser)}</span></> : <span className="td-placeholder">{placeholder}</span>}
         <Icon name="chevron" size={13} />
       </button>
       {open && (
@@ -270,8 +276,8 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
           <div className="td-user-search"><Icon name="search" size={14} /><input autoFocus placeholder="Search users" value={query} onChange={(event) => setQuery(event.target.value)} /></div>
           <button type="button" className={`td-user-option td-current-user ${value && String(userId(value)) === CURRENT_USER.id ? 'selected' : ''}`} onClick={() => choose(CURRENT_USER)}>
             <span className="td-user-check">{value && String(userId(value)) === CURRENT_USER.id ? <Icon name="check" size={12} /> : null}</span>
-            <span className="td-current-user-symbol"><Icon name="user" size={14} /></span>
-            <span className="td-user-option-name">Current User</span>
+            <PersonAvatar person={CURRENT_USER} className="td-avatar" />
+            <span className="td-user-option-name td-current-label" title={`${userName(CURRENT_USER)} (Current user)`}><span className="td-current-name">{userName(CURRENT_USER)}</span><small className="td-current-tag">(Current user)</small></span>
             {value && String(userId(value)) === CURRENT_USER.id && <Icon name="check" size={14} />}
           </button>
           {visibleUsers.map((member) => {
@@ -279,7 +285,7 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
             const selected = String(userId(value)) === id;
             return <button type="button" key={id} className={`td-user-option ${selected ? 'selected' : ''}`} onClick={() => choose(member)}>
               <span className="td-user-check">{selected ? <Icon name="check" size={12} /> : null}</span>
-              <span className="td-avatar">{initials(userName(member))}</span>
+              <PersonAvatar person={member} className="td-avatar" />
               <span className="td-user-option-name" title={`${userName(member)}${member.email ? ` · ${member.email}` : ''}`}>{userName(member)}</span>
               {selected && <Icon name="check" size={14} />}
             </button>;
@@ -291,7 +297,7 @@ function UserSelect({ members = [], value, onChange, placeholder = 'Select Assig
   );
 }
 
-function StatusMenu({ issue, allIssues, onSelect }) {
+function StatusMenu({ issue, allIssues, onSelect, disabled = false }) {
   const [open, setOpen] = useState(false);
   const options = getTransitionOptions(issue, allIssues);
   const rootRef = useRef(null);
@@ -305,7 +311,7 @@ function StatusMenu({ issue, allIssues, onSelect }) {
   }, [open]);
   const currentStatus = getIssueStatus(issue);
   return <div className="td-status-control" ref={rootRef}>
-    <button type="button" className={`td-status-button ${statusClass(currentStatus)}`} onClick={() => setOpen((value) => !value)} aria-expanded={open}>
+    <button type="button" className={`td-status-button ${statusClass(currentStatus)}`} onClick={() => setOpen((value) => !value)} aria-expanded={open} disabled={disabled} title={disabled ? 'You do not have permission to move this work item' : undefined}>
       {currentStatus.toUpperCase()} <Icon name="chevron" size={12} />
     </button>
     {open && <div className="td-status-menu">
@@ -326,6 +332,17 @@ function FieldValue({ value }) {
   return <>{String(value)}</>;
 }
 
+/** A file name: a link that previews/downloads stored files; plain text for legacy entries. */
+function FileName({ file }) {
+  const name = typeof file === 'string' ? file : file?.name || 'Unnamed file';
+  if (!file?.id) return <span title={`${name} (not stored, cannot be opened)`}>{name}</span>;
+  return (
+    <a href={api.attachmentUrl(file.id)} target="_blank" rel="noopener noreferrer" title={`Open ${name}`}>
+      {name}
+    </a>
+  );
+}
+
 function EmptyPanel({ children = 'No data' }) {
   return <div className="td-empty"><span className="td-empty-icon"><Icon name="inbox" size={36} /></span><span>{children}</span></div>;
 }
@@ -341,11 +358,9 @@ function getCommentAuthorId(comment) {
   return '';
 }
 
-function isCurrentUserComment(comment) {
+function isCurrentUserComment(comment, currentUserId) {
   const id = getCommentAuthorId(comment);
-  if (id) return id === CURRENT_USER.id;
-  // Backward compatibility for comments created before authorId was stored.
-  return getCommentAuthorName(comment) === 'You';
+  return Boolean(id && currentUserId && id === String(currentUserId));
 }
 
 function updateCommentTree(items, targetId, updater) {
@@ -385,10 +400,33 @@ export default function TaskDetailDrawer({
   onCloneTask = () => {},
   onCreateChild = () => {},
   onOpenIssue = () => {},
-  fullPage = false
+  onMoveTask = null, // (issue) => open the "Move to project" picker
+  fullPage = false,
+  embedded = false // shown inside a page panel (Filters split view) instead of over the page
 }) {
   const [expanded, setExpanded] = useState(false);
   const [hideEmpty, setHideEmpty] = useState(false);
+  // Following the work item: followers get "Task Updated" notifications.
+  const [watching, setWatchingState] = useState(null);
+  useEffect(() => {
+    if (!issue?.id) return undefined;
+    let active = true;
+    setWatchingState(null);
+    api.getWatchStatus(issue.id).then((result) => { if (active) setWatchingState(Boolean(result?.watching)); }).catch(() => {});
+    return () => { active = false; };
+  }, [issue?.id]);
+  async function toggleWatching() {
+    const next = !watching;
+    setWatchingState(next);
+    try {
+      await api.setWatching(issue.id, next);
+      setCopied(next ? 'Following this work item' : 'Stopped following');
+    } catch {
+      setWatchingState(!next);
+      setCopied('Could not change follow');
+    }
+    window.setTimeout(() => setCopied(''), 1800);
+  }
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(issueTitle(issue));
   const [editingInfoField, setEditingInfoField] = useState(null);
@@ -398,16 +436,57 @@ export default function TaskDetailDrawer({
   const [activeActivityTab, setActiveActivityTab] = useState('Comments');
   const [commentDraft, setCommentDraft] = useState('');
   const [commentFiles, setCommentFiles] = useState([]);
+  const [uploading, setUploading] = useState(false);
+  const [fileError, setFileError] = useState('');
+  const { replaceWorkItem, user: signedInUser, openAssistant } = useAppShell();
+  const CURRENT_USER = currentUserRecord(signedInUser);
+  const { can } = useProjectPermissions(space);
+  // What the signed-in user may do with this work item (the API enforces the same rules).
+  const allow = {
+    update: can('task.update', issue),
+    move: can('task.move', issue),
+    assign: can('task.assign', issue),
+    clone: can('task.clone', issue),
+    remove: can('task.delete', issue),
+    link: can('task.link', issue),
+    worklog: can('task.worklog', issue),
+    createChild: can('task.create'),
+    commentAdd: can('comment.add', issue),
+    commentView: can('comment.view', issue) && !issue.commentsHidden,
+    commentEditOwn: can('comment.edit_own', issue),
+    commentEditAll: can('comment.edit_all', issue),
+    commentDeleteOwn: can('comment.delete_own', issue),
+    commentDeleteAll: can('comment.delete_all', issue),
+    attachAdd: can('attachment.add', issue),
+    fileDeleteOwn: can('attachment.delete_own', issue),
+    fileDeleteAll: can('attachment.delete_all', issue)
+  };
+  const NO_PERMISSION = 'You do not have permission for this action';
+  const mayEditComment = (comment) => (isCurrentUserComment(comment, CURRENT_USER.id) ? allow.commentEditOwn || allow.commentEditAll : allow.commentEditAll);
+  const mayDeleteComment = (comment) => (isCurrentUserComment(comment, CURRENT_USER.id) ? allow.commentDeleteOwn || allow.commentDeleteAll : allow.commentDeleteAll);
+  const mayDeleteFile = (file) => (file?.id && String(file.uploadedBy?.id || '') === String(CURRENT_USER.id) ? allow.fileDeleteOwn || allow.fileDeleteAll : allow.fileDeleteAll);
+  const mayEditField = (key) => (key === 'creator' ? false : key === 'assignee' ? allow.assign : allow.update);
   const [replyToId, setReplyToId] = useState(null);
   const [replyDraft, setReplyDraft] = useState('');
   const [editingCommentId, setEditingCommentId] = useState(null);
   const [editingCommentDraft, setEditingCommentDraft] = useState('');
-  const [workLogHours, setWorkLogHours] = useState('');
-  const [workLogNote, setWorkLogNote] = useState('');
+  // Work log entries (GET /work-items/:id/worklogs) and the Log work modal.
+  const [workLogData, setWorkLogData] = useState(null);
+  const [logWorkOpen, setLogWorkOpen] = useState(false);
+  useEffect(() => {
+    if (!issue?.id || space?.readOnly) return undefined;
+    let active = true;
+    api.getWorkLogs(issue.id).then((data) => { if (active) setWorkLogData(data); }).catch(() => { if (active) setWorkLogData({ entries: [], totalMinutes: 0 }); });
+    return () => { active = false; };
+  }, [issue?.id, space?.readOnly]);
+  async function deleteWorkLog(entry) {
+    try { setWorkLogData(await api.deleteWorkLog(entry.id)); } catch (error) { setCopied(error.message || 'Could not delete'); window.setTimeout(() => setCopied(''), 2200); }
+  }
   const [startModalOpen, setStartModalOpen] = useState(false);
   const [pendingAssignee, setPendingAssignee] = useState(null);
   const [pendingStatus, setPendingStatus] = useState('In Progress');
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [workflowOpen, setWorkflowOpen] = useState(false);
   const [linkComposerOpen, setLinkComposerOpen] = useState(false);
   const [linkType, setLinkType] = useState('Relates to');
   const [linkedIssueId, setLinkedIssueId] = useState('');
@@ -422,7 +501,8 @@ export default function TaskDetailDrawer({
   const creator = issue.creator || null;
   const comments = Array.isArray(issue.comments) ? issue.comments : [];
   const history = Array.isArray(issue.history) ? issue.history : [];
-  const workLogs = Array.isArray(issue.workLogs) ? issue.workLogs : [];
+  const workLogs = Array.isArray(issue.workLogs) ? issue.workLogs : []; // entries saved before the Log work API
+  const legacyWorkLogMinutes = workLogs.reduce((sum, entry) => sum + Math.round((Number(entry.hours) || 0) * 60), 0);
   const attachments = Array.isArray(issue.attachments) ? issue.attachments : [];
   const children = allIssues.filter((candidate) => {
     if (String(candidate.id) === String(issue.id)) return false;
@@ -446,10 +526,10 @@ export default function TaskDetailDrawer({
   }, [issue.id, issue.description]);
 
   useEffect(() => {
-    const onKeyDown = (event) => { if (event.key === 'Escape' && !startModalOpen && !deleteConfirmOpen) onClose(); };
+    const onKeyDown = (event) => { if (event.key === 'Escape' && !embedded && !startModalOpen && !deleteConfirmOpen && !workflowOpen) onClose(); };
     document.addEventListener('keydown', onKeyDown);
     return () => document.removeEventListener('keydown', onKeyDown);
-  }, [onClose, startModalOpen, deleteConfirmOpen]);
+  }, [onClose, embedded, startModalOpen, deleteConfirmOpen, workflowOpen]);
 
   function recordHistory(action, detail = '') {
     const entry = {
@@ -524,7 +604,7 @@ export default function TaskDetailDrawer({
     else if (field.key === 'startDate' || field.key === 'dueDate') setInfoDraft(toDateInputValue(current));
     else if (field.key === 'priority') setInfoDraft(current || 'Medium');
     else if (field.key === 'team' || field.key === 'release') {
-      const options = field.key === 'team' ? (Array.isArray(space.teams) ? space.teams : []) : (Array.isArray(space.releases) ? space.releases : []);
+      const options = field.key === 'team' ? activeTeams(space) : (Array.isArray(space.releases) ? space.releases : []);
       setInfoDraft(current ? optionId(current) : '');
     }
     else setInfoDraft(current ?? '');
@@ -549,7 +629,7 @@ export default function TaskDetailDrawer({
       patch = { [keyName]: infoDraft || null };
       detail = infoDraft ? userName(infoDraft) : `${field.label} cleared`;
     } else if (keyName === 'team' || keyName === 'release') {
-      const options = keyName === 'team' ? (Array.isArray(space.teams) ? space.teams : []) : (Array.isArray(space.releases) ? space.releases : []);
+      const options = keyName === 'team' ? activeTeams(space) : (Array.isArray(space.releases) ? space.releases : []);
       const selected = options.find((option) => optionId(option) === String(infoDraft));
       patch = { [keyName]: selected || null };
       detail = optionLabel(patch[keyName]) || `${field.label} cleared`;
@@ -604,7 +684,7 @@ export default function TaskDetailDrawer({
     }
 
     if (keyName === 'team' || keyName === 'release') {
-      const options = keyName === 'team' ? (Array.isArray(space.teams) ? space.teams : []) : (Array.isArray(space.releases) ? space.releases : []);
+      const options = keyName === 'team' ? activeTeams(space) : (Array.isArray(space.releases) ? space.releases : []);
       return (
         <SearchableOptionSelect
           options={options}
@@ -620,19 +700,23 @@ export default function TaskDetailDrawer({
     }
 
     if (keyName === 'labels') return <input type="text" value={infoDraft} onChange={(event) => setInfoDraft(event.target.value)} placeholder="Enter labels separated by commas" />;
-    if (keyName === 'startDate' || keyName === 'dueDate') return <input type="date" value={infoDraft || ''} onChange={(event) => setInfoDraft(event.target.value)} />;
+    if (keyName === 'startDate' || keyName === 'dueDate') return <DatePicker value={infoDraft || ''} onChange={setInfoDraft} ariaLabel={field.label} min={keyName === 'dueDate' ? issue.startDate || undefined : undefined} max={keyName === 'startDate' ? issue.dueDate || undefined : undefined} />;
     return <input type="text" value={infoDraft ?? ''} onChange={(event) => setInfoDraft(event.target.value)} />;
   }
 
-  function addComment(event) {
+  async function addComment(event) {
     event.preventDefault();
     const text = commentDraft.trim();
     if (!text && commentFiles.length === 0) return;
+    setUploading(true);
+    const stored = commentFiles.length ? await storeFiles(commentFiles, 'comment') : [];
+    setUploading(false);
+    if (!text && !stored.length) return;
     const comment = {
       id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       text,
-      attachments: commentFiles,
-      author: 'You',
+      attachments: stored.map(({ id, name, extension, size }) => ({ id, name, extension, size })),
+      author: CURRENT_USER.name,
       authorId: CURRENT_USER.id,
       createdAt: new Date().toISOString(),
       replies: []
@@ -650,7 +734,7 @@ export default function TaskDetailDrawer({
       id: `comment-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
       text,
       attachments: [],
-      author: 'You',
+      author: CURRENT_USER.name,
       authorId: CURRENT_USER.id,
       createdAt: new Date().toISOString(),
       replies: []
@@ -665,7 +749,7 @@ export default function TaskDetailDrawer({
   }
 
   function beginEditComment(comment) {
-    if (!isCurrentUserComment(comment)) return;
+    if (!mayEditComment(comment)) return;
     setReplyToId(null);
     setEditingCommentId(comment.id);
     setEditingCommentDraft(comment.text || '');
@@ -676,7 +760,7 @@ export default function TaskDetailDrawer({
     const text = editingCommentDraft.trim();
     if (!text) return;
     const target = findCommentTree(comments, commentId);
-    if (!target || !isCurrentUserComment(target)) return;
+    if (!target || !mayEditComment(target)) return;
     const nextComments = updateCommentTree(comments, commentId, (comment) => ({
       ...comment,
       text,
@@ -689,7 +773,7 @@ export default function TaskDetailDrawer({
 
   function deleteComment(commentId) {
     const target = findCommentTree(comments, commentId);
-    if (!target || !isCurrentUserComment(target)) return;
+    if (!target || !mayDeleteComment(target)) return;
     patchIssue({ comments: removeCommentTree(comments, commentId) }, 'Comment deleted');
     if (String(replyToId) === String(commentId)) {
       setReplyToId(null);
@@ -701,15 +785,7 @@ export default function TaskDetailDrawer({
     }
   }
 
-  function addWorkLog(event) {
-    event.preventDefault();
-    const hours = Number(workLogHours);
-    if (!Number.isFinite(hours) || hours <= 0) return;
-    const entry = { id: `worklog-${Date.now()}`, hours, note: workLogNote.trim(), author: 'You', createdAt: new Date().toISOString() };
-    patchIssue({ workLogs: [...workLogs, entry] }, 'Work logged', `${hours} hour(s)`);
-    setWorkLogHours('');
-    setWorkLogNote('');
-  }
+
 
   function addLink(event) {
     event.preventDefault();
@@ -736,19 +812,53 @@ export default function TaskDetailDrawer({
       history: [],
       workLogs: [],
       attachments: [],
-      links: []
+      links: [],
+      cloneOf: issue.id
     };
     onCloneTask(clone);
   }
 
-  function uploadAttachments(event) {
-    const files = Array.from(event.target.files || []);
-    if (files.length) patchIssue({ attachments: [...attachments, ...files] }, 'Attachments added', files.map((file) => file.name).join(', '));
-    event.target.value = '';
+  /** Uploads files to this work item; returns metadata of the stored files. */
+  async function storeFiles(files, source) {
+    const problems = files.map(validateUploadFile).filter(Boolean);
+    const stored = [];
+    for (const file of files.filter((item) => !validateUploadFile(item))) {
+      try {
+        const result = await api.uploadAttachment(issue.id, file, source);
+        replaceWorkItem(result.workItem);
+        stored.push(result.attachment);
+      } catch (error) {
+        problems.push(`${file.name}: ${error.message}`);
+      }
+    }
+    setFileError(problems.join(' '));
+    return stored;
   }
 
-  function removeAttachment(index) {
-    patchIssue({ attachments: attachments.filter((_, itemIndex) => itemIndex !== index) }, 'Attachment removed');
+  async function uploadAttachments(event) {
+    const files = Array.from(event.target.files || []);
+    event.target.value = '';
+    if (!files.length) return;
+    setUploading(true);
+    const stored = await storeFiles(files, 'work_item');
+    setUploading(false);
+    if (stored.length) patchIssue({}, 'Attachments added', stored.map((file) => file.name).join(', '));
+  }
+
+  async function removeAttachment(file, index) {
+    const name = typeof file === 'string' ? file : file?.name || 'file';
+    if (file?.id) {
+      if (!window.confirm(`Delete ${name}? It will also be removed from Documents.`)) return;
+      try {
+        const result = await api.deleteAttachment(file.id);
+        replaceWorkItem(result.workItem);
+        patchIssue({}, 'Attachment removed', name);
+      } catch (error) {
+        setFileError(error.message);
+      }
+      return;
+    }
+    patchIssue({ attachments: attachments.filter((_, itemIndex) => itemIndex !== index) }, 'Attachment removed', name);
   }
 
   const isEpicOrFeature = ['Epic', 'Feature'].includes(type);
@@ -791,14 +901,15 @@ export default function TaskDetailDrawer({
   function renderComment(comment, depth = 0) {
     const commentId = comment.id;
     const authorName = getCommentAuthorName(comment);
-    const ownComment = isCurrentUserComment(comment);
+    const canEdit = mayEditComment(comment);
+    const canDelete = mayDeleteComment(comment);
     const replies = Array.isArray(comment.replies) ? comment.replies : [];
     const commentAttachments = Array.isArray(comment.attachments) ? comment.attachments : [];
 
     return (
       <div className={`td-comment-thread ${depth > 0 ? 'nested' : ''}`} key={commentId}>
         <article className="td-comment">
-          <span className="td-avatar">{initials(authorName)}</span>
+          <PersonAvatar person={comment.author && typeof comment.author === 'object' ? comment.author : { id: comment.authorId, name: authorName }} className="td-avatar" />
           <div className="td-comment-content">
             <div className="td-comment-meta">
               <strong>{authorName}</strong>
@@ -818,15 +929,13 @@ export default function TaskDetailDrawer({
               <p>{comment.text}</p>
             )}
 
-            {commentAttachments.length > 0 && <div className="td-comment-file-list">{commentAttachments.map((file, index) => <span key={`${file.name || file}-${index}`}>{file.name || String(file)}</span>)}</div>}
+            {commentAttachments.length > 0 && <div className="td-comment-file-list">{commentAttachments.map((file, index) => <span key={`${file?.id || file?.name || file}-${index}`}><FileName file={file} /></span>)}</div>}
 
             {editingCommentId !== commentId && (
               <div className="td-comment-actions">
-                <button type="button" onClick={() => { setEditingCommentId(null); setReplyToId(commentId); setReplyDraft(''); }}>Reply</button>
-                {ownComment && <>
-                  <button type="button" onClick={() => beginEditComment(comment)}>Edit</button>
-                  <button type="button" className="danger" onClick={() => deleteComment(commentId)}>Delete</button>
-                </>}
+                {allow.commentAdd && <button type="button" onClick={() => { setEditingCommentId(null); setReplyToId(commentId); setReplyDraft(''); }}>Reply</button>}
+                {canEdit && <button type="button" onClick={() => beginEditComment(comment)}>Edit</button>}
+                {canDelete && <button type="button" className="danger" onClick={() => deleteComment(commentId)}>Delete</button>}
               </div>
             )}
 
@@ -848,8 +957,8 @@ export default function TaskDetailDrawer({
 
 
   return (
-    <div className={`td-overlay ${fullPage ? 'td-overlay-full-page' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
-      <section className={`td-drawer ${expanded ? 'expanded' : ''}`} role="dialog" aria-modal="true" aria-label={`Task detail ${key}`}>
+    <div className={`td-overlay ${fullPage ? 'td-overlay-full-page' : ''} ${embedded ? 'td-overlay-embedded' : ''}`} onMouseDown={(event) => { if (!embedded && event.target === event.currentTarget) onClose(); }}>
+      <section className={`td-drawer ${expanded ? 'expanded' : ''}`} role={embedded ? 'region' : 'dialog'} aria-modal={embedded ? undefined : 'true'} aria-label={`Task detail ${key}`}>
         <header className="td-header">
           <div className="td-header-left">
             <button type="button" className="td-icon-button td-close-button" onClick={onClose} aria-label="Close Task detail"><Icon name="close" size={16} /></button>
@@ -862,6 +971,11 @@ export default function TaskDetailDrawer({
 
         <div className="td-body">
           <main className="td-main-column">
+            {space?.readOnly && (
+              <div className="td-permission-note td-read-only-note" role="note">
+                <Icon name="lock" size={15} /> You are not a member of {space.name || 'this project'}, so this work item is view only.
+              </div>
+            )}
             <div className="td-issue-heading">
               <div className={`td-issue-type type-${String(type).toLowerCase().replace(/[^a-z]+/g, '-')}`} title={type}><Icon name={iconForType(type)} size={16} /></div>
               <button type="button" className="td-key-button" onClick={() => copyText(key, 'Key copied')} title="Copy issue key">{key} <Icon name="copy" size={13} /></button>
@@ -870,14 +984,20 @@ export default function TaskDetailDrawer({
               <input value={titleDraft} onChange={(event) => setTitleDraft(event.target.value)} autoFocus onKeyDown={(event) => { if (event.key === 'Enter') saveTitle(); if (event.key === 'Escape') { setTitleDraft(title); setEditingTitle(false); } }} />
               <button type="button" className="td-primary-button" onClick={saveTitle} disabled={!titleDraft.trim()}>Save</button>
               <button type="button" className="td-secondary-button" onClick={() => { setTitleDraft(title); setEditingTitle(false); }}>Cancel</button>
-            </div> : <div className="td-title-display"><h1 className="td-issue-title">{title}</h1><button type="button" className="td-edit-button td-title-edit-button" title="Edit title" onClick={startTitleEdit}><Icon name="edit" size={13} /></button></div>}
+            </div> : <div className="td-title-display"><h1 className="td-issue-title">{title}</h1>{allow.update && <button type="button" className="td-edit-button td-title-edit-button" title="Edit title" onClick={startTitleEdit}><Icon name="edit" size={13} /></button>}</div>}
             <div className="td-issue-actions-row">
-              <div className="td-heading-status"><StatusMenu issue={issue} allIssues={allIssues} onSelect={handleStatusChange} /></div>
+              <div className="td-heading-status">
+                <StatusMenu issue={issue} allIssues={allIssues} onSelect={handleStatusChange} disabled={!allow.move} />
+                <button type="button" className="td-workflow-button" onClick={() => setWorkflowOpen(true)} title={`View the ${type} workflow`} aria-label={`View the ${type} workflow`}><Icon name="workflow" size={15} /></button>
+              </div>
               <div className="td-action-buttons">
-                <button type="button" className="td-action-button" title={allowedChildTypes.length ? `Create child: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'} disabled={!allowedChildTypes.length} onClick={() => onCreateChild(issue, allowedChildTypes)}><Icon name="plus" size={16} /></button>
-                <button type="button" className="td-action-button" title="Copy link" onClick={() => copyText(`${window.location.origin}${window.location.pathname}#${key}`, 'Link copied')}><Icon name="link" size={15} /></button>
-                <button type="button" className="td-action-button" title="Clone work item" onClick={handleClone}><Icon name="copy" size={15} /></button>
-                <button type="button" className="td-action-button danger" title="Delete work item" onClick={() => setDeleteConfirmOpen(true)}><Icon name="trash" size={15} /></button>
+                <button type="button" className="td-action-button" title={!allow.createChild ? NO_PERMISSION : allowedChildTypes.length ? `Create child: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'} disabled={!allowedChildTypes.length || !allow.createChild} onClick={() => onCreateChild(issue, allowedChildTypes)}><Icon name="plus" size={16} /></button>
+ {!space?.readOnly && <button type="button" className="td-action-button td-ai-button" title="Ask the AI Project Assistant about this work item" aria-label="AI Project Assistant" onClick={() => openAssistant({ spaceId: issue.spaceId ?? space.id, taskIds: [issue.id] })}><Icon name="sparkles" size={15} /></button>}
+                {watching !== null && <button type="button" className={`td-action-button td-watch-button ${watching ? 'is-active' : ''}`} title={watching ? 'Following: you get notified about changes. Click to stop following' : 'Follow to get notified about changes'} aria-label={watching ? 'Stop following' : 'Follow'} aria-pressed={watching} onClick={toggleWatching}><Icon name={watching ? 'eye' : 'eyeOff'} size={15} /></button>}
+                <button type="button" className="td-action-button" title="Copy link" onClick={() => copyText(`${window.location.origin}${window.location.pathname}?task=${encodeURIComponent(issue.id)}`, 'Link copied')}><Icon name="link" size={15} /></button>
+                {onMoveTask && <button type="button" className="td-action-button" title={allow.move ? 'Move to another project' : NO_PERMISSION} aria-label="Move to another project" disabled={!allow.move} onClick={() => onMoveTask(issue)}><Icon name="spaces" size={15} /></button>}
+                <button type="button" className="td-action-button" title={allow.clone ? 'Clone work item' : NO_PERMISSION} disabled={!allow.clone} onClick={handleClone}><Icon name="copy" size={15} /></button>
+                <button type="button" className="td-action-button danger" title={allow.remove ? 'Delete work item' : NO_PERMISSION} disabled={!allow.remove} onClick={() => setDeleteConfirmOpen(true)}><Icon name="trash" size={15} /></button>
                 {copied && <span className="td-copy-feedback">{copied}</span>}
               </div>
             </div>
@@ -899,6 +1019,12 @@ export default function TaskDetailDrawer({
                           <button type="button" className="td-primary-button" onClick={() => saveInfoField(field)}>Save</button>
                         </div>
                       </div>
+                    ) : !mayEditField(field.key) ? (
+                      <span className="td-info-value is-readonly">
+                        <span className="td-info-value-content">
+                          {field.key === 'priority' ? <span className="td-priority-value"><PriorityIcon priority={field.value || 'Medium'} size={15} /><span>{field.value || 'Medium'}</span></span> : <FieldValue value={field.value} />}
+                        </span>
+                      </span>
                     ) : (
                       <span className="td-info-value">
                         <button
@@ -922,7 +1048,7 @@ export default function TaskDetailDrawer({
             <section className="td-section td-description-section">
               <div className="td-section-heading">
                 <h2><Icon name="file" size={16} /> Description</h2>
-                {!editingDescription && <button type="button" className="td-edit-button" title="Edit description" onClick={() => setEditingDescription(true)}><Icon name="edit" size={14} /></button>}
+                 {!editingDescription && allow.update && <button type="button" className="td-edit-button" title="Edit description" onClick={() => setEditingDescription(true)}><Icon name="edit" size={14} /></button>}
               </div>
               {editingDescription ? <div className="td-description-editor">
                 <textarea value={descriptionDraft} onChange={(event) => setDescriptionDraft(event.target.value)} placeholder="Add a description..." rows={5} autoFocus />
@@ -933,15 +1059,24 @@ export default function TaskDetailDrawer({
             <section className="td-section td-attachments-section">
               <div className="td-section-heading">
                 <h2><Icon name="paperclip" size={16} /> Attachments</h2>
-                <label className="td-outline-upload"><Icon name="upload" size={13} /> Upload<input type="file" multiple onChange={uploadAttachments} /></label>
+                {allow.attachAdd && <label className="td-outline-upload"><Icon name="upload" size={13} /> {uploading ? 'Uploading…' : 'Upload'}<input type="file" multiple accept={FILE_ACCEPT} disabled={uploading} onChange={uploadAttachments} /></label>}
               </div>
-              {attachments.length ? <div className="td-attachment-list">{attachments.map((file, index) => <div className="td-attachment-item" key={`${file.name || file}-${index}`}><Icon name="file" size={17} /><span title={file.name || String(file)}>{file.name || String(file)}</span><button type="button" onClick={() => removeAttachment(index)} title="Remove attachment"><Icon name="trash" size={13} /></button></div>)}</div> : <EmptyPanel />}
+              {fileError && <p className="td-file-error" role="alert">{fileError}</p>}
+              {attachments.length ? <div className="td-attachment-list">{attachments.map((file, index) => (
+                <div className="td-attachment-item" key={`${file?.id || file?.name || file}-${index}`}>
+                  <Icon name="file" size={17} />
+                  <span><FileName file={file} /></span>
+                  {file?.size ? <small className="td-file-size">{formatBytes(file.size)}</small> : null}
+                  {file?.id && <a className="td-plain-icon" href={api.attachmentUrl(file.id, 'download')} title={`Download ${file.name}`} aria-label={`Download ${file.name}`}><Icon name="download" size={13} /></a>}
+                  {mayDeleteFile(file) && <button type="button" onClick={() => removeAttachment(file, index)} title="Remove attachment" aria-label={`Remove ${file?.name || 'attachment'}`}><Icon name="trash" size={13} /></button>}
+                </div>
+              ))}</div> : <EmptyPanel />}
             </section>
 
             <section className="td-section td-child-section">
               <div className="td-section-heading">
                 <h2><Icon name="workflow" size={16} /> Child work items</h2>
-                <button type="button" className="td-outline-button" onClick={() => onCreateChild(issue, allowedChildTypes)} disabled={!allowedChildTypes.length} title={allowedChildTypes.length ? `Create: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'}><Icon name="plus" size={13} /> Create new</button>
+                <button type="button" className="td-outline-button" onClick={() => onCreateChild(issue, allowedChildTypes)} disabled={!allowedChildTypes.length || !allow.createChild} title={!allow.createChild ? NO_PERMISSION : allowedChildTypes.length ? `Create: ${allowedChildTypes.join(', ')}` : 'This work item type cannot have child work items'}><Icon name="plus" size={13} /> Create new</button>
               </div>
               <div className="td-mini-table-wrap">
                 <table className="td-mini-table"><thead><tr><th>Work</th><th>Status</th><th>Assignee</th><th>Due date</th></tr></thead><tbody>
@@ -960,7 +1095,7 @@ export default function TaskDetailDrawer({
             <section className="td-section td-linked-section">
               <div className="td-section-heading">
                 <h2><Icon name="link" size={16} /> Linked work items</h2>
-                <button type="button" className="td-outline-button" onClick={() => setLinkComposerOpen((value) => !value)}><Icon name="plus" size={13} /> Create new</button>
+                {allow.link && <button type="button" className="td-outline-button" onClick={() => setLinkComposerOpen((value) => !value)}><Icon name="plus" size={13} /> Create new</button>}
               </div>
               {linkComposerOpen && <form className="td-link-composer" onSubmit={addLink}>
                 <select value={linkType} onChange={(event) => setLinkType(event.target.value)}>
@@ -975,7 +1110,7 @@ export default function TaskDetailDrawer({
               {linkedItems.length ? <div className="td-linked-list">{linkedItems.map((link, index) => <div className="td-linked-row" key={`${link.issueId}-${index}`}>
                 <span className="td-linked-type">{link.type || 'Relates to'}</span>
                 <button type="button" className="td-table-link" onClick={() => onOpenIssue(link.target.id)}>{issueKey(link.target)} — {issueTitle(link.target)}</button>
-                <button type="button" className="td-plain-icon danger" title="Remove link" onClick={() => patchIssue({ links: (issue.links || []).filter((_, itemIndex) => itemIndex !== index) }, 'Work item link removed')}><Icon name="close" size={13} /></button>
+                {allow.link && <button type="button" className="td-plain-icon danger" title="Remove link" onClick={() => patchIssue({ links: (issue.links || []).filter((_, itemIndex) => itemIndex !== index) }, 'Work item link removed')}><Icon name="close" size={13} /></button>}
               </div>)}</div> : !linkComposerOpen && <EmptyPanel>No linked work items</EmptyPanel>}
             </section>
 
@@ -984,32 +1119,63 @@ export default function TaskDetailDrawer({
                 {['Comments', 'History', 'Work log'].map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeActivityTab === tab} className={activeActivityTab === tab ? 'active' : ''} onClick={() => setActiveActivityTab(tab)}>{tab}</button>)}
               </div>
 
-              {activeActivityTab === 'Comments' && <>
-                <form className="td-comment-composer" onSubmit={addComment}>
+              {activeActivityTab === 'Comments' && !allow.commentView && <div className="td-permission-note"><Icon name="lock" size={15} /> You do not have permission to view comments on this work item.</div>}
+              {activeActivityTab === 'Comments' && allow.commentView && <>
+                {allow.commentAdd && <form className="td-comment-composer" onSubmit={addComment}>
                   <textarea value={commentDraft} onChange={(event) => setCommentDraft(event.target.value)} placeholder="Add a comment... Use @ to mention a member." rows={3} />
                   <div className="td-comment-tools">
                     <div>
                       <button type="button" title="Bold" onClick={() => setCommentDraft((value) => `${value}**bold**`)}><strong>B</strong></button>
                       <button type="button" title="Italic" onClick={() => setCommentDraft((value) => `${value}_italic_`)}><em>I</em></button>
                       <button type="button" title="Mention" onClick={() => setCommentDraft((value) => `${value}@`)}>@</button>
-                      <label title="Attach file"><Icon name="paperclip" size={14} /><input type="file" multiple onChange={(event) => { setCommentFiles((current) => [...current, ...Array.from(event.target.files || [])]); event.target.value = ''; }} /></label>
+                      {allow.attachAdd && <label title="Attach file"><Icon name="paperclip" size={14} /><input type="file" multiple accept={FILE_ACCEPT} onChange={(event) => {
+                        // Copy the files before clearing the input: the state updater may run later.
+                        const picked = Array.from(event.target.files || []);
+                        event.target.value = '';
+                        setCommentFiles((current) => [...current, ...picked]);
+                      }} /></label>}
                     </div>
-                    <button type="submit" className="td-primary-button" disabled={!commentDraft.trim() && commentFiles.length === 0}>Add comment</button>
+                    <button type="submit" className="td-primary-button" disabled={uploading || (!commentDraft.trim() && commentFiles.length === 0)}>{uploading && commentFiles.length ? 'Uploading…' : 'Add comment'}</button>
                   </div>
                   {commentFiles.length > 0 && <div className="td-comment-files">{commentFiles.map((file, index) => <span key={`${file.name}-${index}`}>{file.name}<button type="button" onClick={() => setCommentFiles((current) => current.filter((_, i) => i !== index))}>×</button></span>)}</div>}
-                </form>
+                </form>}
                 {comments.length ? <div className="td-comment-list">{[...comments].reverse().map((comment, index) => renderComment(comment, 0))}</div> : <EmptyPanel>No comments yet</EmptyPanel>}
               </>}
 
               {activeActivityTab === 'History' && (history.length ? <div className="td-history-list">{[...history].reverse().map((entry, index) => <div className="td-history-row" key={entry.id || index}><span className="td-history-dot" /><div><strong>{entry.actor || 'You'}</strong> {entry.action || 'updated this work item'}{entry.detail && <span> · {entry.detail}</span>}<time>{formatDate(entry.createdAt || entry.date, true)}</time></div></div>)}</div> : <EmptyPanel>No history yet</EmptyPanel>)}
 
               {activeActivityTab === 'Work log' && <>
-                <form className="td-worklog-form" onSubmit={addWorkLog}>
-                  <label>Time spent (hours)<input type="number" min="0.1" step="0.1" value={workLogHours} onChange={(event) => setWorkLogHours(event.target.value)} placeholder="e.g. 1.5" /></label>
-                  <label>Work description<input value={workLogNote} onChange={(event) => setWorkLogNote(event.target.value)} placeholder="What did you work on?" /></label>
-                  <button type="submit" className="td-primary-button" disabled={!workLogHours || Number(workLogHours) <= 0}>Log work</button>
-                </form>
-                {workLogs.length ? <div className="td-worklog-list">{[...workLogs].reverse().map((entry, index) => <div key={entry.id || index}><strong>{entry.hours}h</strong><span>{entry.note || 'Work logged'}</span><small>{entry.author || 'You'} · {formatDate(entry.createdAt, true)}</small></div>)}</div> : <EmptyPanel>No work log entries</EmptyPanel>}
+                <div className="wl-head">
+                  <span className="wl-total"><Icon name="clock" size={14} /> Total logged <strong data-testid="worklog-total">{formatDuration((workLogData?.totalMinutes || 0) + legacyWorkLogMinutes)}</strong></span>
+                  {allow.worklog && !space?.readOnly && <button type="button" className="wl-add" onClick={() => setLogWorkOpen(true)}><Icon name="plus" size={13} /> Log work</button>}
+                </div>
+                {(workLogData?.entries?.length || workLogs.length) ? (
+                  <div className="wl-table-wrap">
+                    <table className="wl-table">
+                      <thead><tr><th>Description</th><th>Time</th><th>Work date</th><th>User</th><th aria-label="Actions" /></tr></thead>
+                      <tbody>
+                        {(workLogData?.entries || []).map((entry) => (
+                          <tr key={entry.id}>
+                            <td className="wl-desc">{entry.description}</td>
+                            <td className="wl-time">{formatDuration(entry.minutes)}</td>
+                            <td className="wl-date">{formatDay(entry.workDate)}</td>
+                            <td><span className="wl-user"><PersonAvatar person={entry.user} className="wl-avatar" />{entry.user?.fullName || '—'}</span></td>
+                            <td>{entry.permissions?.delete && <button type="button" className="wl-delete" onClick={() => deleteWorkLog(entry)} aria-label={`Delete work log of ${formatDay(entry.workDate)}`} title="Delete"><Icon name="trash" size={13} /></button>}</td>
+                          </tr>
+                        ))}
+                        {[...workLogs].reverse().map((entry, index) => (
+                          <tr key={entry.id || `legacy-${index}`}>
+                            <td className="wl-desc">{entry.note || 'Work logged'} <span className="wl-legacy">(earlier entry)</span></td>
+                            <td className="wl-time">{formatDuration(Math.round((Number(entry.hours) || 0) * 60))}</td>
+                            <td className="wl-date">{formatDate(entry.createdAt)}</td>
+                            <td>{entry.author || '—'}</td>
+                            <td />
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                ) : <EmptyPanel>No work log entries</EmptyPanel>}
               </>}
             </section>
           </main>
@@ -1017,8 +1183,8 @@ export default function TaskDetailDrawer({
           <aside className="td-right-panel">
             <section className="td-people-card">
               <h2><Icon name="users" size={15} /> People &amp; responsibilities</h2>
-              <div className="td-person-row"><span>Assignee</span><div>{assignee ? <><span className="td-avatar">{initials(userName(assignee))}</span><strong>{userName(assignee)}</strong></> : <span className="td-unassigned-label">Unassigned</span>}</div></div>
-              <div className="td-person-row"><span>Creator</span><div>{creator ? <><span className="td-avatar">{initials(userName(creator))}</span><strong>{userName(creator)}</strong></> : <span className="td-unassigned-label">—</span>}</div></div>
+              <div className="td-person-row"><span>Assignee</span><div>{assignee ? <><PersonAvatar person={assignee} className="td-avatar" /><strong>{userName(assignee)}</strong></> : <span className="td-unassigned-label">Unassigned</span>}</div></div>
+              <div className="td-person-row"><span>Creator</span><div>{creator ? <><PersonAvatar person={creator} className="td-avatar" /><strong>{userName(creator)}</strong></> : <span className="td-unassigned-label">—</span>}</div></div>
               {issue.team && <div className="td-person-row"><span>Team</span><div><strong>{userName(issue.team)}</strong></div></div>}
             </section>
           </aside>
@@ -1032,6 +1198,20 @@ export default function TaskDetailDrawer({
           </div>
         </div>}
 
+        {logWorkOpen && (
+          <LogWorkModal
+            issue={issue}
+            space={space}
+            onClose={() => setLogWorkOpen(false)}
+            onSaved={(result) => {
+              setWorkLogData(result);
+              setLogWorkOpen(false);
+              setCopied(`Logged ${formatDuration(result.created?.minutesPerDay || 0)}${result.created?.days > 1 ? ` × ${result.created.days} days` : ''}`);
+              window.setTimeout(() => setCopied(''), 2200);
+            }}
+          />
+        )}
+        {workflowOpen && <WorkflowModal spaceId={issue.spaceId ?? space.id} issueType={type} status={issue.status} issueKey={key} onClose={() => setWorkflowOpen(false)} />}
         {deleteConfirmOpen && <div className="td-modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setDeleteConfirmOpen(false); }}>
           <div className="td-start-modal" role="dialog" aria-modal="true">
             <div className="td-modal-title"><h2>Delete work item?</h2><button type="button" onClick={() => setDeleteConfirmOpen(false)}><Icon name="close" size={15} /></button></div>

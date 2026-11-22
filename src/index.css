@@ -1,7 +1,7 @@
 :root {
   font-family: Inter, Arial, Helvetica, sans-serif;
-  color: #253044;
-  background: #f7f9fc;
+  color: var(--tf-fg-253044);
+  background: var(--tf-bg-f7f9fc);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;

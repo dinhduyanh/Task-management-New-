@@ -1,10 +1,52 @@
-import { useEffect, useRef, useState } from 'react';
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { useAppShell } from '../../context/appShellContext';
+import { SidebarSlotContext } from '../../context/sidebarSlot';
+import { SIDEBAR_DASHBOARD_LIMIT, sidebarDashboards } from '../../services/dashboards';
+import { canInSpace } from '../../services/projectPermissions';
 import Icon from '../common/Icon';
 import './Sidebar.css';
 
-export default function Sidebar({
+const SIDEBAR_SPACE_LIMIT = 8;
+
+/**
+ * Projects shown under Spaces: starred projects first (in the order they were starred), then the
+ * other projects the user is involved in, up to SIDEBAR_SPACE_LIMIT. The open project is always listed.
+ */
+function sidebarSpaceList(spaces, activeSpaceId) {
+  const pinned = spaces.filter((space) => space.pinned).sort((a, b) => String(a.pinnedAt || '').localeCompare(String(b.pinnedAt || '')));
+  const others = spaces.filter((space) => !space.pinned && space.involved !== false);
+  const list = [...pinned, ...others.slice(0, Math.max(0, SIDEBAR_SPACE_LIMIT - pinned.length))];
+  const active = activeSpaceId && spaces.find((space) => space.id === activeSpaceId);
+  if (active && !list.includes(active)) list.push(active);
+  return list;
+}
+
+/**
+ * Placed by each page. Inside the app it renders nothing and only reports the active item to the
+ * persistent <SidebarPanel> rendered by App; without the app shell it renders the panel itself.
+ */
+export default function Sidebar(props) {
+  const setSlot = useContext(SidebarSlotContext);
+  const { activeSection = 'My Tasks', activeSpaceId = null, activeDashboardId = null, activeFilterView = null } = props;
+
+  useLayoutEffect(() => {
+    if (setSlot) setSlot({ activeSection, activeSpaceId, activeDashboardId, activeFilterView });
+  }, [setSlot, activeSection, activeSpaceId, activeDashboardId, activeFilterView]);
+
+  useLayoutEffect(() => {
+    if (!setSlot) return undefined;
+    return () => setSlot(null);
+  }, [setSlot]);
+
+  return setSlot ? null : <SidebarPanel {...props} />;
+}
+
+export function SidebarPanel({
   activeSection = 'My Tasks',
   activeSpaceId = null,
+  activeDashboardId = null,
+  activeFilterView = null, // 'search' | 'all' on the Filters pages
   spaces = [],
   onCreateSpace = () => {},
   onNavigate = () => {},
@@ -12,25 +54,60 @@ export default function Sidebar({
   onDeleteSpace = () => {}
 }) {
   const [spacesExpanded, setSpacesExpanded] = useState(true);
+  const [dashboardsExpanded, setDashboardsExpanded] = useState(true);
+  const [filtersExpanded, setFiltersExpanded] = useState(activeSection === 'Filters');
+  // Opening a Filters page (e.g. from a link) shows its submenu.
+  const [lastSection, setLastSection] = useState(activeSection);
+  if (lastSection !== activeSection) {
+    setLastSection(activeSection);
+    if (activeSection === 'Filters') setFiltersExpanded(true);
+  }
+  const { dashboards, sidebarCollapsed, toggleSidebar } = useAppShell();
+  const shortcutDashboards = sidebarDashboards(dashboards);
+  const sidebarSpaces = sidebarSpaceList(spaces, activeSpaceId);
   const [openMenuId, setOpenMenuId] = useState(null);
   const [spaceToDelete, setSpaceToDelete] = useState(null);
+  // Position of the open project menu. It is rendered in a portal with fixed positioning so it
+  // never stretches or scrolls the sidebar.
+  const [menuPosition, setMenuPosition] = useState(null);
   const menuAreaRef = useRef(null);
+  const menuRef = useRef(null);
 
   useEffect(() => {
+    if (!openMenuId) return undefined;
+    const close = () => setOpenMenuId(null);
     function handlePointerDown(event) {
-      if (menuAreaRef.current && !menuAreaRef.current.contains(event.target)) {
-        setOpenMenuId(null);
-      }
+      if (menuRef.current?.contains(event.target) || menuAreaRef.current?.contains(event.target)) return;
+      close();
     }
+    const onKey = (event) => { if (event.key === 'Escape') close(); };
+    const onScroll = (event) => { if (!menuRef.current?.contains(event.target)) close(); };
     document.addEventListener('mousedown', handlePointerDown);
-    return () => document.removeEventListener('mousedown', handlePointerDown);
-  }, []);
+    document.addEventListener('keydown', onKey);
+    window.addEventListener('resize', close);
+    window.addEventListener('scroll', onScroll, true);
+    return () => {
+      document.removeEventListener('mousedown', handlePointerDown);
+      document.removeEventListener('keydown', onKey);
+      window.removeEventListener('resize', close);
+      window.removeEventListener('scroll', onScroll, true);
+    };
+  }, [openMenuId]);
 
   const navigate = (page, data = null) => onNavigate(page, data);
 
-  function openSpaceMenu(event, spaceId) {
+  function openSpaceMenu(event, space) {
     event.stopPropagation();
-    setOpenMenuId((current) => current === spaceId ? null : spaceId);
+    if (openMenuId === space.id) { setOpenMenuId(null); return; }
+    const rect = event.currentTarget.getBoundingClientRect();
+    const items = (canInSpace(space, 'project.setting') ? 1 : 0) + (space.permissions?.manage ? 1 : 0);
+    const height = items * 36 + 12;
+    const width = 176;
+    // Below the button, or above it when there is no room at the bottom of the window.
+    const top = rect.bottom + 4 + height > window.innerHeight - 8 ? Math.max(8, rect.top - height - 4) : rect.bottom + 4;
+    const left = Math.min(Math.max(8, rect.right - width), window.innerWidth - width - 8);
+    setMenuPosition({ top, left });
+    setOpenMenuId(space.id);
   }
 
   function confirmDelete() {
@@ -42,7 +119,6 @@ export default function Sidebar({
 
   return (
     <aside className={`sidebar ${spaceToDelete ? 'sidebar-with-dialog' : ''}`}>
-      <div className="sidebar-section-label">WORKSPACE</div>
 
       <nav className="sidebar-nav" aria-label="Main navigation">
         <button
@@ -50,9 +126,21 @@ export default function Sidebar({
           className={`nav-item nav-item-button ${activeSection === 'My Tasks' ? 'nav-item-active' : ''}`}
           onClick={() => navigate('myTasks')}
           aria-current={activeSection === 'My Tasks' ? 'page' : undefined}
+          data-tip="My Tasks"
         >
           <Icon name="tasks" />
-          <span>My Tasks</span>
+          <span className="nav-label">My Tasks</span>
+        </button>
+
+        <button
+          type="button"
+          className={`nav-item nav-item-button ${activeSection === 'Space Involved' ? 'nav-item-active' : ''}`}
+          onClick={() => navigate('spaceInvolved')}
+          aria-current={activeSection === 'Space Involved' ? 'page' : undefined}
+          data-tip="Space Involved"
+        >
+          <Icon name="users" />
+          <span className="nav-label">Space Involved</span>
         </button>
 
         <button
@@ -60,30 +148,94 @@ export default function Sidebar({
           className={`nav-item nav-item-button ${activeSection === 'Documents' ? 'nav-item-active' : ''}`}
           onClick={() => navigate('documents')}
           aria-current={activeSection === 'Documents' ? 'page' : undefined}
+          data-tip="Documents"
         >
           <Icon name="file" />
-          <span>Documents</span>
+          <span className="nav-label">Documents</span>
         </button>
 
-        <button
-          type="button"
-          className={`nav-item nav-item-button ${activeSection === 'Dashboard' ? 'nav-item-active' : ''}`}
-          onClick={() => navigate('dashboard')}
-          aria-current={activeSection === 'Dashboard' ? 'page' : undefined}
-        >
-          <Icon name="dashboard" />
-          <span>Dashboard</span>
-        </button>
+        <div className="sidebar-divider" role="separator" />
+
+        {/* Dashboards: up to 5 shortcuts (starred first, then recently opened). */}
+        <div className={`spaces-nav-row ${activeSection === 'Dashboard' && !activeDashboardId ? 'spaces-nav-row-active' : ''}`}>
+          <button
+            type="button"
+            className="spaces-main-toggle"
+            onClick={() => navigate('dashboards')}
+            aria-current={activeSection === 'Dashboard' && !activeDashboardId ? 'page' : undefined}
+            title="All dashboards"
+            data-tip="Dashboard"
+          >
+            <Icon name="dashboard" />
+            <span className="nav-label">Dashboard</span>
+          </button>
+          <div className="spaces-nav-actions">
+            <button
+              type="button"
+              className="spaces-add-button"
+              onClick={() => navigate('dashboardBuilder')}
+              aria-label="New dashboard"
+              title="New dashboard"
+            >
+              <Icon name="plus" size={15} />
+            </button>
+            <button
+              type="button"
+              className={`spaces-chevron-button ${dashboardsExpanded ? 'is-expanded' : ''}`}
+              onClick={() => setDashboardsExpanded((current) => !current)}
+              aria-label={dashboardsExpanded ? 'Collapse Dashboards' : 'Expand Dashboards'}
+              aria-expanded={dashboardsExpanded}
+            >
+              <Icon name="chevron" size={15} />
+            </button>
+          </div>
+        </div>
+
+        {dashboardsExpanded && !sidebarCollapsed && (
+          <div className="spaces-submenu sidebar-dashboards" aria-label="Dashboards">
+            {shortcutDashboards.map((dashboard) => (
+              <div className={`space-item-row ${activeDashboardId === dashboard.id ? 'space-item-row-active' : ''}`} key={dashboard.id}>
+                <button
+                  type="button"
+                  className={`space-item space-item-button ${activeDashboardId === dashboard.id ? 'space-item-active' : ''}`}
+                  title={dashboard.name}
+                  onClick={() => navigate('dashboard', { id: dashboard.id })}
+                  aria-current={activeDashboardId === dashboard.id ? 'page' : undefined}
+                >
+                  <span className="sidebar-dashboard-icon"><Icon name="chart" size={15} /></span>
+                  <span className="space-item-name">{dashboard.name}</span>
+                  {dashboard.starred && <span className="sidebar-dashboard-star" aria-label="Starred"><Icon name="starFilled" size={13} /></span>}
+                </button>
+              </div>
+            ))}
+            {!shortcutDashboards.length && (
+              <button type="button" className="sidebar-more-link" onClick={() => navigate('dashboardBuilder')}>
+                <Icon name="plus" size={13} /> Create a dashboard
+              </button>
+            )}
+            {dashboards.length > SIDEBAR_DASHBOARD_LIMIT && (
+              <button type="button" className="sidebar-more-link" onClick={() => navigate('dashboards')}>
+                <span>Show more dashboard</span>
+                <Icon name="chevronsRight" size={14} />
+              </button>
+            )}
+          </div>
+        )}
 
         <div className={`spaces-nav-row ${activeSection === 'Spaces' ? 'spaces-nav-row-active' : ''}`}>
           <button
             type="button"
             className="spaces-main-toggle"
-            onClick={() => setSpacesExpanded((current) => !current)}
-            aria-expanded={spacesExpanded}
+            onClick={() => {
+              // Collapsed sidebar: open it on the project list instead of toggling a hidden list.
+              if (sidebarCollapsed) { toggleSidebar(false); setSpacesExpanded(true); return; }
+              setSpacesExpanded((current) => !current);
+            }}
+            aria-expanded={spacesExpanded && !sidebarCollapsed}
+            data-tip="Spaces"
           >
             <Icon name="spaces" />
-            <span>Spaces</span>
+            <span className="nav-label">Spaces</span>
           </button>
 
           <div className="spaces-nav-actions">
@@ -108,9 +260,9 @@ export default function Sidebar({
           </div>
         </div>
 
-        {spacesExpanded && (
+        {spacesExpanded && !sidebarCollapsed && (
           <div className="spaces-submenu" ref={menuAreaRef}>
-            {spaces.length > 0 ? spaces.map((space) => (
+            {sidebarSpaces.length > 0 ? sidebarSpaces.map((space) => (
               <div className={`space-item-row ${activeSpaceId === space.id ? 'space-item-row-active' : ''}`} key={space.id}>
                 <button
                   type="button"
@@ -126,69 +278,141 @@ export default function Sidebar({
                     </span>
                   )}
                   <span className="space-item-name">{space.name}</span>
+                  {space.pinned && <span className="sidebar-space-star" aria-label="Starred" title="Starred"><Icon name="starFilled" size={13} /></span>}
                 </button>
 
-                <button
+                {(canInSpace(space, 'project.setting') || space.permissions?.manage) && <button
                   type="button"
                   className={`space-more-button ${openMenuId === space.id ? 'is-open' : ''}`}
-                  onClick={(event) => openSpaceMenu(event, space.id)}
+                  onClick={(event) => openSpaceMenu(event, space)}
                   aria-label={`More options for ${space.name}`}
                   aria-haspopup="menu"
                   aria-expanded={openMenuId === space.id}
                   title="More options"
                 >
                   <Icon name="moreVertical" size={16} />
-                </button>
+                </button>}
+                {/* Keeps names and stars aligned on rows without the options button. */}
+                {!(canInSpace(space, 'project.setting') || space.permissions?.manage) && <span className="space-more-spacer" aria-hidden="true" />}
 
-                {openMenuId === space.id && (
-                  <div className="space-context-menu" role="menu">
-                    <button
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        onOpenSpaceSettings(space);
-                      }}
-                    >
-                      <Icon name="settings" size={15} />
-                      <span>Space setting</span>
-                    </button>
-                    <button
-                      type="button"
-                      role="menuitem"
-                      className="space-context-delete"
-                      onClick={() => {
-                        setOpenMenuId(null);
-                        setSpaceToDelete(space);
-                      }}
-                    >
-                      <Icon name="trash" size={15} />
-                      <span>Delete space</span>
-                    </button>
-                  </div>
+                {openMenuId === space.id && menuPosition && createPortal(
+                  <div className="space-context-menu" role="menu" ref={menuRef} style={{ top: menuPosition.top, left: menuPosition.left }}>
+                    {/* Project settings need the "Project Setting" permission. */}
+                    {canInSpace(space, 'project.setting') && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          onOpenSpaceSettings(space);
+                        }}
+                      >
+                        <Icon name="settings" size={15} />
+                        <span>Space setting</span>
+                      </button>
+                    )}
+                    {/* Only the project owner or an administrator may delete a project. */}
+                    {space.permissions?.manage && (
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="space-context-delete"
+                        onClick={() => {
+                          setOpenMenuId(null);
+                          setSpaceToDelete(space);
+                        }}
+                      >
+                        <Icon name="trash" size={15} />
+                        <span>Delete space</span>
+                      </button>
+                    )}
+                  </div>,
+                  document.body
                 )}
               </div>
             )) : (
               <div className="spaces-empty">No spaces yet</div>
             )}
+            {spaces.length > sidebarSpaces.length && (
+              <button type="button" className="sidebar-more-link" onClick={() => navigate('spaceInvolved')}>
+                <span>Show more spaces</span>
+                <Icon name="chevronsRight" size={14} />
+              </button>
+            )}
+          </div>
+        )}
+
+        <div className="sidebar-divider" role="separator" />
+
+        {/* Filters: Search work items + View all filters. */}
+        <div className={`spaces-nav-row ${activeSection === 'Filters' && !filtersExpanded ? 'spaces-nav-row-active' : ''}`}>
+          <button
+            type="button"
+            className="spaces-main-toggle"
+            onClick={() => {
+              if (sidebarCollapsed) { navigate('filterSearch'); return; }
+              setFiltersExpanded((current) => !current);
+            }}
+            aria-expanded={filtersExpanded}
+            title="Filters"
+            data-tip="Filters"
+          >
+            <Icon name="filter" />
+            <span className="nav-label">Filters</span>
+          </button>
+          <div className="spaces-nav-actions">
+            <button
+              type="button"
+              className={`spaces-chevron-button ${filtersExpanded ? 'is-expanded' : ''}`}
+              onClick={() => setFiltersExpanded((current) => !current)}
+              aria-label={filtersExpanded ? 'Collapse Filters' : 'Expand Filters'}
+              aria-expanded={filtersExpanded}
+            >
+              <Icon name="chevron" size={15} />
+            </button>
+          </div>
+        </div>
+
+        {filtersExpanded && !sidebarCollapsed && (
+          <div className="spaces-submenu sidebar-filters" aria-label="Filters">
+            {[
+              { view: 'search', page: 'filterSearch', icon: 'search', label: 'Search work items' },
+              { view: 'all', page: 'filters', icon: 'list', label: 'View all filters' }
+            ].map((item) => {
+              const active = activeSection === 'Filters' && activeFilterView === item.view;
+              return (
+                <div className={`space-item-row ${active ? 'space-item-row-active' : ''}`} key={item.view}>
+                  <button
+                    type="button"
+                    className={`space-item space-item-button ${active ? 'space-item-active' : ''}`}
+                    onClick={() => navigate(item.page)}
+                    aria-current={active ? 'page' : undefined}
+                  >
+                    <span className="sidebar-dashboard-icon"><Icon name={item.icon} size={15} /></span>
+                    <span className="space-item-name">{item.label}</span>
+                  </button>
+                </div>
+              );
+            })}
           </div>
         )}
 
         <button
           type="button"
-          className={`nav-item nav-item-button ${activeSection === 'Filter' ? 'nav-item-active' : ''}`}
-          onClick={() => navigate('filter')}
-          aria-current={activeSection === 'Filter' ? 'page' : undefined}
+          className={`nav-item nav-item-button ${activeSection === 'Timesheet' ? 'nav-item-active' : ''}`}
+          onClick={() => navigate('timesheet')}
+          aria-current={activeSection === 'Timesheet' ? 'page' : undefined}
+          data-tip="Timesheet"
         >
-          <Icon name="filter" />
-          <span>Filter</span>
+          <Icon name="clock" />
+          <span className="nav-label">Timesheet</span>
         </button>
       </nav>
 
       <div className="sidebar-bottom">
-        <div className="workspace-profile">
+        <div className="workspace-profile" data-tip="TASKFLOW · Personal workspace">
           <div className="workspace-avatar">T</div>
-          <div>
+          <div className="workspace-text">
             <strong>TASKFLOW</strong>
             <span>Personal workspace</span>
           </div>

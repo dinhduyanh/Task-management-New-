@@ -1,6 +1,14 @@
 import { useMemo, useRef, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Icon from '../../components/common/Icon';
+import { CalendarPopover } from '../../components/common/DatePicker';
+import { PeopleSettings } from './SpacePeople';
+import PermissionsSettings from './SpacePermissions';
+import Toast from '../../components/common/Toast';
+import { canInSpace } from '../../services/projectPermissions';
+import { PROJECT_FEATURES, isFeatureVisible } from '../SpacesList/projectNavigation';
+import WorkflowSettings from './SpaceWorkflows';
+import WorkItemsSettings from './SpaceWorkItems';
 import './SpaceSettings.css';
 
 const SETTINGS_ITEMS = [
@@ -10,15 +18,6 @@ const SETTINGS_ITEMS = [
   { label: 'Features', icon: 'dashboard' },
   { label: 'Workflow', icon: 'workflow' },
   { label: 'Work Items', icon: 'tasks' }
-];
-
-const ISSUE_TYPES = ['Epic', 'Task', 'Bug', 'Improvement', 'Story', 'Sub-task', 'Feature'];
-const WORKFLOW_STATUSES = [
-  { label: 'Backlog', tone: 'backlog' },
-  { label: 'To Do', tone: 'todo' },
-  { label: 'In Progress', tone: 'progress' },
-  { label: 'In Review', tone: 'review' },
-  { label: 'Done', tone: 'done' }
 ];
 
 function parseDate(value) {
@@ -50,27 +49,16 @@ function formatDate(value) {
   return new Intl.DateTimeFormat('en-GB', { day: '2-digit', month: '2-digit', year: 'numeric' }).format(date);
 }
 
-function initials(name) {
-  const words = String(name || '').trim().split(/\s+/).filter(Boolean);
-  if (!words.length) return '—';
-  return words.length === 1 ? words[0].slice(0, 2).toUpperCase() : `${words[0][0]}${words[words.length - 1][0]}`.toUpperCase();
-}
-
 function SettingsDateField({ id, label, value, onChange, required = false, error }) {
-  const dateRef = useRef(null);
-  function openPicker() {
-    const input = dateRef.current;
-    if (!input) return;
-    if (typeof input.showPicker === 'function') input.showPicker();
-    else { input.focus(); input.click(); }
-  }
+  const [controlEl, setControlEl] = useState(null);
+  const [calendarOpen, setCalendarOpen] = useState(false);
 
   return (
     <div className="settings-form-field">
       <label className="settings-field-label" htmlFor={`${id}-text`}>
         {label}{required && <span className="settings-required"> *</span>}
       </label>
-      <div className={`settings-date-control ${error ? 'has-error' : ''}`}>
+      <div ref={setControlEl} className={`settings-date-control ${error ? 'has-error' : ''}`}>
         <input
           id={`${id}-text`}
           type="text"
@@ -91,18 +79,17 @@ function SettingsDateField({ id, label, value, onChange, required = false, error
         {value && (
           <button type="button" className="settings-date-clear" onClick={() => onChange('')} aria-label={`Clear ${label}`}>×</button>
         )}
-        <button type="button" className="settings-date-picker-button" onClick={openPicker} aria-label={`Choose ${label}`}>
+        <button type="button" className="settings-date-picker-button" onClick={() => setCalendarOpen((open) => !open)} aria-label={`Choose ${label}`} aria-haspopup="dialog" aria-expanded={calendarOpen}>
           <Icon name="calendar" size={16} />
         </button>
-        <input
-          ref={dateRef}
-          className="settings-native-date"
-          type="date"
-          value={toIsoDate(value)}
-          onChange={(event) => onChange(fromIsoDate(event.target.value))}
-          tabIndex={-1}
-          aria-hidden="true"
-        />
+        {calendarOpen && (
+          <CalendarPopover
+            anchorEl={controlEl}
+            value={toIsoDate(value)}
+            onSelect={(iso) => onChange(fromIsoDate(iso))}
+            onClose={() => setCalendarOpen(false)}
+          />
+        )}
       </div>
       {error && <span className="settings-field-error">{error}</span>}
     </div>
@@ -112,12 +99,12 @@ function SettingsDateField({ id, label, value, onChange, required = false, error
 function SettingsSidebar({ space, activeTab, onTabChange, onBack }) {
   return (
     <aside className="space-settings-sidebar">
-      <button type="button" className="settings-back-link" onClick={onBack}>
+      <button type="button" className="settings-back-link" onClick={onBack} title="Back">
         <Icon name="arrowLeft" size={17} />
         <span>Space settings</span>
       </button>
 
-      <div className="settings-space-identity">
+      <div className="settings-space-identity" title={space.name || space.code || ''}>
         {space.icon ? <img src={space.icon} alt="" /> : <span>{(space.name || space.code || 'S').charAt(0).toUpperCase()}</span>}
         <div>
           <strong>{space.name || 'Untitled Space'}</strong>
@@ -133,6 +120,7 @@ function SettingsSidebar({ space, activeTab, onTabChange, onBack }) {
             className={`settings-nav-item ${activeTab === item.label ? 'active' : ''}`}
             onClick={() => onTabChange(item.label)}
             aria-current={activeTab === item.label ? 'page' : undefined}
+            title={item.label}
           >
             <Icon name={item.icon} size={16} />
             <span>{item.label}</span>
@@ -301,102 +289,93 @@ function SummarySettings({ space, onSave }) {
   );
 }
 
-function PeopleSettings({ space }) {
-  const members = Array.isArray(space.members) ? space.members : [];
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>People</h1><p>People who have access to this space.</p></div>
-      <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Space members</strong><span>{members.length} members</span></div>
-        {members.length ? members.map((member, index) => {
-          const memberName = member.name || member.fullName || 'Unnamed member';
-          return <div className="settings-member-row" key={member.id || `${memberName}-${index}`}><span className="settings-member-avatar">{member.initials || initials(memberName)}</span><div className="settings-member-name"><strong>{memberName}</strong><small>{member.role || 'Member'}</small></div><span className="settings-member-role">{member.role || 'Member'}</span></div>;
-        }) : <div className="settings-empty-state">No members have been added to this space yet.</div>}
-      </div>
-    </section>
-  );
-}
+function FeaturesSettings({ space = {}, onSetFeatures = async () => '' }) {
+  const canEdit = canInSpace(space, 'project.setting');
+  // Optimistic ticks while a change is being saved: { [featureKey]: enabled }.
+  const [pending, setPending] = useState({});
+  const [toast, setToast] = useState(null);
+  const shown = (feature) => (feature.key in pending ? pending[feature.key] : isFeatureVisible(space, feature.key));
+  const visibleCount = PROJECT_FEATURES.filter(shown).length;
 
-function PermissionsSettings() {
-  const roles = [
-    ['Owner', 'Full control over space settings, members and work items.'],
-    ['Project Manager', 'Manage project work, members and project-level configuration.'],
-    ['Member', 'Create and update work items according to assigned permissions.'],
-    ['Viewer', 'View project information and work items.']
-  ];
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Permissions</h1><p>Review the roles used to manage access within this space.</p></div>
-      <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Project roles</strong><span>Role overview</span></div>
-        {roles.map(([role, description]) => <div className="settings-role-row" key={role}><span className="settings-role-icon"><Icon name="shield" size={17} /></span><div><strong>{role}</strong><p>{description}</p></div></div>)}
-        <p className="settings-note">Permission rules and role assignments will be configurable when the authorization module is implemented.</p>
-      </div>
-    </section>
-  );
-}
+  async function toggle(feature, enabled) {
+    if (!canEdit || feature.locked) return;
+    setPending((current) => ({ ...current, [feature.key]: enabled }));
+    const message = await onSetFeatures({ [feature.key]: enabled });
+    setPending((current) => {
+      const next = { ...current };
+      delete next[feature.key];
+      return next;
+    });
+    setToast(message
+      ? { type: 'error', message }
+      : { type: 'success', message: enabled ? `${feature.key} is shown in this project.` : `${feature.key} is hidden from this project.` });
+  }
 
-function FeaturesSettings() {
-  const features = [
-    ['Summary', 'Project overview and key metrics.'],
-    ['Timeline', 'View project work across a timeline.'],
-    ['Board', 'Manage work items on a visual board.'],
-    ['List', 'View and manage work items in a list.'],
-    ['Backlog', 'Prioritize and organize upcoming work.'],
-    ['Active Sprints', 'Plan and track active sprints.'],
-    ['Teams', 'View project teams and members.']
-  ];
   return (
     <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Features</h1><p>Features available in this project.</p></div>
-      <div className="settings-section-card">
-        {features.map(([name, description], index) => <div className="settings-feature-row" key={name}><span className="settings-feature-number">{String(index + 1).padStart(2, '0')}</span><div><strong>{name}</strong><p>{description}</p></div><span className="settings-feature-state">Available</span></div>)}
+      <div className="settings-content-heading">
+        <h1>Features</h1>
+        <p>Choose which features appear in this project&apos;s tab bar. Unticked features are hidden for everyone in the project.</p>
       </div>
-    </section>
-  );
-}
-
-function WorkflowSettings() {
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Workflow</h1><p>Overview of the work item lifecycle for this space.</p></div>
       <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Default workflow</strong><span>Workflow overview</span></div>
-        <div className="settings-workflow-list">
-          {WORKFLOW_STATUSES.map((status, index) => <div className="settings-workflow-step" key={status.label}><span className={`settings-workflow-dot ${status.tone}`}>{index + 1}</span><strong>{status.label}</strong>{index < WORKFLOW_STATUSES.length - 1 && <span className="settings-workflow-connector" />}</div>)}
+        <div className="settings-section-card-header">
+          <strong>Project features</strong>
+          <span>{visibleCount} of {PROJECT_FEATURES.length} shown</span>
         </div>
-        <div className="settings-workflow-extras"><span className="settings-workflow-chip blocked">Blocked</span><span className="settings-workflow-chip cancelled">Cancel</span><small>Additional workflow states</small></div>
-        <p className="settings-note">Workflow editing and transition rules will be added in a later implementation step.</p>
+        <ul className="settings-feature-list">
+          {PROJECT_FEATURES.map((feature) => {
+            const checked = shown(feature);
+            const disabled = !canEdit || feature.locked || feature.key in pending;
+            const id = `feature-${feature.key.replace(/\s+/g, '-').toLowerCase()}`;
+            return (
+              <li key={feature.key} className={`settings-feature-row ${checked ? '' : 'is-hidden'} ${disabled ? '' : 'is-editable'}`}>
+                <label htmlFor={id} className="settings-feature-main">
+                  <span className={`settings-feature-icon tone-${feature.tone}`} aria-hidden="true"><Icon name={feature.icon} size={18} /></span>
+                  <span className="settings-feature-text">
+                    <strong>{feature.key}</strong>
+                    <span>{feature.description}</span>
+                  </span>
+                </label>
+                <span className={`settings-feature-state ${feature.locked ? 'is-locked' : checked ? 'is-on' : 'is-off'}`}>
+                  {feature.locked ? <><Icon name="lock" size={11} /> Always on</> : checked ? 'Visible' : 'Hidden'}
+                </span>
+                <input
+                  id={id}
+                  type="checkbox"
+                  className="settings-feature-check"
+                  checked={checked}
+                  disabled={disabled}
+                  onChange={(event) => toggle(feature, event.target.checked)}
+                  aria-label={`Show ${feature.key} in this project`}
+                  title={feature.locked ? 'Summary is the project home and is always shown.' : !canEdit ? 'You need the Project Setting permission to change features.' : checked ? `Hide ${feature.key}` : `Show ${feature.key}`}
+                />
+              </li>
+            );
+          })}
+        </ul>
+        <p className="settings-note">
+          {canEdit
+            ? 'Hidden features disappear from the project tab bar; their data is kept and comes back when you tick them again.'
+            : 'Only members with the Project Setting permission can show or hide features.'}
+        </p>
       </div>
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </section>
   );
 }
 
-function WorkItemsSettings() {
-  return (
-    <section className="settings-secondary-content">
-      <div className="settings-content-heading"><h1>Work Items</h1><p>Issue types that can be used in this space.</p></div>
-      <div className="settings-section-card">
-        <div className="settings-section-card-header"><strong>Issue types</strong><span>{ISSUE_TYPES.length} types</span></div>
-        <div className="settings-issue-types">{ISSUE_TYPES.map((type) => <div className="settings-issue-type" key={type}><span className="settings-issue-type-icon"><Icon name={type === 'Bug' ? 'bug' : 'tasks'} size={16} /></span><strong>{type}</strong></div>)}</div>
-        <p className="settings-note">Issue type creation and configuration will be connected to the work item module.</p>
-      </div>
-    </section>
-  );
-}
-
-export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {} }) {
+export default function SpaceSettings({ space = {}, spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}, onBack = () => {}, onSave = () => {}, onAddMember = async () => '', onAddMembers = async () => '', onRemoveMember = async () => '', onSetFeatures = async () => '' }) {
   const [activeTab, setActiveTab] = useState('Summary');
   const pageContent = useMemo(() => {
     switch (activeTab) {
-      case 'People': return <PeopleSettings space={space} />;
-      case 'Permissions': return <PermissionsSettings />;
-      case 'Features': return <FeaturesSettings />;
-      case 'Workflow': return <WorkflowSettings />;
-      case 'Work Items': return <WorkItemsSettings />;
+      case 'People': return <PeopleSettings space={space} onAddMember={onAddMember} onAddMembers={onAddMembers} onRemoveMember={onRemoveMember} />;
+      case 'Permissions': return <PermissionsSettings space={space} />;
+      case 'Features': return <FeaturesSettings space={space} onSetFeatures={onSetFeatures} />;
+      case 'Workflow': return <WorkflowSettings key={space.id} space={space} />;
+      case 'Work Items': return <WorkItemsSettings key={space.id} space={space} />;
       default: return <SummarySettings key={space.id} space={space} onSave={onSave} />;
     }
-  }, [activeTab, onSave, space]);
+  }, [activeTab, onSave, onAddMember, onAddMembers, onRemoveMember, onSetFeatures, space]);
 
   return (
     <div className="space-settings-shell">

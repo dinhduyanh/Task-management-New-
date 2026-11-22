@@ -12,13 +12,34 @@ export const MORE_FILTER_FIELDS = [
   { value: 'Difficulty', label: 'Difficulty' }
 ];
 
+// Work items from the backend may store people as objects
+// ({ id, name, fullName, ... }) or as plain strings, depending on where they
+// were created. Always read them through these helpers before rendering.
+export function getPersonName(value) {
+  if (!value) return '';
+  if (typeof value === 'string') return value;
+  return String(value.fullName || value.name || value.username || value.email || '');
+}
+
+export function getAssigneeName(task) {
+  return getPersonName(task?.assignee) || getPersonName(task?.assigneeName);
+}
+
+export function getTaskCode(task) {
+  return String(task?.code || task?.key || task?.taskCode || '');
+}
+
+export function getTaskTitle(task) {
+  return String(task?.title || task?.summary || task?.name || task?.workName || '');
+}
+
+export function getTaskType(task) {
+  return String(task?.issueType || task?.type || 'Task');
+}
+
 const FIELD_VALUE_GETTERS = {
-  Work: (task) => {
-    const code = task.code || task.key || '';
-    const title = task.title || task.name || task.workName || '';
-    return [code, title].filter(Boolean).join(' — ');
-  },
-  Assignee: (task) => task.assignee || task.assigneeName || '',
+  Work: (task) => [getTaskCode(task), getTaskTitle(task)].filter(Boolean).join(' — '),
+  Assignee: getAssigneeName,
   'Create Date': (task) => task.createdAt || task.created || task.createDate || '',
   'Updated Date': (task) => task.updatedAt || task.updated || task.updatedDate || task.lastUpdated || '',
   'Start Date': (task) => task.startDate || task.start || '',

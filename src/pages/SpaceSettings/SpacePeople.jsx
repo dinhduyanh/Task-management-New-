@@ -1,0 +1,420 @@
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import Icon from '../../components/common/Icon';
+import UserAvatar from '../../components/common/UserAvatar';
+import { useAppShell } from '../../context/appShellContext';
+import { api } from '../../services/api';
+import { useProjectPermissions } from '../../services/projectPermissions';
+import { ConfirmModal } from '../SpaceBacklog/SprintModals';
+import SettingsModal from '../SystemSettings/SettingsModal';
+
+const ADMIN_PROJECT = 'Admin Project';
+
+/** Project roles that can be given to members: never "All Member" (implicit); "Admin Project" only by project admins. */
+function useProjectRoles(isProjectAdmin) {
+  const [allRoles, setRoles] = useState(null);
+  const [error, setError] = useState('');
+  useEffect(() => {
+    let active = true;
+    api.getProjectRoles()
+      .then((rows) => { if (active) setRoles(rows); })
+      .catch((loadError) => { if (active) { setRoles([]); setError(loadError.message); } });
+    return () => { active = false; };
+  }, []);
+  const roles = allRoles && allRoles.filter((role) => (role.isSystem ? role.name === ADMIN_PROJECT && isProjectAdmin : true));
+  return { roles, error };
+}
+
+function memberRoles(member) {
+  if (Array.isArray(member.roles) && member.roles.length) return member.roles;
+  return member.role ? String(member.role).split(',').map((role) => role.trim()).filter(Boolean) : [];
+}
+
+function RoleChecklist({ roles, value, onChange, disabled = false, idPrefix }) {
+  function toggle(name) {
+    onChange(value.includes(name) ? value.filter((role) => role !== name) : [...value, name]);
+  }
+  return (
+    <div className="sp-role-checks" role="group" aria-label="Project roles">
+      {roles.map((role) => (
+        <label key={role.id} className={`sp-role-check ${value.includes(role.name) ? 'active' : ''}`} title={role.description || role.name}>
+          <input id={`${idPrefix}-${role.id}`} type="checkbox" checked={value.includes(role.name)} disabled={disabled} onChange={() => toggle(role.name)} />
+          <span>{role.name}</span>
+        </label>
+      ))}
+    </div>
+  );
+}
+
+/**
+ * Suggestions for the "Add people" picker (people not in the project yet): fetched while the list
+ * is open, for the typed text (empty = everyone). The server puts the signed-in user first, sorts
+ * the rest A -> Z and returns at most 10, leaving out the people already picked (`excludeIds`).
+ */
+function useCandidateSearch(spaceId, query, enabled, excludeIds) {
+  const [state, setState] = useState({ key: '', results: [], error: '' });
+  const needle = query.trim();
+  const exclude = excludeIds.join(',');
+  const key = `${needle}|${exclude}`;
+  useEffect(() => {
+    if (!enabled) return undefined;
+    let active = true;
+    const timer = setTimeout(() => {
+      api.searchMemberCandidates(spaceId, needle, exclude ? exclude.split(',') : [])
+        .then((rows) => { if (active) setState({ key, results: rows || [], error: '' }); })
+        .catch((loadError) => { if (active) setState({ key, results: [], error: loadError.message }); });
+    }, needle ? 160 : 0);
+    return () => { active = false; clearTimeout(timer); };
+  }, [spaceId, needle, exclude, key, enabled]);
+  const loading = enabled && state.key !== key;
+  return { results: loading ? [] : state.results, loading, error: loading ? '' : state.error };
+}
+
+/** "Add people": find people by typing (autocomplete), pick several as chips, tick one or more roles. */
+function AddPeopleModal({ space, roles, onAdd, onClose }) {
+  const [query, setQuery] = useState('');
+  const [open, setOpen] = useState(false);
+  const [active, setActive] = useState(0);
+  const [selected, setSelected] = useState([]); // user objects
+  const [chosenRoles, setChosenRoles] = useState([]); // optional: no role = member with the implicit All Member role
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const inputRef = useRef(null);
+  const { results, loading, error: searchError } = useCandidateSearch(space.id, query, open, selected.map((user) => user.id));
+  const options = results.filter((user) => !selected.some((item) => item.id === user.id)).slice(0, 10);
+  const showDropdown = open; // opens on click, filters as you type
+  // The list is drawn in a portal with fixed positioning so the dialog body never clips it.
+  const fieldRef = useRef(null);
+  const [listPos, setListPos] = useState(null);
+  const placeList = useCallback(() => {
+    const rect = fieldRef.current?.getBoundingClientRect();
+    if (!rect) return;
+    const below = window.innerHeight - rect.bottom - 12;
+    const above = rect.top - 12;
+    const up = below < 220 && above > below;
+    const maxHeight = Math.max(160, Math.min(456, up ? above : below));
+    setListPos({ left: rect.left, width: rect.width, maxHeight, ...(up ? { bottom: window.innerHeight - rect.top + 2 } : { top: rect.bottom + 2 }) });
+  }, []);
+  useLayoutEffect(() => { if (showDropdown) placeList(); }, [showDropdown, placeList, selected.length]);
+  useEffect(() => {
+    if (!showDropdown) return undefined;
+    window.addEventListener('resize', placeList);
+    window.addEventListener('scroll', placeList, true);
+    return () => { window.removeEventListener('resize', placeList); window.removeEventListener('scroll', placeList, true); };
+  }, [showDropdown, placeList]);
+  const activeIndex = Math.min(active, Math.max(options.length - 1, 0));
+  const allRolesChecked = roles.length > 0 && roles.every((item) => chosenRoles.includes(item.name));
+
+  function pick(user) {
+    setSelected((current) => [...current, user]);
+    setQuery('');
+    setActive(0);
+    setError('');
+    setOpen(false); // the list would cover the roles; click or type to add more people
+    inputRef.current?.focus();
+  }
+
+  function unpick(id) {
+    setSelected((current) => current.filter((user) => user.id !== id));
+    inputRef.current?.focus();
+  }
+
+  function toggleRole(name) {
+    setChosenRoles((current) => (current.includes(name) ? current.filter((role) => role !== name) : [...current, name]));
+    setError('');
+  }
+
+  function onKeyDown(event) {
+    if (event.key === 'ArrowDown') { event.preventDefault(); setOpen(true); setActive((index) => Math.min(index + 1, options.length - 1)); }
+    else if (event.key === 'ArrowUp') { event.preventDefault(); setActive((index) => Math.max(index - 1, 0)); }
+    else if (event.key === 'Enter') {
+      event.preventDefault(); // never submit the form from the search box
+      if (showDropdown && options[activeIndex]) pick(options[activeIndex]);
+    } else if (event.key === 'Escape' && showDropdown) {
+      event.preventDefault(); // close the list, not the dialog
+      setOpen(false);
+    } else if (event.key === 'Backspace' && !query && selected.length) {
+      setSelected((current) => current.slice(0, -1));
+    }
+  }
+
+  async function submit() {
+    if (!selected.length) return setError('Choose at least one person.');
+    setSaving(true);
+    setError('');
+    const message = await onAdd({ userIds: selected.map((user) => user.id), roles: chosenRoles });
+    setSaving(false);
+    if (message) return setError(message);
+    onClose(selected.length);
+  }
+
+  const listId = 'sp-people-options';
+  return (
+    <SettingsModal
+      title="Add people"
+      onClose={() => onClose(0)}
+      onSubmit={submit}
+      footer={<>
+        {error && <span className="ss-form-error" role="alert">{error}</span>}
+        <button type="button" className="ss-button" onClick={() => onClose(0)}>Cancel</button>
+        <button type="submit" className="ss-button is-primary" disabled={saving || !selected.length}>
+          {saving ? 'Adding…' : selected.length ? `Add ${selected.length} ${selected.length === 1 ? 'person' : 'people'}` : 'Add'}
+        </button>
+      </>}
+    >
+      <div className="sp-people-form">
+        <div className="sp-field">
+          <span id="sp-people-label">User <b className="sp-required">*</b></span>
+          <div className="sp-combo">
+            <div ref={fieldRef} className={`sp-tag-input ${showDropdown ? 'is-open' : ''}`} onMouseDown={(event) => { if (event.target === event.currentTarget || event.target.closest('.sp-tag-chevron')) { event.preventDefault(); inputRef.current?.focus(); setOpen(true); } }}>
+              {selected.map((user) => (
+                <span className="sp-chip" key={user.id}>
+                  <UserAvatar user={user} size={20} />
+                  <span className="sp-chip-name">{user.fullName || user.username}</span>
+                  <button type="button" onClick={() => unpick(user.id)} aria-label={`Remove ${user.fullName || user.username}`}><Icon name="close" size={11} /></button>
+                </span>
+              ))}
+              <input
+                ref={inputRef}
+                autoFocus
+                value={query}
+                onChange={(event) => { setQuery(event.target.value); setOpen(true); setActive(0); }}
+                onMouseDown={() => setOpen(true)}
+                onBlur={() => setOpen(false)}
+                onKeyDown={onKeyDown}
+                placeholder={selected.length ? 'Add more…' : 'Select'}
+                role="combobox"
+                aria-labelledby="sp-people-label"
+                aria-autocomplete="list"
+                aria-expanded={showDropdown}
+                aria-controls={listId}
+                aria-activedescendant={showDropdown && options[activeIndex] ? `sp-opt-${options[activeIndex].id}` : undefined}
+              />
+              <Icon name="chevron" size={14} className="sp-tag-chevron" />
+            </div>
+            {showDropdown && listPos && createPortal(
+              <ul className="sp-dropdown is-floating" id={listId} role="listbox" aria-label="Matching people" style={listPos} onMouseDown={(event) => event.preventDefault()}>
+                {loading && <li className="sp-dropdown-status"><span className="sp-spinner" aria-hidden="true" /> Searching…</li>}
+                {!loading && searchError && <li className="sp-dropdown-status is-error">{searchError}</li>}
+                {!loading && !searchError && !options.length && (
+                  <li className="sp-dropdown-status is-empty" role="status">
+                    <Icon name="user" size={16} />
+                    {query.trim()
+                      ? <span><strong>User not found</strong><small>No one outside this project matches “{query.trim()}”.</small></span>
+                      : <span><strong>No one to add</strong><small>Everyone is already in this project.</small></span>}
+                  </li>
+                )}
+                {!loading && options.map((user, index) => (
+                  <li
+                    key={user.id}
+                    id={`sp-opt-${user.id}`}
+                    role="option"
+                    aria-selected={index === activeIndex}
+                    className={`sp-dropdown-option ${index === activeIndex ? 'is-active' : ''}`}
+                    onMouseEnter={() => setActive(index)}
+                    onClick={() => pick(user)}
+                  >
+                    <UserAvatar user={user} size={28} />
+                    <span className="sp-user-text">
+                      <strong>{user.fullName || user.username}{user.isCurrentUser && <span className="sp-current-tag">Current user</span>}</strong>
+                      <small>@{user.username}{user.email ? ` · ${user.email}` : ''}</small>
+                    </span>
+                    <Icon name="plus" size={14} />
+                  </li>
+                ))}
+              </ul>,
+              document.body
+            )}
+          </div>
+          <small className="sp-hint">{selected.length ? `${selected.length} selected · ` : ''}Type a name, username or email to find people who are not in this project yet.</small>
+        </div>
+
+        <div className="sp-field sp-role-field">
+          <div className="sp-role-head">
+            <span id="sp-roles-label">Role <small className="sp-optional">(optional)</small></span>
+            {roles.length > 1 && (
+              <label className="sp-select-all">
+                <input
+                  type="checkbox"
+                  checked={allRolesChecked}
+                  ref={(el) => { if (el) el.indeterminate = !allRolesChecked && chosenRoles.length > 0; }}
+                  onChange={() => { setChosenRoles(allRolesChecked ? [] : roles.map((item) => item.name)); setError(''); }}
+                />
+                Select all role
+              </label>
+            )}
+          </div>
+          <div className="sp-role-list" role="group" aria-labelledby="sp-roles-label">
+            {roles.map((item) => {
+              const checked = chosenRoles.includes(item.name);
+              return (
+                <label key={item.id} className={`sp-role-row ${checked ? 'is-checked' : ''}`} title={item.description || item.name}>
+                  <input type="checkbox" checked={checked} onChange={() => toggleRole(item.name)} />
+                  <span className="sp-role-name">{item.name}</span>
+                  {item.description && <span className="sp-role-desc">{item.description}</span>}
+                </label>
+              );
+            })}
+          </div>
+          <small className="sp-hint">{chosenRoles.length
+            ? `${chosenRoles.length} role${chosenRoles.length === 1 ? '' : 's'} selected · every person you add gets all ticked roles.`
+            : 'No role ticked: people join as members (All Member) and you can give roles later.'}</small>
+        </div>
+      </div>
+    </SettingsModal>
+  );
+}
+
+function MemberRow({ member, space, roles, canManage, isProjectAdmin, onAdd, onRemove }) {
+  const { user: currentUser, users = [] } = useAppShell();
+  const userId = member.userId || member.id;
+  // The account of the member (from the user directory) carries their uploaded picture.
+  const account = String(currentUser?.id) === String(userId) ? currentUser : users.find((item) => String(item.id) === String(userId));
+  const isOwner = Boolean(space.ownerId) && space.ownerId === userId;
+  const current = memberRoles(member);
+  // Only project admins may change or remove another project admin.
+  const lockedAdmin = current.includes(ADMIN_PROJECT) && !isProjectAdmin;
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(current);
+  const [error, setError] = useState('');
+  const [saving, setSaving] = useState(false);
+  const name = member.name || member.fullName || member.username || 'Unnamed member';
+
+  async function save() {
+    if (!draft.length) return setError('Choose at least one project role.');
+    setSaving(true);
+    const message = await onAdd({ userId, roles: draft });
+    setSaving(false);
+    if (message) return setError(message);
+    setError('');
+    setEditing(false);
+  }
+
+  return (
+    <div className="sp-member">
+      <div className="sp-member-main">
+        <UserAvatar user={{ ...account, fullName: name }} size={34} />
+        <div className="sp-member-name">
+          <strong>
+            {name}
+            {isOwner && <span className="sp-tag is-owner">Owner</span>}
+            {currentUser?.id === userId && <span className="sp-tag">You</span>}
+          </strong>
+          <small>{member.email || member.username || ''}</small>
+        </div>
+        {!editing && (
+          <div className="sp-member-roles">
+            {current.length ? current.map((role) => <span key={role} className="sp-role-chip">{role}</span>) : <span className="sp-role-chip is-empty">No role</span>}
+          </div>
+        )}
+        {canManage && !lockedAdmin && !editing && (
+          <div className="sp-member-actions">
+            <button type="button" className="sp-icon-button" onClick={() => { setDraft(current); setEditing(true); }} aria-label={`Change roles of ${name}`} title="Change roles"><Icon name="edit" size={15} /></button>
+            <button
+              type="button"
+              className="sp-icon-button is-danger"
+              onClick={() => onRemove(member, name)}
+              disabled={isOwner}
+              aria-label={`Remove ${name}`}
+              title={isOwner ? 'The project owner cannot be removed' : 'Remove from project'}
+            >
+              <Icon name="trash" size={15} />
+            </button>
+          </div>
+        )}
+      </div>
+      {editing && (
+        <div className="sp-member-edit">
+          <RoleChecklist roles={roles} value={draft} onChange={setDraft} idPrefix={`sp-role-${userId}`} />
+          {error && <p className="sp-error" role="alert">{error}</p>}
+          <div className="sp-member-edit-actions">
+            <button type="button" className="sp-button" onClick={() => { setEditing(false); setError(''); }}>Cancel</button>
+            <button type="button" className="sp-button is-primary" onClick={save} disabled={saving}>{saving ? 'Saving…' : 'Save roles'}</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function PeopleSettings({ space, onAddMember, onAddMembers, onRemoveMember }) {
+  const members = Array.isArray(space.members) ? space.members : [];
+  const { can, isProjectAdmin } = useProjectPermissions(space);
+  const canManage = can('project.setting');
+  const { roles, error: rolesError } = useProjectRoles(isProjectAdmin);
+  const [confirm, setConfirm] = useState(null);
+  const [notice, setNotice] = useState('');
+  const [addOpen, setAddOpen] = useState(false);
+  const [added, setAdded] = useState(0);
+
+  // Legacy members (created before accounts were linked) have no real user id.
+  const linked = (member) => Boolean(member.userId || member.username || member.email);
+
+  return (
+    <section className="settings-secondary-content">
+      <div className="settings-content-heading">
+        <h1>People</h1>
+        <p>{canManage ? 'People in this project and their project roles. Only members can see the project.' : 'People who have access to this project. Only people with the Project Setting permission can change members.'}</p>
+      </div>
+
+      <div className="settings-section-card sp-card">
+        <div className="settings-section-card-header">
+          <strong>Project members <span className="sp-count">{members.length}</span></strong>
+          {canManage && (
+            <button type="button" className="sp-button is-primary" onClick={() => setAddOpen(true)} disabled={roles === null}>
+              <Icon name="plus" size={14} /> Add people
+            </button>
+          )}
+        </div>
+        {added > 0 && <p className="sp-success sp-pad" role="status">{added} {added === 1 ? 'person was' : 'people were'} added to the project.</p>}
+        {rolesError && <p className="sp-error sp-pad" role="alert">{rolesError}</p>}
+        {notice && <p className="sp-error sp-pad" role="alert">{notice}</p>}
+        {members.length ? members.map((member, index) => (
+          linked(member) ? (
+            <MemberRow
+              key={member.userId || member.id || index}
+              member={member}
+              space={space}
+              roles={roles || []}
+              canManage={canManage && roles !== null}
+              isProjectAdmin={isProjectAdmin}
+              onAdd={onAddMember}
+              onRemove={(target, name) => setConfirm({ target, name })}
+            />
+          ) : (
+            <div className="sp-member is-legacy" key={member.id || index}>
+              <div className="sp-member-main">
+                <UserAvatar user={{ fullName: member.name || 'Member' }} size={34} />
+                <div className="sp-member-name"><strong>{member.name || 'Unnamed member'}</strong><small>Not linked to an account — add the person again to give them access.</small></div>
+                <div className="sp-member-roles"><span className="sp-role-chip is-empty">{member.role || 'Member'}</span></div>
+              </div>
+            </div>
+          )
+        )) : <div className="settings-empty-state">No members have been added to this project yet.</div>}
+      </div>
+
+      {addOpen && roles && (
+        <AddPeopleModal
+          space={space}
+          roles={roles}
+          onAdd={onAddMembers}
+          onClose={(count) => { setAddOpen(false); if (count) setAdded(count); }}
+        />
+      )}
+
+      {confirm && (
+        <ConfirmModal
+          title={`Remove ${confirm.name}?`}
+          message="They will lose access to this project and its work items."
+          confirmLabel="Remove"
+          onClose={() => setConfirm(null)}
+          onConfirm={async () => {
+            const target = confirm.target;
+            setConfirm(null);
+            setNotice(await onRemoveMember(target.userId || target.id));
+          }}
+        />
+      )}
+    </section>
+  );
+}

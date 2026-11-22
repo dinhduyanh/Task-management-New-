@@ -1,9 +1,23 @@
 import { useMemo, useState } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
+import Toast from '../../components/common/Toast';
+import { useAppShell } from '../../context/appShellContext';
+import { spaceOfItem } from '../../services/projectPermissions';
+import { IssueModal, MoveModal, StartTransitionModal } from '../SpacesList/SpacesList';
+import TaskDetailDrawer from '../SpacesList/TaskDetailDrawer';
+import { assigneeName, isInSpace, issueKey } from '../SpacesList/issueHelpers';
+import { validateIssueTransition } from '../SpacesList/workflows';
+import { ConfirmModal } from '../SpaceBacklog/SprintModals';
 import FilterBar from './components/FilterBar';
 import TaskTable from './components/TaskTable';
-import { getTaskFieldOptions, getTaskFieldValue } from './filterFields';
+import {
+  getAssigneeName,
+  getTaskCode,
+  getTaskFieldOptions,
+  getTaskFieldValue,
+  getTaskTitle
+} from './filterFields';
 import './MyTasks.css';
 
 function parseDate(value) {
@@ -51,9 +65,45 @@ function areEqual(first, second) {
   return JSON.stringify(first) === JSON.stringify(second);
 }
 
-export default function MyTasks({ onCreateSpace, onNavigate, onOpenSpaceSettings, onDeleteSpace, onGlobalCreate, onOpenTask, spaces = [], allTasks = [] }) {
-  // My Tasks remains empty until its own backend query is connected.
-  const [tasks] = useState([]);
+const SCOPES = [
+  { id: 'all', label: 'All my projects' },
+  { id: 'assigned', label: 'Assigned to me' },
+  { id: 'created', label: 'Created by me' }
+];
+
+function personId(value) {
+  if (!value) return '';
+  return typeof value === 'object' ? String(value.id || value.userId || '') : String(value);
+}
+
+export default function MyTasks({
+  onCreateSpace, onNavigate, onOpenSpaceSettings, onDeleteSpace, onGlobalCreate, onOpenTask,
+  spaces = [], allTasks = [],
+  onUpdateTask = async () => null,
+  onCreateTask = async () => null,
+  onDeleteTasks = async () => {},
+  onMoveTasks = async () => null
+}) {
+  const { user } = useAppShell();
+  const [scope, setScope] = useState('all');
+  const [detailTaskId, setDetailTaskId] = useState(null);
+  const [createRequest, setCreateRequest] = useState(null); // { space, parentId, allowedIssueTypes }
+  const [moveRequest, setMoveRequest] = useState(null); // { tasks, space, done }
+  const [deleteRequest, setDeleteRequest] = useState(null); // { tasks, done }
+  const [startRequest, setStartRequest] = useState(null); // { task, status }
+  const [startAssigneeId, setStartAssigneeId] = useState('');
+  const [toast, setToast] = useState(null);
+
+  const scopeCounts = useMemo(() => ({
+    all: allTasks.length,
+    assigned: allTasks.filter((task) => personId(task.assignee || task.assigneeId) === String(user?.id)).length,
+    created: allTasks.filter((task) => personId(task.creator || task.creatorId) === String(user?.id)).length
+  }), [allTasks, user]);
+  const tasks = useMemo(() => {
+    if (scope === 'assigned') return allTasks.filter((task) => personId(task.assignee || task.assigneeId) === String(user?.id));
+    if (scope === 'created') return allTasks.filter((task) => personId(task.creator || task.creatorId) === String(user?.id));
+    return allTasks;
+  }, [allTasks, scope, user]);
 
   // Search has its own apply rule: press Enter to run the search.
   const [searchInput, setSearchInput] = useState('');
@@ -122,10 +172,9 @@ export default function MyTasks({ onCreateSpace, onNavigate, onOpenSpaceSettings
 
     const result = tasks.filter((task) => {
       const searchableText = [
-        task.title,
-        task.name,
-        task.code,
-        task.assignee
+        getTaskTitle(task),
+        getTaskCode(task),
+        getAssigneeName(task)
       ]
         .filter(Boolean)
         .join(' ')
@@ -199,6 +248,36 @@ export default function MyTasks({ onCreateSpace, onNavigate, onOpenSpaceSettings
     appliedFieldFilters
   ]);
 
+  const detailTask = detailTaskId === null ? null : allTasks.find((task) => String(task.id) === String(detailTaskId)) || null;
+  const detailSpace = detailTask ? spaceOfItem(spaces, detailTask) : null;
+  const tasksOf = (space) => (space ? allTasks.filter((task) => isInSpace(task, space)) : []);
+
+  function changeStatus(task, status) {
+    const space = spaceOfItem(spaces, task);
+    const result = validateIssueTransition(task, status, tasksOf(space));
+    if (!result.allowed) {
+      setToast({ type: 'error', message: result.reason || 'This transition is not allowed.' });
+      return;
+    }
+    if (status === 'In Progress' && !assigneeName(task)) {
+      setStartRequest({ task, status });
+      setStartAssigneeId('');
+      return;
+    }
+    onUpdateTask(task.id, { status });
+  }
+
+  async function moveTasks(targetId) {
+    const target = spaces.find((space) => String(space.id) === String(targetId));
+    if (!target || !moveRequest) return;
+    const moved = await onMoveTasks(moveRequest.tasks, target);
+    if (moved) {
+      setToast({ type: 'success', message: `${moved.length} work item${moved.length === 1 ? '' : 's'} moved to ${target.name}.` });
+      moveRequest.done?.();
+    }
+    setMoveRequest(null);
+  }
+
   return (
     <div className="app-shell">
       <Header spaces={spaces} tasks={allTasks} onGlobalCreate={onGlobalCreate} onOpenTask={onOpenTask} />
@@ -240,8 +319,97 @@ export default function MyTasks({ onCreateSpace, onNavigate, onOpenSpaceSettings
           hasPendingFilterChanges={hasPendingFilterChanges}
         />
 
-        <TaskTable tasks={filteredTasks} />
+        <div className="mt-scope" role="group" aria-label="Which tasks">
+          {SCOPES.map((item) => (
+            <button key={item.id} type="button" aria-pressed={scope === item.id} onClick={() => setScope(item.id)}>
+              {item.label}<span>{scopeCounts[item.id]}</span>
+            </button>
+          ))}
+        </div>
+
+        <TaskTable
+          tasks={filteredTasks}
+          allTasks={allTasks}
+          spaces={spaces}
+          title={SCOPES.find((item) => item.id === scope).label}
+          subtitle="Click a task to open it. Fields you may change can be edited in place."
+          onOpenTask={(task) => setDetailTaskId(task.id)}
+          onUpdateTask={onUpdateTask}
+          onChangeStatus={changeStatus}
+          onMoveSelected={(selected, done) => setMoveRequest({ tasks: selected, space: spaceOfItem(spaces, selected[0]), done })}
+          onDeleteSelected={(selected, done) => setDeleteRequest({ tasks: selected, done })}
+        />
       </main>
+
+      {detailTask && detailSpace && (
+        <TaskDetailDrawer
+          key={detailTask.id}
+          issue={detailTask}
+          allIssues={tasksOf(detailSpace)}
+          space={detailSpace}
+          onClose={() => setDetailTaskId(null)}
+          onUpdateTask={onUpdateTask}
+          onDeleteTask={(issue) => { onDeleteTasks([issue.id]); setDetailTaskId(null); }}
+          onCloneTask={async (payload) => {
+            const created = await onCreateTask(payload);
+            if (created) setToast({ type: 'success', message: `${issueKey(created)} created.` });
+            return created;
+          }}
+          onCreateChild={(parent, allowedIssueTypes) => setCreateRequest({ space: detailSpace, parentId: String(parent.id), allowedIssueTypes })}
+          onOpenIssue={(issueId) => setDetailTaskId(issueId)}
+          onMoveTask={(issue) => setMoveRequest({ tasks: [issue], space: detailSpace })}
+        />
+      )}
+
+      {createRequest && (
+        <IssueModal
+          space={createRequest.space}
+          existingIssues={tasksOf(createRequest.space)}
+          initialParentId={createRequest.parentId}
+          allowedIssueTypes={createRequest.allowedIssueTypes}
+          onClose={() => setCreateRequest(null)}
+          onCreate={onCreateTask}
+        />
+      )}
+
+      {moveRequest && (
+        <MoveModal
+          spaces={spaces}
+          currentSpace={moveRequest.space}
+          count={moveRequest.tasks.length}
+          onClose={() => setMoveRequest(null)}
+          onMove={moveTasks}
+        />
+      )}
+
+      {deleteRequest && (
+        <ConfirmModal
+          title={`Delete ${deleteRequest.tasks.length === 1 ? issueKey(deleteRequest.tasks[0]) : `${deleteRequest.tasks.length} work items`}?`}
+          message="Deleted work items cannot be restored."
+          onClose={() => setDeleteRequest(null)}
+          onConfirm={() => {
+            onDeleteTasks(deleteRequest.tasks.map((task) => task.id));
+            deleteRequest.done?.();
+            setDeleteRequest(null);
+          }}
+        />
+      )}
+
+      {startRequest && (
+        <StartTransitionModal
+          issues={[startRequest.task]}
+          members={spaceOfItem(spaces, startRequest.task)?.members || []}
+          assigneeId={startAssigneeId}
+          onAssigneeChange={setStartAssigneeId}
+          onClose={() => setStartRequest(null)}
+          onConfirm={(assignee) => {
+            onUpdateTask(startRequest.task.id, { status: startRequest.status, assignee });
+            setStartRequest(null);
+          }}
+        />
+      )}
+
+      <Toast toast={toast} onClose={() => setToast(null)} />
     </div>
   );
 }

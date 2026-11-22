@@ -1,0 +1,21 @@
+/* Searchable multi-select with chips (see ChipSelect.jsx). */
+.cs-field { display: flex; min-height: 36px; align-items: center; gap: 6px; padding: 3px 8px 3px 6px; border: 1px solid var(--tf-bd-dfe1e6); border-radius: 6px; background: var(--tf-bg-ffffff); cursor: text; transition: border-color 0.15s, box-shadow 0.15s; }
+.cs-field:focus-within { border-color: var(--tf-bd-4c9aff); box-shadow: 0 0 0 2px var(--tf-bd-deebff); }
+.cs-field.is-disabled { background: var(--tf-bg-f4f5f7); cursor: not-allowed; opacity: 0.7; }
+.cs-values { display: flex; min-width: 0; flex: 1; flex-wrap: wrap; align-items: center; gap: 4px; }
+.cs-values input { min-width: 90px; height: 26px; flex: 1; padding: 0 4px; border: 0; outline: 0; background: transparent; color: var(--tf-fg-172b4d); font: inherit; font-size: 12.5px; }
+.cs-values input::placeholder { color: var(--tf-fg-8993a4); }
+.cs-chip { display: inline-flex; max-width: 100%; align-items: center; gap: 5px; padding: 2px 3px 2px 6px; border-radius: 4px; background: var(--tf-bg-ebecf0); color: var(--tf-fg-253858); font-size: 12px; line-height: 18px; }
+.cs-chip:has(.tf-user-avatar) { padding-left: 2px; }
+.cs-chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cs-chip button { display: inline-grid; width: 16px; height: 16px; flex: 0 0 16px; place-items: center; padding: 0; border: 0; border-radius: 3px; background: transparent; color: var(--tf-fg-6b778c); cursor: pointer; }
+.cs-chip button:hover { background: var(--tf-bg-dfe1e6); color: var(--tf-fg-de350b); }
+.cs-chevron { flex: 0 0 auto; color: var(--tf-fg-6b778c); transition: transform 0.15s; }
+.cs-field.is-open .cs-chevron { transform: rotate(180deg); }
+.cs-list { position: fixed; z-index: 3000; max-height: 240px; margin: 0; padding: 4px; overflow-y: auto; border: 1px solid var(--tf-bd-dfe1e6); border-radius: 6px; background: var(--tf-bg-ffffff); box-shadow: 0 10px 28px rgba(9, 30, 66, 0.2); list-style: none; }
+.cs-option { display: flex; align-items: center; gap: 8px; padding: 6px 8px; border-radius: 4px; color: var(--tf-fg-172b4d); cursor: pointer; font-size: 12.5px; }
+.cs-option.is-active { background: var(--tf-bg-e9f2ff); }
+.cs-option-text { display: flex; min-width: 0; flex-direction: column; }
+.cs-option-text strong { overflow: hidden; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.cs-option-text small { overflow: hidden; color: var(--tf-fg-6b778c); font-size: 11px; text-overflow: ellipsis; white-space: nowrap; }
+.cs-empty { padding: 10px; color: var(--tf-fg-6b778c); font-size: 12px; text-align: center; }

@@ -2,6 +2,8 @@ import { useMemo } from 'react';
 import Header from '../../components/layout/Header';
 import Sidebar from '../../components/layout/Sidebar';
 import Icon from '../../components/common/Icon';
+import PersonAvatar from '../../components/common/PersonAvatar';
+import { visibleProjectTabs } from '../SpacesList/projectNavigation';
 import './SpacesSummary.css';
 
 const STATUS_DEFINITIONS = [
@@ -119,7 +121,7 @@ function DonutChart({ counts, total }) {
   return (
     <div className="summary-donut-wrap" role="img" aria-label={`${total} tasks across project statuses`}>
       <svg className="summary-donut" viewBox="0 0 180 180" aria-hidden="true">
-        <circle cx="90" cy="90" r={radius} fill="none" stroke="#EEF1F5" strokeWidth="22" />
+        <circle cx="90" cy="90" r={radius} fill="none" style={{ stroke: 'var(--tf-bd-eef1f5)' }} strokeWidth="22" />
         {total > 0 && STATUS_DEFINITIONS.map((status) => {
           const count = counts[status.label] || 0;
           if (!count) return null;
@@ -163,15 +165,7 @@ function StatCard({ icon, label, value, tone }) {
 }
 
 function SpaceTabs({ space, activeTab, onNavigate }) {
-  const tabs = [
-    { label: 'Summary', icon: 'dashboard' },
-    { label: 'Timeline', icon: 'calendar' },
-    { label: 'Board', icon: 'tasks' },
-    { label: 'List', icon: 'file' },
-    { label: 'Backlog', icon: 'spaces' },
-    { label: 'Active Sprints', icon: 'check' },
-    { label: 'Teams', icon: 'user' }
-  ];
+  const tabs = visibleProjectTabs(space).map((feature) => ({ label: feature.key, icon: feature.icon }));
 
   function handleTabClick(tab) {
     if (tab === 'Summary') {
@@ -364,7 +358,7 @@ export default function SpacesSummary({
                           <td><StatusBadge status={task.status} /></td>
                           <td>
                             <div className="summary-assignee">
-                              <span className="summary-person-avatar">{assignee === 'Unassigned' ? '—' : getInitials(assignee)}</span>
+                              {assignee === 'Unassigned' ? <span className="summary-person-avatar">—</span> : <PersonAvatar person={task.assignee && typeof task.assignee === 'object' ? task.assignee : assignee} className="summary-person-avatar" />}
                               <span>{assignee}</span>
                             </div>
                           </td>
@@ -403,7 +397,7 @@ export default function SpacesSummary({
                     const detail = activity.description || activity.action || 'updated this space';
                     return (
                       <div className="summary-activity-item" key={activity.id || `${index}-${activity.createdAt}`}>
-                        <span className="summary-activity-avatar">{getInitials(actor)}</span>
+                        <PersonAvatar person={actor} className="summary-activity-avatar" />
                         <div className="summary-activity-copy">
                           <p><strong>{actor}</strong> {detail}</p>
                           <span>{formatActivityTime(activity.createdAt || activity.timestamp)}</span>
@@ -472,7 +466,7 @@ export default function SpacesSummary({
                     const memberName = member.name || member.fullName || 'Unnamed member';
                     return (
                       <div className="summary-member" key={member.id || `${memberName}-${index}`}>
-                        <span className="summary-member-avatar">{member.initials || getInitials(memberName)}</span>
+                        <PersonAvatar person={member} className="summary-member-avatar" />
                         <strong title={memberName}>{memberName}</strong>
                         <span>{member.role || 'Member'}</span>
                       </div>

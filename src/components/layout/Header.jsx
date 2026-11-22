@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Icon from '../common/Icon';
-import UserProfileMenu from '../profile/UserProfileMenu';
+import UserProfileMenu from './UserProfileMenu';
+import NotificationBell from './NotificationBell';
+import { useAppShell } from '../../context/appShellContext';
 import './Header.css';
 
 function getTaskKey(task) {
@@ -23,28 +25,12 @@ function getSpaceName(task, spaces) {
 }
 
 export default function Header({
-  spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {},
-  user = null, onNavigate = () => {}, onLogout = () => {}
+  spaces = [], tasks = [], onGlobalCreate = () => {}, onOpenTask = () => {}
 }) {
+  const { isAdmin, navigate, openAssistant, sidebarCollapsed, toggleSidebar } = useAppShell();
   const [globalSearch, setGlobalSearch] = useState('');
   const [searchResults, setSearchResults] = useState(null);
   const searchWrapRef = useRef(null);
-  const [theme, setTheme] = useState(() => {
-    const savedTheme = localStorage.getItem('taskflow.theme');
-    return savedTheme === 'dark' ? 'dark' : 'light';
-  });
-  const [language, setLanguage] = useState(() => localStorage.getItem('taskflow.language') || 'EN');
-
-  useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem('taskflow.theme', theme);
-  }, [theme]);
-
-  useEffect(() => {
-    localStorage.setItem('taskflow.language', language);
-    document.documentElement.lang = language.toLowerCase();
-  }, [language]);
-
   useEffect(() => {
     if (searchResults === null) return undefined;
     const handleOutside = (event) => {
@@ -86,15 +72,18 @@ export default function Header({
     onOpenTask(task);
   }
 
-  function handleLogout() {
-    onLogout();
-  }
-
   return (
     <header className="topbar">
       <div className="topbar-brand">
-        <button type="button" className="header-icon-button menu-button" aria-label="Menu">
-          <Icon name="menu" size={19} />
+        <button
+          type="button"
+          className="header-icon-button menu-button"
+          onClick={() => toggleSidebar()}
+          aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+          aria-expanded={!sidebarCollapsed}
+          title={sidebarCollapsed ? 'Mở rộng thanh bên' : 'Thu gọn thanh bên'}
+        >
+          <Icon name={sidebarCollapsed ? 'sidebarOpen' : 'sidebarClose'} size={19} />
         </button>
         <div className="brand-logo">TASK<span>FLOW</span></div>
       </div>
@@ -146,29 +135,28 @@ export default function Header({
           )}
         </div>
 
-        <button type="button" className="create-button" onClick={onGlobalCreate}>
+        <button type="button" className="create-button" onClick={onGlobalCreate} aria-label="Create" title="Create">
           <Icon name="plus" size={16} /><span>Create</span>
         </button>
         <div className="header-spacer" />
-        <button type="button" className="header-icon-button ai-header-button" aria-label="AI Assistant" title="AI Assistant">
+        <button type="button" className="header-icon-button ai-header-button" aria-label="AI Project Assistant" title="AI Project Assistant" onClick={() => openAssistant()}>
           <Icon name="sparkles" size={19} />
         </button>
-        <button type="button" className="header-icon-button notification-button" aria-label="Notifications" title="Notifications">
-          <Icon name="bell" size={19} /><span className="notification-badge">3</span>
-        </button>
-        <button type="button" className="header-icon-button" aria-label="Settings" title="Settings">
-          <Icon name="settings" size={19} />
-        </button>
+        <NotificationBell />
+        {/* System Settings is for administrators only (the page and its API are guarded too). */}
+        {isAdmin && (
+          <button
+            type="button"
+            className="header-icon-button header-settings-button"
+            aria-label="System settings"
+            title="System settings"
+            onClick={() => navigate('systemSettings', { tab: 'users' })}
+          >
+            <Icon name="settings" size={19} />
+          </button>
+        )}
 
-        <UserProfileMenu
-          user={user}
-          theme={theme}
-          language={language}
-          onThemeChange={setTheme}
-          onLanguageChange={setLanguage}
-          onNavigate={onNavigate}
-          onLogout={handleLogout}
-        />
+        <UserProfileMenu />
       </div>
     </header>
   );

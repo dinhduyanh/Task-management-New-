@@ -2,16 +2,22 @@
   "name": "taskflow-backend",
   "version": "1.0.0",
   "private": true,
-  "engines": { "node": ">=20" },
+  "engines": {
+    "node": ">=20"
+  },
   "type": "module",
   "scripts": {
     "start": "node src/server.js",
     "dev": "node --watch src/server.js",
-    "check": "node --check src/server.js && node --check src/db.js"
+    "check": "node --check src/server.js && node --check src/db.js",
+    "test": "node --test",
+    "check:google": "node scripts/check-google.js",
+    "check:mail": "node scripts/check-mail.js"
   },
   "dependencies": {
     "better-sqlite3": "^12.2.0",
     "cors": "^2.8.5",
-    "express": "^5.1.0"
+    "express": "^5.1.0",
+    "nodemailer": "^10.6.0"
   }
 }
