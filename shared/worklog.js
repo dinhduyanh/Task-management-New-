@@ -1,11 +1,13 @@
 // Log work rules, shared by the Log work modal and the API (the server checks again).
-//   - a date range From..To of at most 31 days (one record per day)
+//   - From (required) .. To (optional: empty = the From day only), one record per day
+//   - only days within one month up to today: from the same day last month to today
 //   - a duration per day of hours + minutes, more than 0 and at most 12h00m
 //   - together with what the person already logged that day: at most 12h per day
 //   - a description of the work
 
 export const MAX_MINUTES_PER_DAY = 12 * 60;
-export const MAX_RANGE_DAYS = 31;
+// Longest possible window: the same day last month .. today, both included (e.g. 22/10..22/11).
+export const MAX_RANGE_DAYS = 32;
 export const MAX_DESCRIPTION = 2000;
 export const DAILY_LIMIT_MESSAGE = 'Quá số giờ làm việc quy định (tối đa 12 giờ/ngày)';
 
@@ -49,13 +51,43 @@ export function datesInRange(from, to, limit = MAX_RANGE_DAYS) {
   return Array.from({ length: days }, (_, index) => dayText(start + index * DAY_MS));
 }
 
-/** Range problem, or '' when From..To is valid. */
-export function validateRange(from, to) {
-  if (!from) return 'Chọn ngày bắt đầu (From).';
-  if (!to) return 'Chọn ngày kết thúc (To).';
-  if (parseDay(from) === null || parseDay(to) === null) return 'Ngày không hợp lệ.';
-  if (parseDay(to) < parseDay(from)) return 'Ngày kết thúc (To) phải bằng hoặc sau ngày bắt đầu (From).';
-  if (countDays(from, to) > MAX_RANGE_DAYS) return `Khoảng thời gian tối đa ${MAX_RANGE_DAYS} ngày (1 tháng). Bạn đang chọn ${countDays(from, to)} ngày.`;
+/** 'YYYY-MM-DD' of today in the given time zone offset (minutes, as Date#getTimezoneOffset). */
+export function todayIn(offsetMinutes = new Date().getTimezoneOffset(), now = Date.now()) {
+  return dayText(Math.floor((now - offsetMinutes * 60000) / DAY_MS) * DAY_MS);
+}
+
+/**
+ * Days that may be logged: { min, max } = the same day one month ago .. today
+ * (22/11 -> 22/10; 31/03 -> 28/02 or 29/02, the last day of a shorter month).
+ */
+export function logWindow(today) {
+  const time = parseDay(today);
+  if (time === null) return { min: '', max: '' };
+  const date = new Date(time);
+  const y = date.getUTCFullYear();
+  const m = date.getUTCMonth();
+  const lastDayOfPreviousMonth = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const min = Date.UTC(y, m - 1, Math.min(date.getUTCDate(), lastDayOfPreviousMonth));
+  return { min: dayText(min), max: today };
+}
+
+/** The To day used: empty To = the From day (log one day). */
+export function effectiveTo(from, to) {
+  return to || from;
+}
+
+/** Range problem, or '' when From..To is valid. With `today`, days must be in logWindow(today). */
+export function validateRange(from, to, today = '') {
+  if (!from) return 'Chọn ngày From.';
+  const end = effectiveTo(from, to);
+  if (parseDay(from) === null || parseDay(end) === null) return 'Ngày không hợp lệ.';
+  if (parseDay(end) < parseDay(from)) return 'Ngày To phải bằng hoặc sau ngày From.';
+  if (today) {
+    const allowed = logWindow(today);
+    if (parseDay(end) > parseDay(allowed.max)) return 'Không thể log work cho ngày trong tương lai.';
+    if (parseDay(from) < parseDay(allowed.min)) return `Chỉ được log work trong vòng 1 tháng tính đến hôm nay (từ ${formatDay(allowed.min)} đến ${formatDay(allowed.max)}).`;
+  }
+  if (countDays(from, end) > MAX_RANGE_DAYS) return 'Khoảng thời gian tối đa 1 tháng.';
   return '';
 }
 
@@ -109,9 +141,10 @@ export function overLimitDays(dates, minutesPerDay, existing = {}) {
  * Checks a whole Log work entry.
  * Returns { ok, errors: { range, duration, daily, description }, dates, minutesPerDay, totalMinutes }.
  */
-export function validateWorkLog({ fromDate, toDate, hours, minutes, description }, existing = {}) {
+export function validateWorkLog({ fromDate, toDate, hours, minutes, description }, existing = {}, today = '') {
   const errors = {};
-  const range = validateRange(fromDate, toDate);
+  toDate = effectiveTo(fromDate, toDate);
+  const range = validateRange(fromDate, toDate, today);
   if (range) errors.range = range;
   const minutesPerDay = toMinutes(hours, minutes);
   const duration = validateDuration(minutesPerDay);

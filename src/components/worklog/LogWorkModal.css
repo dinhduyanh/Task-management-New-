@@ -118,34 +118,6 @@
   font-weight: 600;
 }
 
-.lw-segment {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  margin-bottom: 10px;
-  padding: 3px;
-  border-radius: 8px;
-  background: var(--tf-surface-muted);
-}
-
-.lw-segment button {
-  height: 30px;
-  border: 0;
-  border-radius: 6px;
-  background: transparent;
-  color: var(--tf-text-muted);
-  font: inherit;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, color 0.15s;
-}
-
-.lw-segment button.is-active {
-  background: var(--tf-surface);
-  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.12);
-  color: var(--tf-primary);
-}
-
 .lw-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -460,4 +432,10 @@
 .wl-legacy {
   color: var(--tf-text-muted);
   font-size: 11px;
+}
+
+.lw-optional {
+  color: var(--tf-text-muted);
+  font-size: 11px;
+  font-weight: 500;
 }

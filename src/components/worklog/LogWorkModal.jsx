@@ -4,27 +4,23 @@ import DatePicker from '../common/DatePicker';
 import { api } from '../../services/api';
 import { iconForType, issueKey, issueSummary, issueType } from '../../pages/SpacesList/issueHelpers';
 import {
-  MAX_MINUTES_PER_DAY, MAX_RANGE_DAYS, countDays, formatDay, formatDuration, parseDay, toMinutes, validateWorkLog
+  MAX_MINUTES_PER_DAY, MAX_RANGE_DAYS, countDays, effectiveTo, formatDay, formatDuration, logWindow, parseDay, toMinutes, todayIn, validateWorkLog
 } from '../../../shared/worklog';
 import './LogWorkModal.css';
 
 const QUICK_HOURS = [1, 2, 4, 8];
 
-function today() {
-  const now = new Date();
-  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
-}
-
 /**
- * Log work on a work item: task info, one day or a From..To range (max 31 days),
+ * Log work on a work item: task info, From (required) .. To (optional: empty = one day),
+ * only days within one month up to today,
  * hours + minutes per day (max 12h a day, together with what was already logged that
  * day), a description, Cancel / Save. onSaved(result) receives the updated list.
  */
 export default function LogWorkModal({ issue, space, onClose, onSaved }) {
-  const [mode, setMode] = useState('one'); // one | range
-  const [day, setDay] = useState(today);
+  const [today] = useState(() => todayIn());
+  const allowed = logWindow(today); // { min: same day last month, max: today }
   const [fromDate, setFromDate] = useState(today);
-  const [toDate, setToDate] = useState(today);
+  const [toDate, setToDate] = useState(''); // empty = log the From day only
   const [hours, setHours] = useState('');
   const [minutes, setMinutes] = useState('');
   const [description, setDescription] = useState('');
@@ -34,9 +30,10 @@ export default function LogWorkModal({ issue, space, onClose, onSaved }) {
   const [saving, setSaving] = useState(false);
   const hoursRef = useRef(null);
 
-  const from = mode === 'one' ? day : fromDate;
-  const to = mode === 'one' ? day : toDate;
-  const check = useMemo(() => validateWorkLog({ fromDate: from, toDate: to, hours, minutes, description }, existing), [from, to, hours, minutes, description, existing]);
+  const from = fromDate;
+  const to = effectiveTo(fromDate, toDate);
+  const multiple = Boolean(from && to && to !== from);
+  const check = useMemo(() => validateWorkLog({ fromDate: from, toDate: to, hours, minutes, description }, existing, today), [from, to, hours, minutes, description, existing, today]);
   const perDay = toMinutes(hours, minutes);
   const durationTouched = hours !== '' || minutes !== '';
   const show = {
@@ -66,12 +63,6 @@ export default function LogWorkModal({ issue, space, onClose, onSaved }) {
     return () => window.removeEventListener('keydown', onKey, true);
   }, [onClose]);
 
-  function switchMode(next) {
-    if (next === mode) return;
-    if (next === 'range') { setFromDate(day); setToDate(day); } else setDay(fromDate);
-    setMode(next);
-  }
-
   async function save(event) {
     event.preventDefault();
     setSubmitted(true);
@@ -79,7 +70,7 @@ export default function LogWorkModal({ issue, space, onClose, onSaved }) {
     if (!check.ok) return;
     setSaving(true);
     try {
-      const result = await api.createWorkLog(issue.id, { fromDate: from, toDate: to, hours: hours === '' ? 0 : Number(hours), minutes: minutes === '' ? 0 : Number(minutes), description: description.trim() });
+      const result = await api.createWorkLog(issue.id, { fromDate: from, toDate: toDate || '', timezoneOffset: new Date().getTimezoneOffset(), hours: hours === '' ? 0 : Number(hours), minutes: minutes === '' ? 0 : Number(minutes), description: description.trim() });
       onSaved?.(result);
     } catch (error) {
       setServerError(error.message || 'Could not save the work log.');
@@ -89,7 +80,7 @@ export default function LogWorkModal({ issue, space, onClose, onSaved }) {
 
   const type = issueType(issue);
   const days = check.dates.length;
-  const alreadyThatDay = mode === 'one' ? Number(existing[day]) || 0 : 0;
+  const alreadyThatDay = !multiple ? Number(existing[from]) || 0 : 0;
   const blocked = !check.ok;
 
   return (
@@ -123,41 +114,31 @@ export default function LogWorkModal({ issue, space, onClose, onSaved }) {
           {/* 2. Time */}
           <section className="lw-card" aria-labelledby="lw-time">
             <h3 id="lw-time"><Icon name="calendar" size={15} /> Time</h3>
-            <div className="lw-segment" role="tablist" aria-label="Days">
-              <button type="button" role="tab" aria-selected={mode === 'one'} className={mode === 'one' ? 'is-active' : ''} onClick={() => switchMode('one')}>One day</button>
-              <button type="button" role="tab" aria-selected={mode === 'range'} className={mode === 'range' ? 'is-active' : ''} onClick={() => switchMode('range')}>Multiple days</button>
-            </div>
-            {mode === 'one' ? (
+            <div className="lw-row">
               <div className="lw-field">
-                <label className="lw-label" htmlFor="lw-day"><span className="lw-required">*</span> Work date</label>
-                <DatePicker id="lw-day" value={day} onChange={(value) => setDay(value || '')} ariaLabel="Work date" className={show.range ? 'lw-invalid' : ''} />
+                <label className="lw-label" htmlFor="lw-from"><span className="lw-required">*</span> From</label>
+                <DatePicker id="lw-from" value={fromDate} min={allowed.min} max={allowed.max} clearable={false} onChange={(value) => { setFromDate(value || ''); if (value && toDate && toDate < value) setToDate(''); }} ariaLabel="From date" className={show.range ? 'lw-invalid' : ''} />
               </div>
-            ) : (
-              <div className="lw-row">
-                <div className="lw-field">
-                  <label className="lw-label" htmlFor="lw-from"><span className="lw-required">*</span> From</label>
-                  <DatePicker id="lw-from" value={fromDate} onChange={(value) => setFromDate(value || '')} ariaLabel="From date" className={show.range ? 'lw-invalid' : ''} />
-                </div>
-                <div className="lw-field">
-                  <label className="lw-label" htmlFor="lw-to"><span className="lw-required">*</span> To</label>
-                  <DatePicker id="lw-to" value={toDate} onChange={(value) => setToDate(value || '')} ariaLabel="To date" className={show.range ? 'lw-invalid' : ''} />
-                </div>
+              <div className="lw-field">
+                <label className="lw-label" htmlFor="lw-to">To <small className="lw-optional">(không bắt buộc)</small></label>
+                <DatePicker id="lw-to" value={toDate} min={fromDate || allowed.min} max={allowed.max} placeholder="Chỉ 1 ngày" onChange={(value) => setToDate(value || '')} ariaLabel="To date" className={show.range ? 'lw-invalid' : ''} />
               </div>
-            )}
+            </div>
             {show.range && <p className="lw-error" role="alert">{check.errors.range}</p>}
-            {mode === 'range' && !check.errors.range && days > 0 && (
+            {!check.errors.range && days > 0 && (
               <p className="lw-summary" role="status">
                 <Icon name="info" size={13} />
-                Áp dụng cho <strong>{days} ngày</strong>: {formatDay(from)} - {formatDay(to)}
-                {!check.errors.duration && perDay > 0 && <> · {formatDuration(perDay)}/ngày · tổng <strong>{formatDuration(check.totalMinutes)}</strong></>}
+                {multiple
+                  ? <>Áp dụng cho <strong>{days} ngày</strong>: {formatDay(from)} - {formatDay(to)}{!check.errors.duration && perDay > 0 && <> · {formatDuration(perDay)}/ngày · tổng <strong>{formatDuration(check.totalMinutes)}</strong></>}</>
+                  : <>Log work cho <strong>1 ngày</strong>: {formatDay(from)}</>}
               </p>
             )}
-            <p className="lw-hint">Tối đa {MAX_RANGE_DAYS} ngày (1 tháng) mỗi lần log.</p>
+            <p className="lw-hint">Để trống To để log 1 ngày. Chỉ log được từ {formatDay(allowed.min)} đến hôm nay ({formatDay(allowed.max)}).</p>
           </section>
 
           {/* 3. Hours */}
           <section className="lw-card" aria-labelledby="lw-hours-title">
-            <h3 id="lw-hours-title"><Icon name="clock" size={15} /> Time spent {mode === 'range' && <small>(mỗi ngày)</small>}</h3>
+            <h3 id="lw-hours-title"><Icon name="clock" size={15} /> Time spent {multiple && <small>(mỗi ngày)</small>}</h3>
             <div className="lw-row">
               <div className="lw-field">
                 <label className="lw-label" htmlFor="lw-hours"><span className="lw-required">*</span> Hours</label>
@@ -177,7 +158,7 @@ export default function LogWorkModal({ issue, space, onClose, onSaved }) {
             {!Number.isNaN(perDay) && Number(minutes) >= 60 && <p className="lw-note">= {formatDuration(perDay)}</p>}
             {show.duration && <p className="lw-error" role="alert">{check.errors.duration}</p>}
             {!show.duration && show.daily && <p className="lw-error" role="alert">{check.errors.daily}</p>}
-            {mode === 'one' && alreadyThatDay > 0 && !show.daily && (
+            {!multiple && alreadyThatDay > 0 && !show.daily && (
               <p className="lw-note">Bạn đã log {formatDuration(alreadyThatDay)} vào ngày này · còn tối đa {formatDuration(Math.max(0, MAX_MINUTES_PER_DAY - alreadyThatDay))}.</p>
             )}
           </section>

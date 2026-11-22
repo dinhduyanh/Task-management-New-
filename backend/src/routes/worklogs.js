@@ -7,7 +7,7 @@ import { db, createId, nowIso, logActivity } from '../db.js';
 import { requireSpaceAccess, spaceIdOf } from '../access.js';
 import { allowed } from '../workItemPermissions.js';
 import { denied, memberContext } from '../projectPermissions.js';
-import { MAX_MINUTES_PER_DAY, formatDay, formatDuration, parseDay, validateWorkLog } from '../../../shared/worklog.js';
+import { MAX_MINUTES_PER_DAY, effectiveTo, formatDay, formatDuration, parseDay, todayIn, validateWorkLog } from '../../../shared/worklog.js';
 
 const router = Router();
 const itemAccess = requireSpaceAccess((req) => spaceIdOf.workItem(req.params.id), 'Work item not found.');
@@ -51,7 +51,8 @@ router.get('/work-items/:id/worklogs', itemAccess, (req, res) => {
   res.json(listFor(req, req.params.id));
 });
 
-// POST { fromDate, toDate, hours, minutes, description }
+// POST { fromDate, toDate?, hours, minutes, description, timezoneOffset }
+// No toDate = the fromDate day only. Days must be within one month up to the user's today.
 router.post('/work-items/:id/worklogs', itemAccess, (req, res, next) => {
   try {
     const item = db.prepare('SELECT * FROM work_items WHERE id = ?').get(req.params.id);
@@ -59,7 +60,7 @@ router.post('/work-items/:id/worklogs', itemAccess, (req, res, next) => {
     const body = req.body || {};
     const input = {
       fromDate: String(body.fromDate || ''),
-      toDate: String(body.toDate || body.fromDate || ''),
+      toDate: effectiveTo(String(body.fromDate || ''), String(body.toDate || '')),
       hours: body.hours ?? '',
       minutes: body.minutes ?? '',
       description: String(body.description ?? '')
@@ -68,7 +69,9 @@ router.post('/work-items/:id/worklogs', itemAccess, (req, res, next) => {
     const created = db.transaction(() => {
       // Read the day totals inside the transaction, so two saves cannot both pass.
       const existing = parseDay(input.fromDate) !== null && parseDay(input.toDate) !== null ? dailyTotals(req.user.id, input.fromDate, input.toDate) : {};
-      const check = validateWorkLog(input, existing);
+      const offset = Number(body.timezoneOffset);
+      const today = todayIn(Number.isFinite(offset) && Math.abs(offset) <= 14 * 60 ? offset : 0);
+      const check = validateWorkLog(input, existing, today);
       if (!check.ok) return { errors: check.errors };
       const batch = check.dates.length > 1 ? createId('wlb') : null;
       const now = nowIso();
